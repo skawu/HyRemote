@@ -211,11 +211,11 @@ std::uint32_t scaleChannel(std::uint8_t value, std::uint16_t max)
     return (static_cast<std::uint32_t>(value) * static_cast<std::uint32_t>(max) + 127U) / 255U;
 }
 
-void appendEncodedPixel(QByteArray &out,
-                        std::uint8_t r,
-                        std::uint8_t g,
-                        std::uint8_t b,
-                        const PixelSpec &spec)
+void packEncodedPixel(std::uint8_t *out,
+                      std::uint8_t r,
+                      std::uint8_t g,
+                      std::uint8_t b,
+                      const PixelSpec &spec)
 {
     const std::uint32_t value = (scaleChannel(r, spec.redMax) << spec.redShift)
                                 | (scaleChannel(g, spec.greenMax) << spec.greenShift)
@@ -223,11 +223,24 @@ void appendEncodedPixel(QByteArray &out,
     const int bytesPerPixel = spec.bitsPerPixel / 8;
     if (spec.bigEndian) {
         for (int i = bytesPerPixel - 1; i >= 0; --i)
-            out.append(static_cast<char>((value >> (i * 8)) & 0xffU));
+            *out++ = static_cast<std::uint8_t>((value >> (i * 8)) & 0xffU);
     } else {
         for (int i = 0; i < bytesPerPixel; ++i)
-            out.append(static_cast<char>((value >> (i * 8)) & 0xffU));
+            *out++ = static_cast<std::uint8_t>((value >> (i * 8)) & 0xffU);
     }
+}
+
+// Cursor pixels use the same RFB channel scaling/byte order, but their
+// payloads are tiny and retain the existing append-style framing.
+void appendEncodedPixel(QByteArray &out,
+                        std::uint8_t r,
+                        std::uint8_t g,
+                        std::uint8_t b,
+                        const PixelSpec &spec)
+{
+    std::uint8_t bytes[4]{};
+    packEncodedPixel(bytes, r, g, b, spec);
+    out.append(reinterpret_cast<const char *>(bytes), spec.bitsPerPixel / 8);
 }
 
 hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
@@ -1809,22 +1822,31 @@ private:
             return true;
         }
 
+        // Non-native 8/16/32bpp and straight-alpha Raw must not append one
+        // QByteArray byte at a time. The pixel count and full payload size
+        // were bounded above; allocate once and write the exact old channel
+        // scaling/byte order into the reserved protocol rectangle payload.
+        const qsizetype offset = message.size();
+        message.resize(offset + static_cast<qsizetype>(pixelBytes));
+        auto *packed = reinterpret_cast<std::uint8_t *>(message.data() + offset);
+        const std::size_t outputStride = static_cast<std::size_t>(width) * bytesPerPixel;
         for (std::uint32_t row = 0; row < height; ++row) {
             const std::uint8_t *source = base + (static_cast<std::size_t>(y) + row) * plane->stride
                                          + static_cast<std::size_t>(x) * 4U;
+            std::uint8_t *target = packed + static_cast<std::size_t>(row) * outputStride;
             for (std::uint32_t col = 0; col < width; ++col) {
                 const std::uint8_t alpha = source[col * 4U + 3U];
-                appendEncodedPixel(message,
-                                   rfbOpaqueChannel(source[col * 4U],
-                                                    alpha,
-                                                    frame.geometry.alphaMode),
-                                   rfbOpaqueChannel(source[col * 4U + 1U],
-                                                    alpha,
-                                                    frame.geometry.alphaMode),
-                                   rfbOpaqueChannel(source[col * 4U + 2U],
-                                                    alpha,
-                                                    frame.geometry.alphaMode),
-                                   pixels);
+                packEncodedPixel(target + static_cast<std::size_t>(col) * bytesPerPixel,
+                                 rfbOpaqueChannel(source[col * 4U],
+                                                  alpha,
+                                                  frame.geometry.alphaMode),
+                                 rfbOpaqueChannel(source[col * 4U + 1U],
+                                                  alpha,
+                                                  frame.geometry.alphaMode),
+                                 rfbOpaqueChannel(source[col * 4U + 2U],
+                                                  alpha,
+                                                  frame.geometry.alphaMode),
+                                 pixels);
             }
         }
         return true;

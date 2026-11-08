@@ -1857,6 +1857,104 @@ void testNativeRawFastPathAlphaEquivalence()
     }
 }
 
+// #609: The non-native 8/16/32bpp Raw path and straight-alpha pixels use
+// exactly the same protocol bytes after bulk preallocation. Check a real RFB
+// 3.8 socket, not just an internal helper. The source RGBA (128,64,32,128)
+// has black-matted RGB (64,32,16).
+void testRawFallbackBulkPackingPreservesWireBytes()
+{
+    struct Case
+    {
+        char bits;
+        char depth;
+        char redMax;
+        char greenMax;
+        char blueMax;
+        char redShift;
+        char greenShift;
+        char blueShift;
+        std::array<std::uint8_t, 4> wire;
+        int bytes;
+    };
+    const std::array<Case, 3> cases{{
+        {8, 6, 3, 3, 3, 4, 2, 0, {0x10, 0, 0, 0}, 1},
+        {16, 16, 31, 63, 31, 11, 5, 0, {0x02, 0x41, 0, 0}, 2},
+        {32, 24, char(255), char(255), char(255), 16, 8, 0,
+         {0x10, 0x20, 0x40, 0x00}, 4},
+    }};
+
+    for (const Case &spec : cases) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (!port)
+            return;
+        Recorder recorder;
+        auto frame = makeFrame(17, 9, 0x804020U);
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(17U * 4U, 9);
+        CHECK(storage != nullptr);
+        if (!storage)
+            return;
+        auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        CHECK(bytes != nullptr);
+        if (!bytes)
+            return;
+        for (std::size_t pixel = 0; pixel < 17U * 9U; ++pixel) {
+            bytes[pixel * 4U] = 128U;
+            bytes[pixel * 4U + 1U] = 64U;
+            bytes[pixel * 4U + 2U] = 32U;
+            bytes[pixel * 4U + 3U] = 128U;
+        }
+        frame.storage = std::move(storage);
+        frame.geometry.alphaMode = hyremote::AlphaMode::Straight;
+        auto transport = startTransport(port, recorder, std::move(frame));
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+
+        QTcpSocket socket;
+        std::uint16_t width = 0, height = 0;
+        const bool connected = connectRawRfb(socket, port, false, &width, &height);
+        CHECK(connected);
+        if (connected) {
+            CHECK(width == 17 && height == 9);
+            CHECK(sendPixelFormat(socket, spec.bits, spec.depth,
+                                  spec.redMax, spec.greenMax, spec.blueMax,
+                                  spec.redShift, spec.greenShift, spec.blueShift));
+            CHECK(sendSetEncodings(socket, {0}));
+            CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+            const QByteArray header = readExact(socket, 4);
+            CHECK(header.size() == 4);
+            if (header.size() == 4) {
+                CHECK(static_cast<std::uint8_t>(header.at(0)) == 0U);
+                CHECK(readU16(header, 2) == 1U);
+            }
+            const QByteArray rect = readExact(socket, 12);
+            CHECK(rect.size() == 12);
+            if (rect.size() == 12) {
+                CHECK(readU16(rect, 0) == 0U && readU16(rect, 2) == 0U);
+                CHECK(readU16(rect, 4) == width && readU16(rect, 6) == height);
+                CHECK(readS32(rect, 8) == 0);
+            }
+            const qsizetype payloadSize =
+                static_cast<qsizetype>(width) * height * spec.bytes;
+            const QByteArray payload = readExact(socket, payloadSize);
+            CHECK(payload.size() == payloadSize);
+            if (payload.size() == payloadSize) {
+                for (qsizetype pixel = 0; pixel < static_cast<qsizetype>(width) * height;
+                     ++pixel) {
+                    for (int byte = 0; byte < spec.bytes; ++byte) {
+                        CHECK(static_cast<std::uint8_t>(
+                                  payload.at(pixel * spec.bytes + byte)) == spec.wire[byte]);
+                    }
+                }
+            }
+        }
+        socket.disconnectFromHost();
+        waitForDisconnected(socket);
+        transport->stop();
+    }
+}
+
 // #789: high-entropy TRLE blocks use mode-0 raw CPIXEL, not packed
 // palettes. Confirm each byte on native and alpha-matted paths, including
 // a non-zero x offset and padded source row stride.
@@ -4420,6 +4518,7 @@ int main(int argc, char **argv)
     testStaticCompareFastHintPreservesDamage();
     testAlphaOnlyFrameIsNotPublishedToRfb();
     testNativeRawFastPathAlphaEquivalence();
+    testRawFallbackBulkPackingPreservesWireBytes();
     testHighEntropyTrleRawTileBytesAndAlpha();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
