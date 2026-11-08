@@ -1020,6 +1020,90 @@ void testProducerBackedIdleRawFrameRelease()
     transport->stop();
 }
 
+// #790: the Runtime releases any zero-Viewer input frame instead of painting
+// a full watermark into a second, immediately discarded pixel allocation.
+// Standalone RFB keeps its marked bootstrap; the opt-in Runtime must still
+// render an accurate fresh watermark after a real Viewer joins.
+void testProducerBackedSkipsUnusedZeroViewerWatermark()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+    Recorder recorder;
+    std::atomic<int> decorated{0};
+    auto mark = markDecorator();
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    security.frameDecorator =
+        [&, mark](const hyremote::RemoteFrame &source,
+                  hyremote::RemoteFrame &output, QString &error) {
+            decorated.fetch_add(1, std::memory_order_acq_rel);
+            return mark(source, output, error);
+        };
+    auto transport = HyRemote::detail::createRfbTransport(
+        QHostAddress::LocalHost, port, security);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start(
+        [&](const hyremote::InputEvent &event) { recorder.record(event); },
+        [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+
+    const auto noLongerRetained = [](const std::weak_ptr<const hyremote::FrameStorage> &weak) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!weak.expired() && timer.elapsed() < 3000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return weak.expired();
+    };
+    // Sequential frames cannot be elided by the "latest frame wins" mailbox:
+    // wait for the RFB worker to release each captured storage allocation.
+    for (int index = 0; index < 4; ++index) {
+        auto unused = makeFrame(128, 128, 0x203040U);
+        const std::weak_ptr<const hyremote::FrameStorage> weak = unused.storage;
+        transport->enqueueFrame(std::move(unused));
+        CHECK(noLongerRetained(weak));
+        CHECK(decorated.load(std::memory_order_acquire) == 0);
+    }
+
+    QTcpSocket viewer;
+    std::uint16_t width = 0, height = 0;
+    const bool joined = connectRawRfb(viewer, port, false, &width, &height);
+    CHECK(joined && width == 128 && height == 128);
+    if (!joined) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(viewer, {0}));
+    CHECK(sendUpdateRequest(viewer, false, 0, 0, width, height));
+    CHECK(noFramebufferData(viewer, 75)); // no unmarked stale bootstrap
+
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+    TestFramebuffer pixels;
+    pixels.resize(width, height);
+    std::vector<UpdateRect> rects;
+    const bool received = readFramebufferUpdate(viewer, pixels, rects);
+    CHECK(received);
+    if (received) {
+        CHECK(pixels.get(0, 0) == 0x203040U);
+        CHECK(pixels.get(120, 120) == kMarkColor);
+    }
+    CHECK(decorated.load(std::memory_order_acquire) == 1);
+
+    viewer.disconnectFromHost();
+    CHECK(waitForDisconnected(viewer));
+    const int before = decorated.load(std::memory_order_acquire);
+    auto idleAgain = makeFrame(128, 128, 0x102030U);
+    const std::weak_ptr<const hyremote::FrameStorage> afterLeave = idleAgain.storage;
+    transport->enqueueFrame(std::move(idleAgain));
+    CHECK(noLongerRetained(afterLeave));
+    CHECK(decorated.load(std::memory_order_acquire) == before);
+    transport->stop();
+}
+
 void testStandaloneMarkedBootstrapSurvivesReconnects()
 {
     const quint16 port = freePort();
@@ -4321,6 +4405,7 @@ int main(int argc, char **argv)
     testWatermarkReachesEveryEncoding();
     testStandaloneMarkedBootstrapSurvivesReconnects();
     testProducerBackedIdleRawFrameRelease();
+    testProducerBackedSkipsUnusedZeroViewerWatermark();
     testProducerBackedReconnectWatermarkFailsClosed();
     testWatermarkSurvivesFramebufferResize();
     testWatermarkFollowsDevicePixelRatio();
