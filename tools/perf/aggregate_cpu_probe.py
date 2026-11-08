@@ -182,18 +182,29 @@ def compare(b1, b2, nominal_seconds):
 def self_test():
     base = {stage: {"calls": 0, "cpu_ns": 0, "wall_ns": 0,
                     "bytes": 0, "cpu_samples_missing": 0} for stage in STAGES}
-    a = {"schema": 1, "pid": 1, "elapsed_ms": 10000, "process_cpu_ns": 100000000,
-         "process_cpu_valid": True, "stages": base}
-    b = {"schema": 1, "pid": 1, "elapsed_ms": 50000, "process_cpu_ns": 2100000000,
+    a = {"schema": 2, "pid": 1, "elapsed_ms": 10000, "process_cpu_ns": 100000000,
+         "process_cpu_valid": True, "stages": base,
+         "quick_grab_backend_counts": dict.fromkeys(BACKENDS, 0)}
+    b = {"schema": 2, "pid": 1, "elapsed_ms": 50000, "process_cpu_ns": 2100000000,
          "process_cpu_valid": True,
-         "stages": {key: dict(val) for key, val in base.items()}}
+         "stages": {key: dict(val) for key, val in base.items()},
+         "quick_grab_backend_counts": dict.fromkeys(BACKENDS, 0)}
     b["stages"]["rfb_compare"]["calls"] = 12
     b["stages"]["rfb_compare"]["cpu_ns"] = 300000000
     b["stages"]["quick_grab_ready_wall"]["wall_ns"] = 1500000000
+    b["stages"]["quick_accepted_requests"]["calls"] = 2
+    b["stages"]["quick_gui_batches"]["calls"] = 1
+    b["stages"]["watermark_compose"]["calls"] = 1
+    b["stages"]["watermark_compose"]["cpu_ns"] = 70000000
+    b["stages"]["watermark_reuse"]["calls"] = 1
+    b["quick_grab_backend_counts"]["software"] = 1
     got = measure([a, b], 10000, 40)
     assert abs(got["process_cpu_seconds"] - 2) < 1e-9
     assert got["stages"]["rfb_compare"]["calls"] == 12
     assert got["stages"]["quick_grab_ready_wall"]["cpu_ns"] == 0
+    assert got["schema"] == 2
+    assert got["backends"]["software"] == 1
+    assert got["stages"]["quick_gui_batches"]["calls"] == 1
     try:
         measure([a, b], 10000, 50)
         raise AssertionError("short window accepted")
@@ -202,9 +213,10 @@ def self_test():
 
     # A trace may have a large intermediate counter then reset to a small
     # ending value. Endpoints alone must never conceal that corruption.
-    middle = {"schema": 1, "pid": 1, "elapsed_ms": 30000,
+    middle = {"schema": 2, "pid": 1, "elapsed_ms": 30000,
               "process_cpu_ns": 1000000000, "process_cpu_valid": True,
-              "stages": {key: dict(value) for key, value in b["stages"].items()}}
+              "stages": {key: dict(value) for key, value in b["stages"].items()},
+              "quick_grab_backend_counts": dict.fromkeys(BACKENDS, 0)}
     middle["stages"]["rfb_compare"]["cpu_ns"] = 9000000000
     with TemporaryDirectory() as directory:
         path = Path(directory) / "regressed.jsonl"
@@ -223,7 +235,15 @@ def self_test():
     cpu_b2 = {"seconds": 42.0, "process_cpu_seconds": 4.2,
               "stages": {key: {"cpu_ns": 0} for key in STAGES}}
     assert abs(normalized_cpu_delta(cpu_b1, cpu_b2, None, 40)) < 1e-9
-    print("PASS: #609 schema, intermediate monotonicity, normalized windows, "
+    legacy_a = {**a, "schema": 1, "stages": {
+        key: value for key, value in a["stages"].items() if key not in NEW_STAGES}}
+    legacy_b = {**b, "schema": 1, "stages": {
+        key: value for key, value in b["stages"].items() if key not in NEW_STAGES}}
+    legacy = measure([legacy_a, legacy_b], 10000, 40)
+    assert legacy["schema"] == 1
+    assert "watermark_compose" not in legacy["stages"]
+    assert legacy["backends"] is None
+    print("PASS: #609 schema v1/v2 stage coverage, backend counts, "
           "async-wall isolation")
 
 
