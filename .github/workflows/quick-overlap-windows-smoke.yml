@@ -1,0 +1,104 @@
+name: Windows Qt 6.8.3 quick-overlap diagnostic smoke (NOT physical qualification)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/quick-overlap-windows-smoke.yml
+      - src/runtime/tests/test_quick_overlap_profile.cpp
+      - tools/perf/prepare_quick_overlap_probe.py
+      - tools/perf/assess_quick_overlap.py
+      - tools/perf/run_quick_overlap_windows.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-qt-quick-diag-compile:
+    name: Windows hosted / Qt 6.8.3 / compile and software smoke only
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Reuse exact Qt 6.8.3 MSVC Kit
+        uses: actions/cache@v4
+        id: qt-cache
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+
+      - name: Install/validate exact Windows Qt Quick and build tools
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Exact Qt 6.8.3 Quick Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          python -m py_compile tools/perf/prepare_quick_overlap_probe.py tools/perf/assess_quick_overlap.py tools/perf/run_quick_overlap_windows.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/assess_quick_overlap.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build real Qt CaptureSource diagnostic against pinned after revision
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '5095d0bc3bb07966c03dad77296f6ec04a631adc'
+          $tree = Join-Path $env:RUNNER_TEMP 'qt-overlap-after'
+          git worktree add --detach $tree $sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C $tree rev-parse HEAD).Trim() -ne $sha) { throw 'Wrong pinned source' }
+          Copy-Item src/runtime/tests/test_quick_overlap_profile.cpp (Join-Path $tree 'src/runtime/tests/test_quick_overlap_profile.cpp')
+          python tools/perf/prepare_quick_overlap_probe.py $tree
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location $tree
+          try {
+            & .\build.cmd test --mode=runtime "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-overlap --tests --no-examples --clean -j4 "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_ENABLE_CPU_PROBE=ON"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $binaries = @(Get-ChildItem -Path (Join-Path $tree 'build-overlap/runtime/tests') -Filter 'hyremote-quick-overlap-profile.exe' -Recurse -File)
+            if ($binaries.Count -ne 1) { throw "Expected exactly 1 diagnostic binary; got $($binaries.Count)" }
+            "WIN_HOSTED_DIAGNOSTIC_BIN=$($binaries[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            Pop-Location
+          }
+
+      - name: Execute offscreen software Qt capture smoke (not Windows D3D11 evidence)
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+          HYREMOTE_QUICK_OVERLAP_MODE: static
+          HYREMOTE_QUICK_OVERLAP_BACKEND: software
+          GITHUB_SHA: 5095d0bc3bb07966c03dad77296f6ec04a631adc
+        run: |
+          New-Item -ItemType Directory -Force -Path quick-overlap-windows-hosted | Out-Null
+          $env:HYREMOTE_QUICK_OVERLAP_FILE = Join-Path $PWD 'quick-overlap-windows-hosted/software-static-after.json'
+          $env:HYREMOTE_CPU_PROBE_FILE = Join-Path $PWD 'quick-overlap-windows-hosted/software-static-after.probe.jsonl'
+          & $env:WIN_HOSTED_DIAGNOSTIC_BIN
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path $env:HYREMOTE_QUICK_OVERLAP_FILE)) { throw 'No actual capture JSON' }
+          if (!(Test-Path $env:HYREMOTE_CPU_PROBE_FILE)) { throw 'No real Qt probe JSONL' }
+          Write-Host 'WINDOWS_HOSTED_OFFSCREEN_SMOKE_ONLY=PASS; PHYSICAL_D3D11_PERFORMANCE=NOT_RUN'
+
+      - name: Retain truthful hosted-only diagnostic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-overlap-windows-hosted-software-not-hardware
+          path: quick-overlap-windows-hosted/
+          if-no-files-found: ignore
+          retention-days: 14
