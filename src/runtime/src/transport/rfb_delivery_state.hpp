@@ -156,12 +156,36 @@ public:
 
     void subtract(const RfbDamageRegion &delivered)
     {
-        // Treat delivery as one transaction. If we enforce the lossy 64-rect
-        // bound between cuts, the bounding box from an early subtraction can
-        // reintroduce pixels that the Viewer already received. A later cut
-        // might then miss those resurrected pixels and leave phantom pending
-        // damage after a complete delivery. Keep intermediate differences
-        // exact; re-apply the bounded representation only at the end.
+        if (m_rects.empty() || delivered.m_rects.empty())
+            return;
+
+        // Common RFB delivery: a full-viewport incremental FBU consumed
+        // ALL pending rectangles, including the 64-region sparse case.
+        // The old generic subtraction rebuilt a vector for every delivered
+        // rectangle, often thousands of split/intersection operations and
+        // allocations per FBU on the single transport/encoding worker.
+        //
+        // A pending rectangle is fully delivered if ANY ONE delivered
+        // rectangle contains it. This condition is deliberately sufficient,
+        // not necessary: partial, union-covered and overlapping deliveries
+        // still take the exact subtraction path below. Never discard pixels
+        // merely because delivered bounding boxes happen to overlap.
+        const bool allCovered = std::all_of(m_rects.begin(), m_rects.end(),
+                                           [&delivered](const RfbRect &pending) {
+            return std::any_of(delivered.m_rects.begin(), delivered.m_rects.end(),
+                               [&pending](const RfbRect &sent) {
+                                   return containsRfbRect(sent, pending);
+                               });
+        });
+        if (allCovered) {
+            m_rects.clear();
+            return;
+        }
+
+        // Treat partial delivery as one transaction. If the lossy 64-rect
+        // bound is enforced between cuts, the bounding box from an early
+        // subtraction can resurrect already-delivered pixels. Apply it only
+        // after ALL cuts; preserve the exact RFB region difference.
         for (const RfbRect &cut : delivered.m_rects)
             subtractOne(cut);
         enforceBound();
