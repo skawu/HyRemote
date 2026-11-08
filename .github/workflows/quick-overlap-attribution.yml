@@ -1,0 +1,124 @@
+name: Qt Quick overlap attribution A/B/A (research only)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/quick-overlap-attribution.yml
+      - src/runtime/tests/test_quick_overlap_profile.cpp
+      - tools/perf/prepare_quick_overlap_probe.py
+      - tools/perf/assess_quick_overlap.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pinned-quick-overlap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Cache exact Qt 6.8.3
+        id: qt-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-linux-gcc64-quick-public-v1
+      - name: Install Qt and Linux desktop dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if [ "${{ steps.qt-cache.outputs.cache-hit }}" != "true" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+          test -f "$RUNNER_TEMP/Qt/6.8.3/gcc_64/lib/libQt6Quick.so"
+      - name: Prepare pinned revisions and the identical temporary probe
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=b1699ddab5b83a73d06dfc5d479dcda2cd6d8e74
+          after=5095d0bc3bb07966c03dad77296f6ec04a631adc
+          work="$RUNNER_TEMP/quick-overlap-work"
+          mkdir -p "$work"
+          git worktree add --detach "$work/before" "$before"
+          git worktree add --detach "$work/after" "$after"
+          for version in before after; do
+            root="$work/$version"
+            cp "$GITHUB_WORKSPACE/src/runtime/tests/test_quick_overlap_profile.cpp" \
+              "$root/src/runtime/tests/test_quick_overlap_profile.cpp"
+            python "$GITHUB_WORKSPACE/tools/perf/prepare_quick_overlap_probe.py" "$root"
+            test "$(git -C "$root" rev-parse HEAD)" = "$([ "$version" = before ] && echo "$before" || echo "$after")"
+            test "$(git -C "$root" diff --name-only | wc -l)" -eq 3
+          done
+          echo "work=$work" >> "$GITHUB_OUTPUT"
+      - name: Build before and after with probe ON (never product release)
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="${{ steps.prepare.outputs.work }}"
+          for version in before after; do
+            root="$work/$version"
+            (
+              cd "$root"
+              sh ./build.cmd test --mode=runtime \
+                --qt-prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64" \
+                --build-type=Release --build-dir=build-overlap \
+                --tests --no-examples --clean -j4 \
+                "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
+                "--cmake=HYREMOTE_ENABLE_CPU_PROBE=ON"
+              test -x build-overlap/runtime/tests/hyremote-quick-overlap-profile
+            )
+          done
+      - name: Execute physical 1080p same-host A1/B/A2, static and page changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="${{ steps.prepare.outputs.work }}"
+          out="$GITHUB_WORKSPACE/quick-overlap-evidence"
+          mkdir -p "$out"
+          python tools/perf/assess_quick_overlap.py --self-test
+          for backend in software opengl; do
+            for mode in static transition; do
+              for variant in before_a1 after before_a2; do
+                version="$variant"
+                if [ "$variant" = before_a1 ] || [ "$variant" = before_a2 ]; then version=before; fi
+                root="$work/$version"
+                stamp="$(git -C "$root" rev-parse HEAD)"
+                bin="$root/build-overlap/runtime/tests/hyremote-quick-overlap-profile"
+                file="$out/$backend-$mode-$variant.json"
+                probe="$out/$backend-$mode-$variant.probe.jsonl"
+                echo "QT_REAL_OVERLAP backend=$backend scene=$mode variant=$variant SHA=$stamp"
+                if [ "$backend" = software ]; then
+                  xvfb-run -a -s "-screen 0 1920x1080x24" env \
+                    QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software \
+                    HYREMOTE_QUICK_OVERLAP_BACKEND=software \
+                    HYREMOTE_QUICK_OVERLAP_MODE="$mode" HYREMOTE_QUICK_OVERLAP_FILE="$file" \
+                    HYREMOTE_CPU_PROBE_FILE="$probe" GITHUB_SHA="$stamp" "$bin"
+                else
+                  xvfb-run -a -s "-screen 0 1920x1080x24" env \
+                    -u QT_QUICK_BACKEND QT_QPA_PLATFORM=xcb \
+                    QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1 \
+                    HYREMOTE_QUICK_OVERLAP_BACKEND=opengl \
+                    HYREMOTE_QUICK_OVERLAP_MODE="$mode" HYREMOTE_QUICK_OVERLAP_FILE="$file" \
+                    HYREMOTE_CPU_PROBE_FILE="$probe" GITHUB_SHA="$stamp" "$bin"
+                fi
+                test -s "$file"
+                test -s "$probe"
+              done
+            done
+          done
+          python tools/perf/assess_quick_overlap.py --dir "$out"
+      - name: Preserve full raw and interpreted evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt683-quick-overlap-aba-source-pinned
+          path: quick-overlap-evidence/
+          if-no-files-found: ignore
+          retention-days: 14
