@@ -27,7 +27,7 @@ def load(data_dir, backend, mode, variant):
     check(lines, f"{probe_path}: no CPU-probe snapshots")
     q = json.loads(lines[-1])
     check(p.get("schema") == PROFILE_SCHEMA, f"{path}: schema")
-    check(p.get("context") == "HOSTED_QT_REAL_CAPTURE_NOT_GPU_TIMER_OR_RK3588",
+    check(p.get("context") == "REAL_QT_CAPTURE_NOT_GPU_TIMER_OR_RK3588",
           f"{path}: provenance")
     check(p.get("backend") == backend and p.get("mode") == mode, f"{path}: backend/mode")
     check(p.get("source_sha") == (AFTER if variant == "after" else BEFORE),
@@ -76,9 +76,9 @@ def load(data_dir, backend, mode, variant):
     }
 
 
-def assess(data_dir):
+def assess(data_dir, backends=("software", "opengl")):
     results = []
-    for backend in ("software", "opengl"):
+    for backend in backends:
         for mode in ("static", "transition"):
             a1 = load(data_dir, backend, mode, "before_a1")
             b = load(data_dir, backend, mode, "after")
@@ -166,10 +166,12 @@ def self_test():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", type=Path)
+    parser.add_argument("--backends", nargs="+", choices=("software", "opengl", "d3d11"),
+                        default=["software", "opengl"])
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
         self_test()
     else:
         check(args.dir is not None, "provide --dir")
-        assess(args.dir)
+        assess(args.dir, tuple(args.backends))
