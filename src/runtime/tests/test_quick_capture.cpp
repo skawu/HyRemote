@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <thread>
 #include <utility>
 
 #if defined(_WIN32)
@@ -918,6 +919,32 @@ bool quickProfileProcessCpuNs(std::uint64_t &out) noexcept
 #endif
 }
 
+// Test the semantic distinction responsible for review P2 on a real
+// Windows/Linux runner, not only that the OS function compiles. A 120ms
+// sleep must advance wall time but not consume roughly 120ms of process CPU.
+// Do this before creating any scenegraph rendering threads.
+void testQuickProfileClockDoesNotMeasureSleepAsCpu()
+{
+#if defined(_WIN32) || defined(__linux__)
+    std::uint64_t before = 0, after = 0;
+    const bool okBefore = quickProfileProcessCpuNs(before);
+    CHECK(okBefore);
+    if (!okBefore)
+        return;
+    const auto start = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const auto elapsedWallMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    const bool okAfter = quickProfileProcessCpuNs(after);
+    CHECK(okAfter && after >= before);
+    if (!okAfter || after < before)
+        return;
+    const double processCpuMs = static_cast<double>(after - before) / 1000000.0;
+    CHECK(elapsedWallMs >= 100.0);
+    CHECK(processCpuMs < elapsedWallMs * 0.70);
+#endif
+}
+
 // Advisory, opt-in production PUBLIC Qt Quick capture baseline. Never runs
 // as part of ordinary CTest: a hosted Xvfb/Mesa graphics environment cannot
 // establish release CPU benefit, especially not for RK3588 EGLFS or D3D11
@@ -1157,6 +1184,13 @@ void runPublicQuickProfile()
     CHECK(a1.processCpuMs > 0.0 && a2.processCpuMs > 0.0);
     const bool stable = cpuSpread >= 0.0 && cpuSpread <= maxStableSpreadPercent;
 
+    // A failed pixel, stage, backend, source or clock assertion must never
+    // leave an apparently qualified JSON artifact behind.
+    if (failures != 0) {
+        std::cerr << "QUICK_PUBLIC_PROFILE_INVALID=YES (no JSON evidence)\n";
+        return;
+    }
+
     QJsonObject document;
     document.insert(QStringLiteral("schema"),
                     QStringLiteral("hyremote-quick-public-profile/1"));
@@ -1212,6 +1246,7 @@ void runPublicQuickProfile()
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    testQuickProfileClockDoesNotMeasureSleepAsCpu();
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();
         HyRemote::detail::resetFactories();
