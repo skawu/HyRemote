@@ -586,6 +586,22 @@ public:
                 = static_cast<std::uint16_t>(frame->geometry.size.height);
         }
 
+        // #790/#609: producer-backed Runtime intentionally discards frame
+        // pixels when no Viewer is connected. Do that BEFORE allocating
+        // and painting the (possibly multi-MB) server-side watermark: the
+        // old ordering generated a complete decorated frame and dropped it
+        // immediately. Geometry above is retained for RFB ServerInit.
+        //
+        // Standalone transports are NOT opted in; they still retain a
+        // decorated bootstrap for immediate reconnect. Once a Viewer joins,
+        // the Runtime's capture-demand edge supplies a fresh frame and
+        // normal fail-closed watermark validation applies before any pixels
+        // reach RFB. Only the RFB worker thread owns m_clients.
+        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
+            releaseIdleFrameCaches();
+            return;
+        }
+
         // #589: compose once per captured frame, on the transport thread, and let every viewer share the same
         // decorated picture. Without a decorator this stays the capture frame itself, so the disabled path keeps
         // its current cost (no copy, no paint).
@@ -619,13 +635,6 @@ public:
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
-        // #790: ONLY the producer-backed Shared Runtime opts into dropping raw
-        // pixels at zero clients. Standalone RFB retains the exact old behavior,
-        // including its original observed frame baseline for tile-damage diff.
-        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
-            releaseIdleFrameCaches();
-            return;
-        }
         std::optional<RfbDamageRegion> damage;
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
