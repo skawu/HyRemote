@@ -176,14 +176,45 @@ private:
 
     void enforceBound()
     {
-        if (m_rects.size() <= kRfbMaxDamageRects)
-            return;
-        RfbRect all;
-        for (const RfbRect &rect : m_rects)
-            all = boundRfbRects(all, rect);
-        m_rects.clear();
-        if (!all.empty())
-            m_rects.push_back(all);
+        // Do not turn the 65th *disjoint* dirty tile into a near-full-screen
+        // update. The exact-adjacency fast path in add() cannot help when
+        // changes are scattered, but bounding ALL regions can inflate a
+        // 1080p sparse update far beyond the 25% large-paint threshold.
+        //
+        // Keep the existing 64-rectangle protocol/metadata bound by merging
+        // only the pair with the smallest additional bounding-box area.
+        // Any merged box is a superset of its two inputs: never omit changed
+        // pixels. A pair search over at most 65 rectangles is bounded, and
+        // exact-edge unions are still handled first by add().
+        const auto area = [](const RfbRect &r) -> std::uint64_t {
+            return static_cast<std::uint64_t>(r.width)
+                   * static_cast<std::uint64_t>(r.height);
+        };
+        while (m_rects.size() > kRfbMaxDamageRects) {
+            std::size_t bestI = 0;
+            std::size_t bestJ = 1;
+            std::uint64_t bestExtra = std::numeric_limits<std::uint64_t>::max();
+            RfbRect bestBound;
+            for (std::size_t i = 0; i < m_rects.size(); ++i) {
+                for (std::size_t j = i + 1; j < m_rects.size(); ++j) {
+                    const RfbRect bound = boundRfbRects(m_rects[i], m_rects[j]);
+                    const RfbRect overlap = intersectRfbRect(m_rects[i], m_rects[j]);
+                    // area(A union B) = area(A) + area(B) - overlap.
+                    // Wider integer arithmetic prevents 1080p products from
+                    // overflowing and makes the nonnegative cost exact.
+                    const std::uint64_t extra = area(bound) + area(overlap)
+                                                - area(m_rects[i]) - area(m_rects[j]);
+                    if (extra < bestExtra) {
+                        bestExtra = extra;
+                        bestI = i;
+                        bestJ = j;
+                        bestBound = bound;
+                    }
+                }
+            }
+            m_rects[bestI] = bestBound;
+            m_rects.erase(m_rects.begin() + static_cast<std::ptrdiff_t>(bestJ));
+        }
     }
 
     std::vector<RfbRect> m_rects;
