@@ -21,6 +21,7 @@
 #include <atomic>
 #include <chrono>
 #include <ctime>
+#include <utility>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -955,7 +956,7 @@ PublicQuickProfileCase runPublicQuickProfileCase(
         }
         // Public A1 and A2 are truly static after the first paint. Dynamic
         // switches A -> split -> B -> A and waits for the actual scene paint.
-        const int stage = animate ? ((index + warmup) % 4) : 0;
+        const int stage = animate ? ((index + warmup) % 3) : 0;
         if (stage != lastStage) {
             content.setStage(stage);
             lastStage = stage;
