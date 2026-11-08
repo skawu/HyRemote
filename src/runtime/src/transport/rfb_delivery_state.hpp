@@ -156,8 +156,15 @@ public:
 
     void subtract(const RfbDamageRegion &delivered)
     {
+        // Treat delivery as one transaction. If we enforce the lossy 64-rect
+        // bound between cuts, the bounding box from an early subtraction can
+        // reintroduce pixels that the Viewer already received. A later cut
+        // might then miss those resurrected pixels and leave phantom pending
+        // damage after a complete delivery. Keep intermediate differences
+        // exact; re-apply the bounded representation only at the end.
         for (const RfbRect &cut : delivered.m_rects)
             subtractOne(cut);
+        enforceBound();
     }
 
 private:
@@ -171,7 +178,6 @@ private:
             next.insert(next.end(), pieces.begin(), pieces.end());
         }
         m_rects = std::move(next);
-        enforceBound();
     }
 
     void enforceBound()
