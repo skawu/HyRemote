@@ -1,4 +1,4 @@
-name: Qt Quick public capture Linux qualification
+name: Qt Quick public capture and watermark Linux qualification
 
 # Compile and execute the real Qt Quick CaptureSource on a second OS and
 # scenegraph backend. Windows/D3D11 CTest cannot prove cross-platform
@@ -9,6 +9,8 @@ on:
     paths:
       - .github/workflows/quick-public-capture-linux.yml
       - src/runtime/src/quick/**
+      - src/runtime/src/detail/watermark_frame_decorator.cpp
+      - src/runtime/tests/test_watermark_frame_decorator.cpp
       - src/runtime/tests/test_quick_capture.cpp
       - src/runtime/CMakeLists.txt
   workflow_dispatch:
@@ -18,7 +20,7 @@ permissions:
 
 jobs:
   linux-quick-public-grab:
-    name: Linux x86_64 / Qt 6.8.3 / Quick software scenegraph
+    name: Linux x86_64 / Qt 6.8.3 / Quick and watermark
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -49,7 +51,7 @@ jobs:
         shell: bash
         run: bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
 
-      - name: Validate public Qt Quick capture on Linux software scenegraph
+      - name: Validate public Qt Quick capture and immutable-source watermark reuse
         shell: bash
         run: |
           set -euo pipefail
@@ -61,5 +63,5 @@ jobs:
             --tests --run-tests --no-examples \
             --xvfb --clean -j4 \
             "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
-            "--test-filter=hyremote-quick-capture-test" \
+            "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator)-test$" \
             "--env=QT_QUICK_BACKEND=software"
