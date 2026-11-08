@@ -554,7 +554,13 @@ void testQuickDeferredRequestsKeepOrderAndFreshPixels()
                    | (static_cast<std::uint32_t>(pixel[1]) << 8U)
                    | static_cast<std::uint32_t>(pixel[2]);
         };
-        CHECK(leftRgb(frames[0]) == 0x143ca0U);
+        // Qt grabToImage is asynchronous: submission at stage A does
+        // not promise an A pixel snapshot. By the time its offscreen render
+        // takes place the application may already have painted stage B.
+        // Either is valid for request 811; request 812, whose NEW grab starts
+        // strictly after 811 completes, must observe the updated B page.
+        const auto firstRgb = leftRgb(frames[0]);
+        CHECK(firstRgb == 0x143ca0U || firstRgb == 0xe11e28U);
         CHECK(leftRgb(frames[1]) == 0xe11e28U);
     }
     components.capture->stop();
