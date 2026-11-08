@@ -18,6 +18,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <vector>
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
@@ -680,6 +681,55 @@ void testUnavailableQuickCaptureHasBoundedRetryAndRecovers()
     components.capture->stop();
 }
 
+// If a same-turn Qt grab cannot complete after the finite retry budget,
+// every accepted Core slot must receive exactly one terminal frame, not just
+// the first request in the batch. A later visible grab remains recoverable.
+void testQuickHiddenBatchCompletesEveryAcceptedRequest()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(96, 64);
+    PaintedProbeItem item(window.contentItem());
+    item.setWidth(96);
+    item.setHeight(64);
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+
+    std::vector<hyremote::RemoteFrame> received;
+    int unavailable = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &event) {
+            if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable)
+                ++unavailable;
+        }));
+    // No GUI event processing: the hidden requests necessarily share a batch.
+    CHECK(components.capture->requestFrame({720U, hyremote::Clock::now()}));
+    CHECK(components.capture->requestFrame({721U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return received.size() == 2U; }));
+    CHECK(unavailable == 1);
+    if (received.size() == 2U) {
+        CHECK(received[0].requestId && *received[0].requestId == 720U);
+        CHECK(received[1].requestId && *received[1].requestId == 721U);
+        CHECK(!received[0].storage && !received[1].storage);
+        CHECK(received[0].timing.requestTime && received[1].timing.requestTime);
+        CHECK(received[0].timing.completionTime && received[1].timing.completionTime);
+    }
+
+    window.show();
+    QCoreApplication::processEvents();
+    CHECK(components.capture->requestFrame({722U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return received.size() == 3U; }));
+    if (received.size() == 3U) {
+        CHECK(received[2].requestId && *received[2].requestId == 722U);
+        CHECK(received[2].storage != nullptr);
+    }
+    CHECK(unavailable == 1);
+    components.capture->stop();
+}
+
 void testQuickInputIsQueuedToWindow()
 {
     HyRemote::detail::resetFactories();
@@ -785,6 +835,7 @@ int main(int argc, char **argv)
     testStagedQuickSourceCaptureFollowsPaintedScene();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
+    testQuickHiddenBatchCompletesEveryAcceptedRequest();
     testQuickInputIsQueuedToWindow();
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 
