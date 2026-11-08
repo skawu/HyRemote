@@ -14,10 +14,15 @@ from tempfile import TemporaryDirectory
 
 NANOS_PER_SECOND = 1_000_000_000
 STAGES = (
-    "widget_buffer", "widget_paint", "quick_grab_submit",
-    "quick_grab_ready_wall", "quick_convert", "quick_buffer",
-    "quick_copy", "generic_compose", "rfb_compare", "rfb_encode", "rfb_write",
+    "widget_buffer", "widget_paint", "quick_accepted_requests",
+    "quick_gui_batches", "quick_grab_submit", "quick_grab_ready_wall",
+    "quick_convert", "quick_buffer", "quick_copy", "generic_compose",
+    "watermark_compose", "watermark_reuse", "rfb_compare", "rfb_encode", "rfb_write",
 )
+NEW_STAGES = frozenset({"quick_accepted_requests", "quick_gui_batches",
+                        "watermark_compose", "watermark_reuse"})
+COUNT_ONLY = frozenset({"quick_accepted_requests", "quick_gui_batches", "watermark_reuse"})
+BACKENDS = ("unknown", "software", "opengl", "d3d11", "d3d12", "vulkan", "metal", "other")
 WALL_ONLY = frozenset({"quick_grab_ready_wall"})
 
 
@@ -28,12 +33,21 @@ def load(path: Path):
             if not line.strip():
                 continue
             row = json.loads(line)
-            if row.get("schema") != 1 or not isinstance(row.get("stages"), dict):
+            schema = row.get("schema")
+            if schema not in (1, 2) or not isinstance(row.get("stages"), dict):
                 raise ValueError(f"{path}: wrong probe schema")
             if not row.get("process_cpu_valid"):
                 raise ValueError(f"{path}: process CPU clock unavailable")
-            if any(stage not in row["stages"] for stage in STAGES):
+            mandatory = STAGES if schema == 2 else tuple(
+                stage for stage in STAGES if stage not in NEW_STAGES)
+            if any(stage not in row["stages"] for stage in mandatory):
                 raise ValueError(f"{path}: incomplete stage accounting")
+            if schema == 2:
+                counts = row.get("quick_grab_backend_counts")
+                if not isinstance(counts, dict) or any(
+                        not isinstance(counts.get(backend), int)
+                        or counts[backend] < 0 for backend in BACKENDS):
+                    raise ValueError(f"{path}: missing/invalid Qt backend counts")
             samples.append(row)
     if len(samples) < 2:
         raise ValueError(f"{path}: at least two snapshots required")
@@ -41,15 +55,21 @@ def load(path: Path):
     for a, b in zip(samples, samples[1:]):
         if (b["elapsed_ms"] <= a["elapsed_ms"] or
                 b["pid"] != a["pid"] or
+                b["schema"] != a["schema"] or
                 b["process_cpu_ns"] < a["process_cpu_ns"]):
             raise ValueError(f"{path}: nonmonotone time/CPU or multiple process IDs")
-        for stage in STAGES:
+        for stage in (STAGES if b["schema"] == 2 else
+                      tuple(stage for stage in STAGES if stage not in NEW_STAGES)):
             before = a["stages"][stage]
             after = b["stages"][stage]
             if (any(k not in before or k not in after for k in fields) or
                     any(not isinstance(before[k], int) or not isinstance(after[k], int)
                         or before[k] < 0 or after[k] < before[k] for k in fields)):
                 raise ValueError(f"{path}: invalid/nonmonotone {stage} stage counters")
+        if b["schema"] == 2 and any(
+                b["quick_grab_backend_counts"][backend]
+                < a["quick_grab_backend_counts"][backend] for backend in BACKENDS):
+            raise ValueError(f"{path}: nonmonotone Qt backend counters")
     return samples
 
 
