@@ -166,7 +166,8 @@ int run()
     const auto api = ri ? ri->graphicsApi() : QSGRendererInterface::Unknown;
     const QString backend = api == QSGRendererInterface::Software
         ? QStringLiteral("software") : api == QSGRendererInterface::OpenGL
-        ? QStringLiteral("opengl") : QStringLiteral("other");
+        ? QStringLiteral("opengl") : api == QSGRendererInterface::Direct3D11
+        ? QStringLiteral("d3d11") : QStringLiteral("other");
     if (backend != qEnvironmentVariable("HYREMOTE_QUICK_OVERLAP_BACKEND")) {
         std::cerr << "INVALID: scenegraph backend mismatch\n";
         return 3;
@@ -264,7 +265,7 @@ int run()
     const double cpuMs = static_cast<double>(cpuEnd - cpuStart) / 1000000.0;
     QJsonObject o;
     o.insert("schema", "hyremote-quick-overlap-profile/1");
-    o.insert("context", "HOSTED_QT_REAL_CAPTURE_NOT_GPU_TIMER_OR_RK3588");
+    o.insert("context", "REAL_QT_CAPTURE_NOT_GPU_TIMER_OR_RK3588");
     o.insert("source_sha", qEnvironmentVariable("GITHUB_SHA"));
     o.insert("qt", QString::fromLatin1(qVersion()));
     o.insert("platform", QSysInfo::prettyProductName());
