@@ -2193,7 +2193,24 @@ void testPartialIncrementalAndResize()
         return;
 
     Recorder recorder;
-    auto transport = startTransport(port, recorder, makeFrame(256, 128, 0x101820U));
+    std::mutex observedMutex;
+    std::condition_variable observedChanged;
+    unsigned int observedRevisions = 0;
+    // A transport frame is queued asynchronously. Wait until the existing
+    // worker-side served-pixel observer has seen the resize before asserting
+    // the wire update, otherwise the request can legitimately race ahead of
+    // the new framebuffer and receive the previous dimensions.
+    auto transport = startTransport(
+        port, recorder, makeFrame(256, 128, 0x101820U), {}, {},
+        [&](bool changed) {
+            if (!changed)
+                return;
+            {
+                std::lock_guard<std::mutex> lock(observedMutex);
+                ++observedRevisions;
+            }
+            observedChanged.notify_all();
+        });
     CHECK(transport != nullptr);
     if (!transport)
         return;
@@ -2227,7 +2244,18 @@ void testPartialIncrementalAndResize()
           && rectangles.front().width == 64);
     CHECK(frame.get(200, 8) == 0x00aa66U);
 
+    unsigned int priorRevisions = 0;
+    {
+        std::lock_guard<std::mutex> lock(observedMutex);
+        priorRevisions = observedRevisions;
+    }
     transport->enqueueFrame(makeFrame(80, 60, 0x445566U));
+    {
+        std::unique_lock<std::mutex> lock(observedMutex);
+        CHECK(observedChanged.wait_for(
+            lock, std::chrono::seconds(3),
+            [&] { return observedRevisions > priorRevisions; }));
+    }
     CHECK(sendUpdateRequest(socket, true, 0, 0, 80, 60));
     CHECK(readFramebufferUpdate(socket, frame, rectangles));
     CHECK(rectangles.size() == 2U);
@@ -3762,6 +3790,52 @@ void runDeliveryProfile(const QString &outputPath)
               << outputPath.toStdString() << '\n';
 }
 
+// An over-capacity sparse pending set may contain overlapping bounding boxes.
+// When a Viewer consumes the entire selected update, commitDelivered must
+// remove ALL pending change, not resurrect an earlier cut because an
+// intermediate subtraction re-applied the lossy 64-rectangle bound.
+// A 200-region workload is deliberately kept below the 25% large-paint policy
+// so the test exercises many distinct cuts instead of one full-page clear.
+void testSparseDeliveredCutsDoNotResurrectPendingDamage()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    constexpr RfbRect viewport{0, 0, 3840, 2160};
+    std::vector<RfbRect> patches;
+    patches.reserve(200U);
+    HyRemote::detail::RfbUpdateState viewer;
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 20; ++x) {
+            const RfbRect rect{x * 192, y * 192, 16, 16};
+            patches.push_back(rect);
+            RfbDamageRegion delta;
+            delta.add(rect);
+            viewer.accumulate(delta);
+        }
+    }
+    CHECK(patches.size() == 200U);
+    viewer.request(true, viewport);
+    const auto selected = viewer.selectEligible();
+    CHECK(selected.has_value());
+    if (!selected)
+        return;
+    CHECK(selected->size() > 1U);
+    CHECK(selected->size() <= HyRemote::detail::kRfbMaxDamageRects);
+    for (const RfbRect &tile : patches) {
+        CHECK(std::any_of(selected->rects().begin(), selected->rects().end(),
+                          [&tile](const RfbRect &box) {
+                              return HyRemote::detail::containsRfbRect(box, tile);
+                          }));
+    }
+    viewer.commitDelivered(*selected);
+    CHECK(!viewer.hasPendingDamage());
+    CHECK(!viewer.hasOutstandingRequest());
+    // No new frame: a fresh incremental FBU must not re-send the same pixels.
+    viewer.request(true, viewport);
+    CHECK(!viewer.selectEligible().has_value());
+    viewer.cancelRequest();
+}
+
 void testPendingDamageCoalescesAtDelivery()
 {
     HyRemote::detail::RfbUpdateState state;
@@ -3838,6 +3912,81 @@ void testExactTileUnionPreventsSparseFullPageInflation()
     diagonal.add({0, 0, 64, 64});
     diagonal.add({64, 64, 64, 64});
     CHECK(diagonal.size() == 2U);
+}
+
+// #789: 65 fully DISJOINT 64x64 tiles spread across a 1080p page must
+// still fit the 64-region bound WITHOUT turning ~13% real changes into an
+// almost full-screen rectangle. #888's exact-edge unions cannot help here.
+// Use the actual last-frame RGBA comparison and the per-viewer delivery state,
+// rather than asserting on an artificial list of rectangles alone.
+void testDisjointSparseOverflowDoesNotInflateFullPage()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    constexpr std::uint32_t width = 1920U;
+    constexpr std::uint32_t height = 1080U;
+    constexpr int tile = 64;
+    constexpr std::uint64_t trueArea = 65ULL * 64ULL * 64ULL;
+    constexpr std::uint64_t maxCoalescedArea = trueArea + 64ULL * 64ULL;
+
+    std::vector<std::pair<hyremote::Rect, std::uint32_t>> patches;
+    std::vector<RfbRect> expected;
+    patches.reserve(65U);
+    expected.reserve(65U);
+    for (int row = 0; row < 5; ++row) {
+        for (int col = 0; col < 13; ++col) {
+            // Separate tile columns by one full unchanged tile, and rows
+            // by two. No pair shares a full edge; any coalescing is bounded.
+            const RfbRect rect{col * 128, row * 192, tile, tile};
+            expected.push_back(rect);
+            patches.push_back({{rect.x, rect.y, tile, tile}, 0xa91b43U});
+        }
+    }
+    CHECK(expected.size() == 65U);
+    const auto oldFrame = makeFrame(width, height, 0x112233U);
+    const auto newFrame = makeFrame(width, height, 0x112233U, patches);
+    CHECK(oldFrame.storage && newFrame.storage);
+    if (!oldFrame.storage || !newFrame.storage)
+        return;
+    const RfbDamageRegion changed =
+        HyRemote::detail::changedRfbTiles(&oldFrame, newFrame);
+    CHECK(changed.size() == HyRemote::detail::kRfbMaxDamageRects);
+
+    std::uint64_t transmittedArea = 0;
+    for (const auto &rect : changed.rects())
+        transmittedArea += static_cast<std::uint64_t>(rect.width) * rect.height;
+    CHECK(transmittedArea >= trueArea);
+    // Exactly one small-gap merge is enough. Old hard-bound fallback creates
+    // a ~1600x832 rectangle, ~5x this conservative upper bound.
+    CHECK(transmittedArea <= maxCoalescedArea);
+    CHECK(transmittedArea * 100U < static_cast<std::uint64_t>(width) * height * 25U);
+    for (const RfbRect &tileRect : expected) {
+        CHECK(std::any_of(changed.rects().begin(), changed.rects().end(),
+                          [&tileRect](const RfbRect &rect) {
+                              return HyRemote::detail::containsRfbRect(rect, tileRect);
+                          }));
+    }
+    const auto paint =
+        HyRemote::detail::coalesceRfbDamageForPaint(changed, width, height);
+    CHECK(paint.size() == HyRemote::detail::kRfbMaxDamageRects);
+
+    HyRemote::detail::RfbUpdateState viewer;
+    viewer.accumulate(changed);
+    viewer.request(true, {0, 0, static_cast<int>(width), static_cast<int>(height)});
+    const auto eligible = viewer.selectEligible();
+    CHECK(eligible.has_value());
+    if (!eligible)
+        return;
+    CHECK(eligible->size() == HyRemote::detail::kRfbMaxDamageRects);
+    for (const RfbRect &tileRect : expected) {
+        CHECK(std::any_of(eligible->rects().begin(), eligible->rects().end(),
+                          [&tileRect](const RfbRect &rect) {
+                              return HyRemote::detail::containsRfbRect(rect, tileRect);
+                          }));
+    }
+    viewer.commitDelivered(*eligible);
+    CHECK(!viewer.hasPendingDamage());
+    CHECK(!viewer.hasOutstandingRequest());
 }
 
 void testLargeDamageCoalescesForPaint()
@@ -4527,9 +4676,11 @@ int main(int argc, char **argv)
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
+    testSparseDeliveredCutsDoNotResurrectPendingDamage();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
     testExactTileUnionPreventsSparseFullPageInflation();
+    testDisjointSparseOverflowDoesNotInflateFullPage();
     testFullPageTransitionSingleWireRectangle();
     testStaticViewerCaptureDemandFeedback();
     testRfbFeedbackUsesActualServedPixels();
