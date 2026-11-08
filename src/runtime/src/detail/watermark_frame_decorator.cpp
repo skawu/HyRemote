@@ -5,11 +5,67 @@
 
 #include <QByteArray>
 
-#include <cstring>
+#include <cstddef>
+#include <limits>
+#include <memory>
+#include <string_view>
+#include <utility>
 
 namespace HyRemote::detail {
 
 namespace {
+
+// QPainter already composited into its owned QByteArray. Publish THAT same
+// allocation through Core's immutable FrameStorage lifetime contract rather
+// than allocating a second CpuFrameStorage and copying 8+ MiB again at 1080p.
+// The QByteArray is never modified after this ownership transfer, and its
+// thread-safe Qt reference count outlives all Core/RFB consumers.
+class WatermarkByteArrayFrameStorage final : public hyremote::FrameStorage
+{
+public:
+    static std::shared_ptr<const hyremote::FrameStorage> adopt(
+        QByteArray pixels, std::size_t stride, std::size_t height)
+    {
+        if (stride == 0 || height == 0
+            || stride > std::numeric_limits<std::size_t>::max() / height)
+            return {};
+        const std::size_t expected = stride * height;
+        if (pixels.size() <= 0 || static_cast<std::size_t>(pixels.size()) != expected)
+            return {};
+        return std::shared_ptr<const hyremote::FrameStorage>(
+            new WatermarkByteArrayFrameStorage(std::move(pixels), stride, expected));
+    }
+
+    hyremote::StorageKind kind() const noexcept override { return hyremote::StorageKind::Cpu; }
+    std::size_t planeCount() const noexcept override { return 1U; }
+
+    std::optional<hyremote::PlaneView> mapRead(std::size_t plane) const override
+    {
+        if (plane != 0U)
+            return std::nullopt;
+        return hyremote::PlaneView{
+            reinterpret_cast<const std::byte *>(m_pixels.constData()),
+            m_bytes,
+            m_stride,
+        };
+    }
+
+    std::string_view externalDomain() const noexcept override { return {}; }
+    std::shared_ptr<const hyremote::StorageExtension> extension(std::string_view) const override
+    {
+        return {};
+    }
+
+private:
+    WatermarkByteArrayFrameStorage(QByteArray pixels, std::size_t stride, std::size_t bytes)
+        : m_pixels(std::move(pixels)), m_stride(stride), m_bytes(bytes)
+    {
+    }
+
+    const QByteArray m_pixels;
+    const std::size_t m_stride;
+    const std::size_t m_bytes;
+};
 
 bool decorate(const WatermarkPolicy &policy, const hyremote::RemoteFrame &source,
               hyremote::RemoteFrame &decorated, QString &error)
@@ -43,17 +99,15 @@ bool decorate(const WatermarkPolicy &policy, const hyremote::RemoteFrame &source
         return false;
     }
 
-    auto storage = hyremote::CpuFrameStorage::createSinglePlane(plane->stride, source.geometry.size.height);
+    // The composited QByteArray ALREADY owns the exact final pixels. Moving
+    // it into an immutable CPU FrameStorage avoids a redundant allocation and
+    // whole-frame memcpy. Invalid output never reaches the transport.
+    auto storage = WatermarkByteArrayFrameStorage::adopt(
+        std::move(composed), plane->stride, source.geometry.size.height);
     if (!storage) {
-        error = QStringLiteral("the watermark compositor could not allocate frame storage");
+        error = QStringLiteral("the watermark compositor produced invalid owned frame storage");
         return false;
     }
-    std::byte *target = storage->mutablePlane(0);
-    if (!target || static_cast<std::size_t>(composed.size()) != storage->totalBytes()) {
-        error = QStringLiteral("the watermark compositor produced a frame of the wrong size");
-        return false;
-    }
-    std::memcpy(target, composed.constData(), static_cast<std::size_t>(composed.size()));
 
     // Identity, geometry and timing remain those of the captured frame.
     // The RFB worker must NOT trust the source's Regions metadata for the
