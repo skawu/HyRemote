@@ -34,12 +34,16 @@ namespace HyRemote::detail::p1perf {
 enum class Stage : std::size_t {
     WidgetBuffer,
     WidgetPaint,
+    QuickAcceptedRequests, // count only: accepted CaptureSource requests
+    QuickGuiBatches,       // count only: GUI queue drain batches
     QuickGrabSubmit,
-    QuickGrabReadyWall,
+    QuickGrabReadyWall,    // asynchronous elapsed wall time, NEVER CPU
     QuickConvert,
     QuickBuffer,
     QuickCopy,
     GenericCompose,
+    WatermarkCompose,    // CPU copy+paint on RFB worker, one per real composition
+    WatermarkReuse,      // count only: immutable-source cache hit
     RfbCompare,
     RfbEncode,
     RfbWrite,
@@ -47,9 +51,10 @@ enum class Stage : std::size_t {
 };
 
 inline constexpr std::array<const char *, static_cast<std::size_t>(Stage::Count)> kNames{
-    "widget_buffer", "widget_paint", "quick_grab_submit", "quick_grab_ready_wall",
-    "quick_convert", "quick_buffer", "quick_copy", "generic_compose",
-    "rfb_compare", "rfb_encode", "rfb_write"
+    "widget_buffer", "widget_paint", "quick_accepted_requests", "quick_gui_batches",
+    "quick_grab_submit", "quick_grab_ready_wall", "quick_convert",
+    "quick_buffer", "quick_copy", "generic_compose", "watermark_compose",
+    "watermark_reuse", "rfb_compare", "rfb_encode", "rfb_write"
 };
 
 // Unlike snapshots of a thread enumeration, these bookend the CURRENT thread's
@@ -117,6 +122,18 @@ inline unsigned long processId() noexcept
 }
 #endif
 
+// RendererInterface::graphicsApi() is Qt's public API. Counting the actual
+// grab backend proves which API the submitted public capture used, without
+// importing Qt headers into this standalone (also rootless Linux/ARM) probe.
+// Unknown and Other remain explicit rather than being guessed as OpenGL.
+enum class QuickGraphicsBackend : std::size_t {
+    Unknown, Software, OpenGL, Direct3D11, Direct3D12, Vulkan, Metal, Other, Count
+};
+inline constexpr std::array<const char *,
+                            static_cast<std::size_t>(QuickGraphicsBackend::Count)> kBackendNames{
+    "unknown", "software", "opengl", "d3d11", "d3d12", "vulkan", "metal", "other"
+};
+
 struct Counters {
     std::atomic<std::uint64_t> calls{0};
     std::atomic<std::uint64_t> cpuNs{0};
@@ -150,6 +167,20 @@ public:
             counter.cpuNs.fetch_add(cpuNs, std::memory_order_relaxed);
         else
             counter.cpuSamplesMissing.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void recordCount(Stage stage) noexcept
+    {
+        if (m_enabled)
+            m_counters[static_cast<std::size_t>(stage)].calls.fetch_add(
+                1, std::memory_order_relaxed);
+    }
+
+    void recordQuickBackend(QuickGraphicsBackend backend) noexcept
+    {
+        if (m_enabled && static_cast<std::size_t>(backend) < m_quickBackends.size())
+            m_quickBackends[static_cast<std::size_t>(backend)].fetch_add(
+                1, std::memory_order_relaxed);
     }
 
     void addBytes(Stage stage, std::uint64_t bytes) noexcept
@@ -221,6 +252,11 @@ private:
                          static_cast<unsigned long long>(c.cpuSamplesMissing.load(
                              std::memory_order_relaxed)));
         }
+        std::fputs("},\"quick_grab_backend_counts\":{", file);
+        for (std::size_t i = 0; i < m_quickBackends.size(); ++i)
+            std::fprintf(file, "%s\"%s\":%llu", i ? "," : "", kBackendNames[i],
+                         static_cast<unsigned long long>(
+                             m_quickBackends[i].load(std::memory_order_relaxed)));
         std::fputs("}}\n", file);
         std::fclose(file);
     }
@@ -232,6 +268,8 @@ private:
     std::uint64_t m_startCpuNs = 0;
     std::int64_t m_lastReportMs = -1000;
     std::array<Counters, static_cast<std::size_t>(Stage::Count)> m_counters{};
+    std::array<std::atomic<std::uint64_t>,
+               static_cast<std::size_t>(QuickGraphicsBackend::Count)> m_quickBackends{};
     std::mutex m_writeMutex;
 };
 
@@ -314,6 +352,16 @@ private:
     std::chrono::steady_clock::time_point m_startWall{};
 };
 
+inline void addCount(Stage stage) noexcept
+{
+    Recorder::instance().recordCount(stage);
+}
+
+inline void addQuickBackend(QuickGraphicsBackend backend) noexcept
+{
+    Recorder::instance().recordQuickBackend(backend);
+}
+
 inline void addBytes(Stage stage, std::uint64_t bytes) noexcept
 {
     Recorder::instance().addBytes(stage, bytes);
@@ -333,10 +381,16 @@ inline void addAsyncWall(Stage stage, std::chrono::steady_clock::duration durati
 #define HYREMOTE_P1_SCOPE(stage) \
     ::HyRemote::detail::p1perf::Scope HYREMOTE_P1_PROBE_CAT(_hyremoteP1Scope, __COUNTER__)( \
         ::HyRemote::detail::p1perf::Stage::stage)
+#define HYREMOTE_P1_COUNT(stage) \
+    ::HyRemote::detail::p1perf::addCount(::HyRemote::detail::p1perf::Stage::stage)
+#define HYREMOTE_P1_QUICK_BACKEND(backend) \
+    ::HyRemote::detail::p1perf::addQuickBackend(backend)
 #define HYREMOTE_P1_BYTES(stage, bytes) \
     ::HyRemote::detail::p1perf::addBytes(::HyRemote::detail::p1perf::Stage::stage, \
                                         static_cast<std::uint64_t>(bytes))
 #else
 #define HYREMOTE_P1_SCOPE(stage) ((void)0)
+#define HYREMOTE_P1_COUNT(stage) ((void)0)
+#define HYREMOTE_P1_QUICK_BACKEND(backend) ((void)0)
 #define HYREMOTE_P1_BYTES(stage, bytes) ((void)0)
 #endif
