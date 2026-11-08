@@ -45,6 +45,12 @@ jobs:
         shell: cmd
         run: |
           call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-native-frame-pilot-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" "--env=HYREMOTE_EXPECT_NATIVE_HIT=1" "--env=QSG_RHI_BACKEND=d3d11" --no-prompt -j4
+      - name: Single native-only readback/fallback diagnostic (no CPU gain claim)
+        shell: cmd
+        run: |
+          call build.cmd test --mode=runtime --qt-prefix="%QT_PREFIX%" --build-type=Release --tests --run-tests --no-examples "--test-filter=hyremote-quick-native-frame-pilot-test" "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_NATIVE_FRAME=ON" "--env=HYREMOTE_QUICK_NATIVE_FRAME=1" "--env=HYREMOTE_EXPECT_NATIVE_HIT=1" "--env=HYREMOTE_P3_BENCH=1" "--env=HYREMOTE_P3_DIAG_NATIVE_ONLY=1" "--env=HYREMOTE_P3_BENCH_OUTPUT=%RUNNER_TEMP%\\hyremote-p3-native-diag.txt" "--env=QSG_RHI_BACKEND=d3d11" --no-prompt -j4
+          if not exist "%RUNNER_TEMP%\\hyremote-p3-native-diag.txt" exit /b 1
+          type "%RUNNER_TEMP%\\hyremote-p3-native-diag.txt"
       - name: Bracketed public/native/public CPU diagnostic (report actual viewport)
         shell: cmd
         run: |
