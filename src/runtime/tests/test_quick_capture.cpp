@@ -67,6 +67,21 @@ void testQuickRendererCapabilityRouting()
         CHECK(selection.backend == scenario.backend);
         CHECK(selection.route == QuickCaptureRoute::PublicQtGrabToImage);
     }
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_QUICK_OPENGL")) {
+        // The dedicated Linux Xvfb/Mesa lane must exercise a REAL OpenGL
+        // scenegraph, rather than report success through software fallback.
+        QQuickWindow window;
+        window.resize(160, 90);
+        window.show();
+        QCoreApplication::processEvents();
+        const auto *renderer = window.rendererInterface();
+        CHECK(renderer != nullptr);
+        if (renderer) {
+            CHECK(renderer->graphicsApi() == Api::OpenGL);
+            CHECK(selectQuickCaptureRoute(renderer->graphicsApi()).route
+                  == QuickCaptureRoute::PublicQtGrabToImage);
+        }
+    }
 }
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 400)
