@@ -22,6 +22,7 @@
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
+#include "quick/quick_capture_backend.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -36,6 +37,37 @@ int failures = 0;
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
+
+// The backend is data, not permission to try QtPrivate QRhi readback.
+// This holds for a software-only Qt Quick plugin, RHI graphics APIs and
+// uninitialized/unknown renderers. The route remains the documented Qt
+// public grab with its normal bounded retry/failure semantics.
+void testQuickRendererCapabilityRouting()
+{
+    using Api = QSGRendererInterface::GraphicsApi;
+    using HyRemote::detail::QuickCaptureBackend;
+    using HyRemote::detail::QuickCaptureRoute;
+    using HyRemote::detail::selectQuickCaptureRoute;
+    const struct {
+        Api api;
+        QuickCaptureBackend backend;
+    } cases[] = {
+        {Api::Unknown, QuickCaptureBackend::Unknown},
+        {Api::Software, QuickCaptureBackend::Software},
+        {Api::OpenGL, QuickCaptureBackend::OpenGL},
+        {Api::Direct3D11, QuickCaptureBackend::Direct3D11},
+        {Api::Direct3D12, QuickCaptureBackend::Direct3D12},
+        {Api::Vulkan, QuickCaptureBackend::Vulkan},
+        {Api::Metal, QuickCaptureBackend::Metal},
+        {Api::OpenVG, QuickCaptureBackend::Other},
+        {Api::Null, QuickCaptureBackend::Other},
+    };
+    for (const auto &scenario : cases) {
+        const auto selection = selectQuickCaptureRoute(scenario.api);
+        CHECK(selection.backend == scenario.backend);
+        CHECK(selection.route == QuickCaptureRoute::PublicQtGrabToImage);
+    }
+}
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 400)
 {
@@ -828,6 +860,7 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
 
+    testQuickRendererCapabilityRouting();
     testQuickFactoryAndOwnedFrame();
     testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels();
     testQuickQueuedRequestsDoNotCrossStopRestart();
