@@ -1237,10 +1237,13 @@ int main(int argc, char **argv)
         previousQtMessageHandler = qInstallMessageHandler(pilotQtMessageHandler);
 
     testQuickFactoryAndOwnedFrame();
-    testCompletedQuickGrabsCancelTimeouts();
     testStagedQuickSourceCaptureFollowsPaintedScene();
     testConcurrentQuickNativeRequestsKeepBothTerminals();
     testQuickCaptureProcessCostAba();
+    // Keep the #900 watchdog regression after the native-frame qualification
+    // path: it exercises 20 independent offscreen grabs and can leave Qt
+    // deferred render-loop work during the immediately following test.
+    testCompletedQuickGrabsCancelTimeouts();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
     testQuickInputIsQueuedToWindow();
