@@ -104,6 +104,31 @@ public:
         qInfo().nospace()
             << "HyRemote P3 native pilot: native_frames_published="
             << m_state->nativeFramesPublished.load(std::memory_order_relaxed);
+        // Measured (request id 12000..12047) and warmup (11000..11011)
+        // are accounted separately. The previous benchmark wrongly assumed
+        // every warmup request was native and subtracted a fixed 12.
+        qInfo().nospace()
+            << "HyRemote P3 native pilot: native_measured_published="
+            << m_state->nativeMeasuredFramesPublished.load(std::memory_order_relaxed);
+        qInfo().nospace()
+            << "HyRemote P3 native pilot: fallback_no_recent_render="
+            << m_state->nativeAdmissionNoFreshRender.load(std::memory_order_relaxed)
+            << " fallback_pending_busy="
+            << m_state->nativeAdmissionBusy.load(std::memory_order_relaxed)
+            << " fallback_native_deadline="
+            << m_state->nativeDeadlineFallback.load(std::memory_order_relaxed)
+            << " rejected_epoch="
+            << m_state->nativeRejectEpoch.load(std::memory_order_relaxed)
+            << " rejected_serial="
+            << m_state->nativeRejectSerial.load(std::memory_order_relaxed)
+            << " rejected_age="
+            << m_state->nativeRejectAge.load(std::memory_order_relaxed)
+            << " rejected_target="
+            << m_state->nativeRejectTarget.load(std::memory_order_relaxed)
+            << " rejected_geometry="
+            << m_state->nativeRejectGeometry.load(std::memory_order_relaxed)
+            << " rejected_pixel_format="
+            << m_state->nativeRejectPixelFormat.load(std::memory_order_relaxed);
 #endif
 
         // Ready/timer continuations may still exist after stop, but they all check active before
@@ -149,6 +174,18 @@ private:
         std::uint64_t pendingNativeEpoch = 0;
         long long pendingNativeAdmittedMs = 0;
         std::atomic<std::uint64_t> nativeFramesPublished{0};
+        // Pilot diagnostics only. Public capture is a valid per-request
+        // fallback; do not confuse native hit rate with callback correctness.
+        std::atomic<std::uint64_t> nativeMeasuredFramesPublished{0};
+        std::atomic<std::uint64_t> nativeAdmissionNoFreshRender{0};
+        std::atomic<std::uint64_t> nativeAdmissionBusy{0};
+        std::atomic<std::uint64_t> nativeDeadlineFallback{0};
+        std::atomic<std::uint64_t> nativeRejectEpoch{0};
+        std::atomic<std::uint64_t> nativeRejectSerial{0};
+        std::atomic<std::uint64_t> nativeRejectAge{0};
+        std::atomic<std::uint64_t> nativeRejectTarget{0};
+        std::atomic<std::uint64_t> nativeRejectGeometry{0};
+        std::atomic<std::uint64_t> nativeRejectPixelFormat{0};
 #endif
     };
 
@@ -419,34 +456,51 @@ private:
             admittedMs = state->pendingNativeAdmittedMs;
         }
         QuickNativeSample sample;
-        if (native && native->takeSample(sample)
-            && sample.epoch == epoch && sample.epoch == native->epoch()
-            && sample.renderSerial > serial
-            && sample.sourceMs >= admittedMs
-            && nativeNowMs() - sample.sourceMs <= 80
-            && !state->target.isNull()) {
-            // Full Qt Quick contentItem target only. Any change to geometry,
-            // DPR or target visibility must fail to the established Qt grab.
-            QQuickWindow *window = state->target.data();
-            const int expectedW = qRound(window->width() * window->devicePixelRatio());
-            const int expectedH = qRound(window->height() * window->devicePixelRatio());
-            if (window->isVisible() && sample.width == expectedW
-                && sample.height == expectedH
-                && qAbs(sample.dpr - window->devicePixelRatio()) <= 0.01) {
-                QImage nativeImage = imageFromNative(std::move(sample));
-                if (!nativeImage.isNull()) {
-                    {
-                        std::lock_guard<std::mutex> lock(state->mutex);
-                        if (!state->active || !state->pendingNative
-                            || state->pendingNative->id != request.id)
-                            return;
-                        state->pendingNative.reset();
+        if (native && native->takeSample(sample)) {
+            // Account for discarded native samples without weakening ANY
+            // freshness, geometry, or epoch check. Async QRhi completion
+            // may outlive a bounded native request; public grab is then the
+            // expected safe fallback, not a fabricated native hit.
+            if (sample.epoch != epoch || sample.epoch != native->epoch()) {
+                state->nativeRejectEpoch.fetch_add(1, std::memory_order_relaxed);
+            } else if (sample.renderSerial <= serial) {
+                state->nativeRejectSerial.fetch_add(1, std::memory_order_relaxed);
+            } else if (sample.sourceMs < admittedMs
+                       || nativeNowMs() - sample.sourceMs > 80) {
+                state->nativeRejectAge.fetch_add(1, std::memory_order_relaxed);
+            } else if (state->target.isNull()) {
+                state->nativeRejectTarget.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                // Full Qt Quick contentItem target only. Geometry/DPR or
+                // visibility changes fail closed to the public grab path.
+                QQuickWindow *window = state->target.data();
+                const int expectedW = qRound(window->width() * window->devicePixelRatio());
+                const int expectedH = qRound(window->height() * window->devicePixelRatio());
+                if (!window->isVisible() || sample.width != expectedW
+                    || sample.height != expectedH
+                    || qAbs(sample.dpr - window->devicePixelRatio()) > 0.01) {
+                    state->nativeRejectGeometry.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    QImage nativeImage = imageFromNative(std::move(sample));
+                    if (!nativeImage.isNull()) {
+                        {
+                            std::lock_guard<std::mutex> lock(state->mutex);
+                            if (!state->active || !state->pendingNative
+                                || state->pendingNative->id != request.id)
+                                return;
+                            state->pendingNative.reset();
+                        }
+                        // Native hit is counted only after the image passed
+                        // source epoch, requested-frame and pixel checks.
+                        state->nativeFramesPublished.fetch_add(1, std::memory_order_relaxed);
+                        if (qEnvironmentVariable("HYREMOTE_P3_BENCH") == "1"
+                            && request.id >= 12000U && request.id < 12048U)
+                            state->nativeMeasuredFramesPublished.fetch_add(
+                                1, std::memory_order_relaxed);
+                        publishImage(state, request, 1U, nativeImage);
+                        return;
                     }
-                    // Same immutable Core/RFB pipeline and watermark/privacy
-                    // as grabToImage. No render-thread Core callback.
-                    state->nativeFramesPublished.fetch_add(1, std::memory_order_relaxed);
-                    publishImage(state, request, 1U, nativeImage);
-                    return;
+                    state->nativeRejectPixelFormat.fetch_add(1, std::memory_order_relaxed);
                 }
             }
         }
@@ -460,6 +514,7 @@ private:
             }
             if (native)
                 native->cancelRequest();
+            state->nativeDeadlineFallback.fetch_add(1, std::memory_order_relaxed);
             attemptGrabOnGuiThread(state, request, 1U);
             return;
         }
@@ -514,6 +569,9 @@ private:
                 pollNative(state, request, nowMs + 60);
                 return;
             }
+            state->nativeAdmissionBusy.fetch_add(1, std::memory_order_relaxed);
+        } else if (equivalentClearContract && native) {
+            state->nativeAdmissionNoFreshRender.fetch_add(1, std::memory_order_relaxed);
         }
 #endif
         attemptGrabOnGuiThread(state, request, 1U);
