@@ -86,13 +86,24 @@ def measure(samples, warmup_ms: int, seconds: int):
     process_seconds = (last["process_cpu_ns"] - first["process_cpu_ns"]) / NANOS_PER_SECOND
     stages = {}
     for stage in STAGES:
+        if stage not in first["stages"]:
+            continue  # Old probes never measured this; do not invent zero cost.
         a = first["stages"][stage]
         b = last["stages"][stage]
         fields = ("calls", "cpu_ns", "wall_ns", "bytes", "cpu_samples_missing")
         if any(b[k] < a[k] for k in fields):
             raise ValueError(f"{stage}: nonmonotone counters")
         stages[stage] = {k: b[k] - a[k] for k in fields}
-    return {"seconds": window_sec, "process_cpu_seconds": process_seconds, "stages": stages}
+    backend_counts = None
+    if first["schema"] == 2:
+        backend_counts = {
+            backend: last["quick_grab_backend_counts"][backend]
+                     - first["quick_grab_backend_counts"][backend]
+            for backend in BACKENDS
+        }
+    return {"seconds": window_sec, "process_cpu_seconds": process_seconds,
+            "schema": first["schema"], "stages": stages,
+            "backends": backend_counts}
 
 
 def print_result(label, result):
@@ -101,7 +112,13 @@ def print_result(label, result):
           f"({100*result['process_cpu_seconds']/result['seconds']:.2f}% of one core)")
     measured = 0.0
     for stage in STAGES:
+        if stage not in result["stages"]:
+            print(f"  {stage:24} NOT_INSTRUMENTED (older schema)")
+            continue
         s = result["stages"][stage]
+        if stage in COUNT_ONLY:
+            print(f"  {stage:24} count={s['calls']:5} (not CPU time)")
+            continue
         if stage in WALL_ONLY:
             print(f"  {stage:24} calls={s['calls']:5} "
                   f"async_latency_wall_s={s['wall_ns']/NANOS_PER_SECOND:.4f}"
@@ -112,6 +129,11 @@ def print_result(label, result):
         print(f"  {stage:24} calls={s['calls']:5} cpu_s={cpu:8.4f} "
               f"wall_s={s['wall_ns']/NANOS_PER_SECOND:8.4f} "
               f"bytes={s['bytes']:10} cpu_clock_misses={s['cpu_samples_missing']}")
+    if result["backends"] is not None:
+        print("  public Qt Quick grab submissions by reported scenegraph API: "
+              + ", ".join(f"{api}={count}" for api, count
+                          in result["backends"].items()))
+        print("  These are public Qt grab submissions, NOT native GPU readback hits.")
     unknown = result["process_cpu_seconds"] - measured
     print(f"  {'UNATTRIBUTED/OVERLAP':24} cpu_s={unknown:8.4f} "
           "(includes Qt render/driver threads, uncaptured stages and probe overhead;"
@@ -138,7 +160,10 @@ def compare(b1, b2, nominal_seconds):
           f"({100*process_delta/nominal_seconds:+.3f} percentage points of one core)")
     stage_sum = 0.0
     for stage in STAGES:
-        if stage in WALL_ONLY:
+        if stage in WALL_ONLY or stage in COUNT_ONLY:
+            continue
+        if stage not in b1["stages"] or stage not in b2["stages"]:
+            print(f"  {stage:24} NOT_COMPARABLE: older schema")
             continue
         delta = normalized_cpu_delta(b1, b2, stage, nominal_seconds)
         stage_sum += delta
@@ -219,6 +244,8 @@ def main():
         parser.error("warm-up must be nonnegative and sample duration >=5s")
     b1 = measure(load(args.b1), args.warmup_seconds * 1000, args.seconds)
     b2 = measure(load(args.b2), args.warmup_seconds * 1000, args.seconds)
+    if b1["schema"] != b2["schema"]:
+        raise ValueError("cannot compare different probe schemas; use one build")
     print_result("B1", b1)
     print_result("B2", b2)
     compare(b1, b2, args.seconds)
