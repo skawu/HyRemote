@@ -1096,13 +1096,21 @@ void testQuickCaptureProcessCostAba()
                << "_NATIVE_PUBLIC_FALLBACK_MEASURED=" << (framesPerCase - n.measuredNativeFrames) << '\n'
                << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_noFreshRender=" << n.fallback.noFreshRender << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_busy=" << n.fallback.busy << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_deadline=" << n.fallback.deadline << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_rejectEpoch=" << n.fallback.rejectEpoch << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_rejectSerial=" << n.fallback.rejectSerial << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_rejectAge=" << n.fallback.rejectAge << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_rejectTarget=" << n.fallback.rejectTarget << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_rejectGeometry=" << n.fallback.rejectGeometry << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
                << "_FALLBACK_rejectPixelFormat=" << n.fallback.rejectPixelFormat << '\n'
                << "BENCH_CYCLE_" << (i + 1)
                << "_PUBLIC_A1_P95_MS=" << a.requestP95Ms << '\n'
