@@ -190,6 +190,7 @@ RfbFrameDecorator makeWatermarkFrameDecorator(const WatermarkPolicy &policy)
         cache->decorated = decorated.storage;
         cache->geometry = source.geometry;
         cache->ready = true;
+        error.clear();
         return true;
     };
 }
