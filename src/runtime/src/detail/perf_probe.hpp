@@ -232,7 +232,7 @@ private:
         std::uint64_t processCpu = 0;
         const bool valid = processCpuNs(processCpu);
         std::fprintf(file,
-                     "{\"schema\":1,\"pid\":%lu,\"elapsed_ms\":%lld,"
+                     "{\"schema\":2,\"pid\":%lu,\"elapsed_ms\":%lld,"
                      "\"process_cpu_ns\":%llu,\"process_cpu_valid\":%s,\"stages\":{",
                      processId(),
                      static_cast<long long>(elapsed),
