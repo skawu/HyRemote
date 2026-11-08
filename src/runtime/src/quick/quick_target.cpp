@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -72,6 +73,12 @@ public:
         if (m_state->target->thread() != app->thread())
             return false;
 
+        // Every start/stop is a new capture lifetime. GUI tasks and Qt grab
+        // ready/timer callbacks from a prior lifetime must not publish into
+        // new handlers even if the same CaptureSource is started again.
+        ++m_state->generation;
+        m_state->pendingRequests.clear();
+        m_state->batchDispatchScheduled = false;
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
@@ -82,6 +89,9 @@ public:
     {
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
+        ++m_state->generation;
+        m_state->pendingRequests.clear();
+        m_state->batchDispatchScheduled = false;
         m_state->onFrame = {};
         m_state->onEvent = {};
 
@@ -92,21 +102,33 @@ public:
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
-        {
-            std::lock_guard<std::mutex> lock(m_state->mutex);
-            if (!m_state->active)
-                return false;
-        }
-
         QObject *dispatcher = QCoreApplication::instance();
         if (!dispatcher)
             return false;
 
         const std::shared_ptr<State> state = m_state;
-        return QMetaObject::invokeMethod(
-            dispatcher,
-            [state, request] { attemptGrabOnGuiThread(state, request, 1U); },
-            Qt::QueuedConnection);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (!state->active)
+            return false;
+
+        // Core can issue two requests before the GUI queue is serviced.
+        // One GUI-dispatch batch is one fresh offscreen Qt grab, rather than
+        // two independent GPU readbacks for the exact same capture instant.
+        // Requests arriving AFTER this batch starts must create a NEW grab:
+        // never complete a newer page transition from an older in-flight
+        // image. Keep per-request IDs, timestamps and terminal callbacks.
+        if (!state->batchDispatchScheduled) {
+            const std::uint64_t generation = state->generation;
+            if (!QMetaObject::invokeMethod(
+                    dispatcher, [state, generation] {
+                        dispatchQueuedBatchOnGuiThread(state, generation);
+                    }, Qt::QueuedConnection)) {
+                return false;
+            }
+            state->batchDispatchScheduled = true;
+        }
+        state->pendingRequests.push_back(request);
+        return true;
     }
 
 private:
@@ -118,10 +140,20 @@ private:
         std::condition_variable callbacksDrained;
         QPointer<QQuickWindow> target;
         bool active = false;
+        std::uint64_t generation = 0;
         std::size_t callbacksInFlight = 0;
+        std::vector<hyremote::CaptureRequest> pendingRequests;
+        bool batchDispatchScheduled = false;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
     };
+
+    struct GrabBatch
+    {
+        std::uint64_t generation = 0;
+        std::vector<hyremote::CaptureRequest> requests;
+    };
+    using GrabBatchPtr = std::shared_ptr<const GrabBatch>;
 
     struct GrabAttempt
     {
@@ -134,21 +166,43 @@ private:
 #endif
     };
 
-    static bool isActive(const std::shared_ptr<State> &state)
+    static bool isActive(const std::shared_ptr<State> &state,
+                         std::uint64_t generation)
     {
         std::lock_guard<std::mutex> lock(state->mutex);
-        return state->active;
+        return state->active && state->generation == generation;
+    }
+
+    static void dispatchQueuedBatchOnGuiThread(const std::shared_ptr<State> &state,
+                                               std::uint64_t generation)
+    {
+        std::vector<hyremote::CaptureRequest> requests;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active || state->generation != generation)
+                return;
+            requests.swap(state->pendingRequests);
+            state->batchDispatchScheduled = false;
+        }
+        if (requests.empty())
+            return;
+
+        auto batch = std::make_shared<GrabBatch>();
+        batch->generation = generation;
+        batch->requests = std::move(requests);
+        attemptGrabOnGuiThread(state, std::move(batch), 1U);
     }
 
     template <typename Handler, typename Payload>
     static void publishCallback(const std::shared_ptr<State> &state,
                                 Handler State::*member,
-                                Payload payload)
+                                Payload payload,
+                                std::uint64_t generation)
     {
         Handler callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
+            if (!state->active || state->generation != generation)
                 return;
             callback = state.get()->*member;
             if (!callback)
@@ -171,6 +225,7 @@ private:
     }
 
     static void publishEvent(const std::shared_ptr<State> &state,
+                             std::uint64_t generation,
                              hyremote::CaptureEventCode code,
                              const char *message,
                              bool recoverable)
@@ -179,62 +234,67 @@ private:
         event.code = code;
         event.message = message;
         event.recoverable = recoverable;
-        publishCallback(state, &State::onEvent, std::move(event));
+        publishCallback(state, &State::onEvent, std::move(event), generation);
     }
 
     static void completeUnavailable(const std::shared_ptr<State> &state,
-                                    const hyremote::CaptureRequest &request)
+                                    const GrabBatchPtr &batch)
     {
-        publishEvent(state,
+        publishEvent(state, batch->generation,
                      hyremote::CaptureEventCode::TemporarilyUnavailable,
                      "Qt Quick capture remained unavailable after the bounded retry budget",
                      true);
-        if (!isActive(state))
+        if (!isActive(state, batch->generation))
             return;
 
-        hyremote::RemoteFrame completion;
-        completion.timing.ptsSource = hyremote::PtsSource::Completion;
-        completion.timing.requestTime = request.requestTime;
-        completion.timing.completionTime = hyremote::Clock::now();
-        completion.requestId = request.id;
-        publishCallback(state, &State::onFrame, std::move(completion));
+        // Even when a shared Qt grab failed, EACH admitted Core request
+        // needs its own terminal completion to release its in-flight slot.
+        for (const auto &request : batch->requests) {
+            hyremote::RemoteFrame completion;
+            completion.timing.ptsSource = hyremote::PtsSource::Completion;
+            completion.timing.requestTime = request.requestTime;
+            completion.timing.completionTime = hyremote::Clock::now();
+            completion.requestId = request.id;
+            publishCallback(state, &State::onFrame, std::move(completion),
+                            batch->generation);
+        }
     }
 
     static void retryLater(const std::shared_ptr<State> &state,
-                           const hyremote::CaptureRequest &request,
+                           const GrabBatchPtr &batch,
                            unsigned int attempt,
                            int delayMs)
     {
         QObject *dispatcher = QCoreApplication::instance();
-        if (!dispatcher || !isActive(state))
+        if (!dispatcher || !isActive(state, batch->generation))
             return;
 
         if (attempt >= kMaxGrabAttempts) {
-            completeUnavailable(state, request);
+            completeUnavailable(state, batch);
             return;
         }
 
-        QTimer::singleShot(delayMs, dispatcher, [state, request, attempt] {
-            attemptGrabOnGuiThread(state, request, attempt + 1U);
+        QTimer::singleShot(delayMs, dispatcher, [state, batch, attempt] {
+            attemptGrabOnGuiThread(state, batch, attempt + 1U);
         });
     }
 
     static void publishImage(const std::shared_ptr<State> &state,
-                             const hyremote::CaptureRequest &request,
+                             const GrabBatchPtr &batch,
                              unsigned int attempt,
                              const QImage &grabbed)
     {
-        if (!isActive(state))
+        if (!isActive(state, batch->generation))
             return;
         if (state->target.isNull()) {
-            publishEvent(state,
+            publishEvent(state, batch->generation,
                          hyremote::CaptureEventCode::TargetLost,
                          "the QQuickWindow target was destroyed",
                          false);
             return;
         }
         if (grabbed.isNull()) {
-            retryLater(state, request, attempt, 100);
+            retryLater(state, batch, attempt, 100);
             return;
         }
 
@@ -249,7 +309,7 @@ private:
                         : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
         }
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
-            retryLater(state, request, attempt, 100);
+            retryLater(state, batch, attempt, 100);
             return;
         }
 
@@ -271,7 +331,7 @@ private:
                 || width > std::numeric_limits<std::size_t>::max() / 4U
                 || image.bytesPerLine() <= 0 || image.sizeInBytes() <= 0
                 || !image.constBits()) {
-                publishEvent(state,
+                publishEvent(state, batch->generation,
                              hyremote::CaptureEventCode::BackendFailure,
                              "invalid Qt Quick grab image format or storage",
                              false);
@@ -281,7 +341,7 @@ private:
             const std::size_t sourceStride = static_cast<std::size_t>(image.bytesPerLine());
             const std::size_t sourceBytes = static_cast<std::size_t>(image.sizeInBytes());
             if (sourceStride < bytesPerLine || height > sourceBytes / sourceStride) {
-                publishEvent(state,
+                publishEvent(state, batch->generation,
                              hyremote::CaptureEventCode::BackendFailure,
                              "invalid Qt Quick grab row stride",
                              false);
@@ -293,7 +353,7 @@ private:
                 copied = hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine, height);
             }
             if (!copied || !copied->mutablePlane(0)) {
-                publishEvent(state,
+                publishEvent(state, batch->generation,
                              hyremote::CaptureEventCode::BackendFailure,
                              "failed to allocate owned Qt Quick frame storage",
                              false);
@@ -312,33 +372,41 @@ private:
         }
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
-        hyremote::RemoteFrame frame;
-        frame.geometry.size = {static_cast<std::uint32_t>(image.width()),
-                               static_cast<std::uint32_t>(image.height())};
-        frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
-        frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
-        frame.geometry.planeCount = 1;
-        frame.geometry.devicePixelRatio =
+        hyremote::RemoteFrame prototype;
+        prototype.geometry.size = {static_cast<std::uint32_t>(image.width()),
+                                   static_cast<std::uint32_t>(image.height())};
+        prototype.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+        prototype.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
+        prototype.geometry.planeCount = 1;
+        prototype.geometry.devicePixelRatio =
             image.devicePixelRatio() > 0.0 ? static_cast<float>(image.devicePixelRatio()) : 1.0F;
-        frame.storage = std::move(storage);
-        frame.timing.ptsSource = hyremote::PtsSource::Completion;
-        frame.timing.requestTime = request.requestTime;
-        frame.timing.completionTime = completion;
-        frame.damage = hyremote::Damage::fullFrame();
-        frame.requestId = request.id;
-        publishCallback(state, &State::onFrame, std::move(frame));
+        prototype.storage = std::move(storage);
+        prototype.timing.ptsSource = hyremote::PtsSource::Completion;
+        prototype.timing.completionTime = completion;
+        prototype.damage = hyremote::Damage::fullFrame();
+
+        // One Qt offscreen render, ONE CPU conversion and ONE immutable
+        // FrameStorage owner; distinct Core completions retain their original
+        // request identities. Qt readback is never reused across GUI batches.
+        for (const auto &request : batch->requests) {
+            hyremote::RemoteFrame frame = prototype;
+            frame.timing.requestTime = request.requestTime;
+            frame.requestId = request.id;
+            publishCallback(state, &State::onFrame, std::move(frame),
+                            batch->generation);
+        }
     }
 
     static void attemptGrabOnGuiThread(const std::shared_ptr<State> &state,
-                                       const hyremote::CaptureRequest &request,
+                                       const GrabBatchPtr &batch,
                                        unsigned int attempt)
     {
-        if (!isActive(state))
+        if (!isActive(state, batch->generation))
             return;
 
         QQuickWindow *window = state->target.data();
         if (!window) {
-            publishEvent(state,
+            publishEvent(state, batch->generation,
                          hyremote::CaptureEventCode::TargetLost,
                          "the QQuickWindow target was destroyed",
                          false);
@@ -347,13 +415,13 @@ private:
 
         if (!window->isVisible() || window->visibility() == QWindow::Minimized
             || window->width() <= 0 || window->height() <= 0) {
-            retryLater(state, request, attempt, 250);
+            retryLater(state, batch, attempt, 250);
             return;
         }
 
         QQuickItem *content = window->contentItem();
         if (!content) {
-            publishEvent(state,
+            publishEvent(state, batch->generation,
                          hyremote::CaptureEventCode::BackendFailure,
                          "QQuickWindow has no content item",
                          false);
@@ -372,7 +440,7 @@ private:
             grab->result = content->grabToImage(logicalSize);
         }
         if (grab->result.isNull()) {
-            retryLater(state, request, attempt, 100);
+            retryLater(state, batch, attempt, 100);
             return;
         }
 
@@ -384,7 +452,7 @@ private:
             grab->result.data(),
             &QQuickItemGrabResult::ready,
             dispatcher,
-            [state, request, attempt, grab] {
+            [state, batch, attempt, grab] {
                 if (grab->finished)
                     return;
                 grab->finished = true;
@@ -406,7 +474,7 @@ private:
 #endif
                 const QImage image = grab->result ? grab->result->image() : QImage();
                 grab->result.clear();
-                publishImage(state, request, attempt, image);
+                publishImage(state, batch, attempt, image);
             });
 
         // The deadline is owned by the GUI dispatcher and uses Qt's normal
@@ -416,7 +484,7 @@ private:
         deadline->setSingleShot(true);
         grab->timeoutTimer = deadline;
         QObject::connect(deadline, &QTimer::timeout, dispatcher,
-                         [state, request, attempt, grab] {
+                         [state, batch, attempt, grab] {
             if (grab->timeoutTimer) {
                 grab->timeoutTimer->deleteLater();
                 grab->timeoutTimer.clear();
@@ -426,16 +494,16 @@ private:
             grab->finished = true;
             QObject::disconnect(grab->readyConnection);
             grab->result.clear();
-            if (!isActive(state))
+            if (!isActive(state, batch->generation))
                 return;
             if (state->target.isNull()) {
-                publishEvent(state,
+                publishEvent(state, batch->generation,
                              hyremote::CaptureEventCode::TargetLost,
                              "the QQuickWindow target was destroyed during capture",
                              false);
                 return;
             }
-            retryLater(state, request, attempt, 100);
+            retryLater(state, batch, attempt, 100);
         });
         deadline->start(2000);
     }
