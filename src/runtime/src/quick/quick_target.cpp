@@ -492,21 +492,7 @@ private:
             window && window->isVisible()
             && window->color().alpha() == 0
             && window->format().alphaBufferSize() > 0;
-        // Diagnostic evidence is emitted only for the isolated exact-Kit pilot.
-        // A correct public grab must never masquerade as a native capture hit.
-        const bool recentNativeRender = native && native->renderActive(nowMs, 34);
-        if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1") {
-            static unsigned int diagnosticCount = 0;
-            if (diagnosticCount++ < 12U) {
-                qWarning().nospace() << "P3_ADMISSION native=" << bool(native)
-                    << " eligible_clear=" << equivalentClearContract
-                    << " recent_render=" << recentNativeRender
-                    << " visible=" << (window && window->isVisible())
-                    << " color_alpha=" << (window ? window->color().alpha() : -1)
-                    << " alpha_buffer=" << (window ? window->format().alphaBufferSize() : -1);
-            }
-        }
-        if (equivalentClearContract && recentNativeRender) {
+        if (equivalentClearContract && native && native->renderActive(nowMs, 34)) {
             bool reserved = false;
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
