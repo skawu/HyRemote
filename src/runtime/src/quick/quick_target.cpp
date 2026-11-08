@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <limits>
@@ -72,6 +73,12 @@ public:
         if (m_state->target->thread() != app->thread())
             return false;
 
+        // Every start/stop is a new capture lifetime. GUI tasks and Qt grab
+        // ready/timer callbacks from a prior lifetime must not publish into
+        // new handlers even if the same CaptureSource is started again.
+        ++m_state->generation;
+        m_state->pendingRequests.clear();
+        m_state->batchDispatchScheduled = false;
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
@@ -82,6 +89,9 @@ public:
     {
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
+        ++m_state->generation;
+        m_state->pendingRequests.clear();
+        m_state->batchDispatchScheduled = false;
         m_state->onFrame = {};
         m_state->onEvent = {};
 
@@ -92,21 +102,33 @@ public:
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
-        {
-            std::lock_guard<std::mutex> lock(m_state->mutex);
-            if (!m_state->active)
-                return false;
-        }
-
         QObject *dispatcher = QCoreApplication::instance();
         if (!dispatcher)
             return false;
 
         const std::shared_ptr<State> state = m_state;
-        return QMetaObject::invokeMethod(
-            dispatcher,
-            [state, request] { attemptGrabOnGuiThread(state, request, 1U); },
-            Qt::QueuedConnection);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (!state->active)
+            return false;
+
+        // Core can issue two requests before the GUI queue is serviced.
+        // One GUI-dispatch batch is one fresh offscreen Qt grab, rather than
+        // two independent GPU readbacks for the exact same capture instant.
+        // Requests arriving AFTER this batch starts must create a NEW grab:
+        // never complete a newer page transition from an older in-flight
+        // image. Keep per-request IDs, timestamps and terminal callbacks.
+        if (!state->batchDispatchScheduled) {
+            const std::uint64_t generation = state->generation;
+            if (!QMetaObject::invokeMethod(
+                    dispatcher, [state, generation] {
+                        dispatchQueuedBatchOnGuiThread(state, generation);
+                    }, Qt::QueuedConnection)) {
+                return false;
+            }
+            state->batchDispatchScheduled = true;
+        }
+        state->pendingRequests.push_back(request);
+        return true;
     }
 
 private:
@@ -118,10 +140,20 @@ private:
         std::condition_variable callbacksDrained;
         QPointer<QQuickWindow> target;
         bool active = false;
+        std::uint64_t generation = 0;
         std::size_t callbacksInFlight = 0;
+        std::vector<hyremote::CaptureRequest> pendingRequests;
+        bool batchDispatchScheduled = false;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
     };
+
+    struct GrabBatch
+    {
+        std::uint64_t generation = 0;
+        std::vector<hyremote::CaptureRequest> requests;
+    };
+    using GrabBatchPtr = std::shared_ptr<const GrabBatch>;
 
     struct GrabAttempt
     {
@@ -134,21 +166,43 @@ private:
 #endif
     };
 
-    static bool isActive(const std::shared_ptr<State> &state)
+    static bool isActive(const std::shared_ptr<State> &state,
+                         std::uint64_t generation)
     {
         std::lock_guard<std::mutex> lock(state->mutex);
-        return state->active;
+        return state->active && state->generation == generation;
+    }
+
+    static void dispatchQueuedBatchOnGuiThread(const std::shared_ptr<State> &state,
+                                               std::uint64_t generation)
+    {
+        std::vector<hyremote::CaptureRequest> requests;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active || state->generation != generation)
+                return;
+            requests.swap(state->pendingRequests);
+            state->batchDispatchScheduled = false;
+        }
+        if (requests.empty())
+            return;
+
+        auto batch = std::make_shared<GrabBatch>();
+        batch->generation = generation;
+        batch->requests = std::move(requests);
+        attemptGrabOnGuiThread(state, std::move(batch), 1U);
     }
 
     template <typename Handler, typename Payload>
     static void publishCallback(const std::shared_ptr<State> &state,
                                 Handler State::*member,
-                                Payload payload)
+                                Payload payload,
+                                std::uint64_t generation)
     {
         Handler callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
+            if (!state->active || state->generation != generation)
                 return;
             callback = state.get()->*member;
             if (!callback)
@@ -171,6 +225,7 @@ private:
     }
 
     static void publishEvent(const std::shared_ptr<State> &state,
+                             std::uint64_t generation,
                              hyremote::CaptureEventCode code,
                              const char *message,
                              bool recoverable)
@@ -179,7 +234,7 @@ private:
         event.code = code;
         event.message = message;
         event.recoverable = recoverable;
-        publishCallback(state, &State::onEvent, std::move(event));
+        publishCallback(state, &State::onEvent, std::move(event), generation);
     }
 
     static void completeUnavailable(const std::shared_ptr<State> &state,
