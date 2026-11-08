@@ -983,6 +983,53 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
 
 void testQuickCaptureProcessCostAba()
 {
+    // A single-case native diagnostic is separate from a CPU A/native/A
+    // comparison. It records why a device safely fell back without asking
+    // Human to rerun noisy bracketed performance tests.
+    if (qEnvironmentVariable("HYREMOTE_P3_DIAG_NATIVE_ONLY") == "1") {
+        CHECK(qEnvironmentVariable("HYREMOTE_P3_BENCH") == "1");
+        const QByteArray previousNative = qgetenv("HYREMOTE_QUICK_NATIVE_FRAME");
+        const PilotBenchResult native = runPilotBenchCase(true);
+        qputenv("HYREMOTE_QUICK_NATIVE_FRAME", previousNative);
+        CHECK(native.ok);
+        if (qEnvironmentVariable("HYREMOTE_EXPECT_PHYSICAL_1080P") == "1")
+            CHECK(native.physicalWidth == 1920U && native.physicalHeight == 1080U);
+        std::ostringstream report;
+        report << "P3_DIAGNOSTIC_ONLY=YES\n"
+               << "P3_DIAGNOSTIC_FRAMES=" << native.frames << '\n'
+               << "P3_DIAGNOSTIC_FRAMEBUFFER=" << native.physicalWidth << 'x'
+               << native.physicalHeight << '\n'
+               << "P3_DIAGNOSTIC_NATIVE_TOTAL_INCLUDING_WARMUP="
+               << native.actualNativeFrames << '\n'
+               << "P3_DIAGNOSTIC_NATIVE_MEASURED=" << native.measuredNativeFrames << '\n'
+               << "P3_DIAGNOSTIC_NATIVE_WARMUP="
+               << (native.actualNativeFrames - native.measuredNativeFrames) << '\n'
+               << "P3_DIAGNOSTIC_PUBLIC_FALLBACK_MEASURED="
+               << (native.frames - native.measuredNativeFrames) << '\n'
+               << "P3_DIAGNOSTIC_FALLBACK_NO_RECENT_RENDER="
+               << native.fallback.noFreshRender << '\n'
+               << "P3_DIAGNOSTIC_FALLBACK_BUSY=" << native.fallback.busy << '\n'
+               << "P3_DIAGNOSTIC_FALLBACK_DEADLINE=" << native.fallback.deadline << '\n'
+               << "P3_DIAGNOSTIC_REJECT_EPOCH=" << native.fallback.rejectEpoch << '\n'
+               << "P3_DIAGNOSTIC_REJECT_SERIAL=" << native.fallback.rejectSerial << '\n'
+               << "P3_DIAGNOSTIC_REJECT_AGE=" << native.fallback.rejectAge << '\n'
+               << "P3_DIAGNOSTIC_REJECT_TARGET=" << native.fallback.rejectTarget << '\n'
+               << "P3_DIAGNOSTIC_REJECT_GEOMETRY=" << native.fallback.rejectGeometry << '\n'
+               << "P3_DIAGNOSTIC_REJECT_PIXEL_FORMAT=" << native.fallback.rejectPixelFormat << '\n'
+               << "P3_DIAGNOSTIC_P95_REQUEST_MS=" << native.requestP95Ms << '\n'
+               << "P3_DIAGNOSTIC_CONCLUSION=NO_CPU_GAIN_CLAIM\n";
+        std::cout << report.str();
+        const QString filename = qEnvironmentVariable("HYREMOTE_P3_BENCH_OUTPUT");
+        if (!filename.isEmpty()) {
+            QFile file(filename);
+            CHECK(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            if (file.isOpen()) {
+                const QByteArray bytes = QByteArray::fromStdString(report.str());
+                CHECK(file.write(bytes) == bytes.size());
+            }
+        }
+        return;
+    }
     if (qEnvironmentVariable("HYREMOTE_P3_BENCH") != "1")
         return;
 
