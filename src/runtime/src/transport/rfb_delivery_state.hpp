@@ -513,8 +513,28 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
         return result;
     }
 
+    // Scan the *actual* visible changed tiles before applying the lossy
+    // 64-rectangle metadata bound. The old scan fed every changed 64x64 tile
+    // into RfbDamageRegion::add(); after the 65th disjoint tile, each further
+    // tile triggered another O(64^2) best-pair search before the 25% large
+    // paint threshold could be evaluated. Checkerboard/video-like scenes
+    // could repeat that search hundreds of times on the RFB worker.
+    //
+    // Exact horizontal runs are cheaper to represent than individual tiles.
+    // Their area is the exact sum of changed *tile* areas, without overlap
+    // inflation from greedy bounding. A large paint can bypass ALL sparse
+    // bound searches and be emitted as a single conservative bounding rect.
+    const std::uint64_t frameArea = static_cast<std::uint64_t>(width) * height;
+    const std::uint64_t largePaintThreshold
+        = frameArea / 4U + (frameArea % 4U != 0U ? 1U : 0U);
+    std::uint64_t changedTileArea = 0;
+    RfbRect changedBounds;
+    std::vector<RfbRect> horizontalRuns;
+
     for (std::uint32_t y0 = 0; y0 < height; y0 += kRfbDamageTile) {
         const std::uint32_t tileHeight = std::min(kRfbDamageTile, height - y0);
+        bool runOpen = false;
+        std::uint32_t runStartX = 0;
         for (std::uint32_t x0 = 0; x0 < width; x0 += kRfbDamageTile) {
             const std::uint32_t tileWidth = std::min(kRfbDamageTile, width - x0);
             bool changed = false;
@@ -532,14 +552,48 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
                 }
             }
             if (changed) {
-                result.add({static_cast<std::int32_t>(x0),
-                            static_cast<std::int32_t>(y0),
-                            static_cast<std::int32_t>(tileWidth),
-                            static_cast<std::int32_t>(tileHeight)});
+                if (!runOpen) {
+                    runOpen = true;
+                    runStartX = x0;
+                }
+                const RfbRect tile{static_cast<std::int32_t>(x0),
+                                   static_cast<std::int32_t>(y0),
+                                   static_cast<std::int32_t>(tileWidth),
+                                   static_cast<std::int32_t>(tileHeight)};
+                changedBounds = boundRfbRects(changedBounds, tile);
+                changedTileArea += static_cast<std::uint64_t>(tileWidth) * tileHeight;
+            }
+
+            // Close a horizontal run at its first unchanged tile or the
+            // final (possibly clipped) tile in this row. No clean tile enters
+            // a run, including the partial right/bottom edge of the frame.
+            if (runOpen && (!changed || x0 + tileWidth == width)) {
+                const std::uint32_t runEnd = changed ? x0 + tileWidth : x0;
+                horizontalRuns.push_back(
+                    {static_cast<std::int32_t>(runStartX),
+                     static_cast<std::int32_t>(y0),
+                     static_cast<std::int32_t>(runEnd - runStartX),
+                     static_cast<std::int32_t>(tileHeight)});
+                runOpen = false;
             }
         }
     }
-    return coalesceRfbDamageForPaint(std::move(result), width, height);
+
+    if (changedTileArea >= largePaintThreshold) {
+        // One FBU rectangle for a genuinely large transition: unchanged
+        // pixels inside this bound may be resent, but NO changed tile can
+        // be omitted. Unlike the old eager bounding path, sparse scenes
+        // cannot be promoted by invented/overlapping intermediate areas.
+        result.add(changedBounds);
+        return result;
+    }
+
+    // Sparse changes retain their exact tile runs and the established 64
+    // rectangle upper bound. Exact vertical unions still happen in add();
+    // the greedy bound is only paid when genuinely necessary (<25% area).
+    for (const RfbRect &run : horizontalRuns)
+        result.add(run);
+    return result;
 }
 
 }  // namespace HyRemote::detail
