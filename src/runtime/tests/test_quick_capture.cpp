@@ -2,6 +2,10 @@
 #include <QCoreApplication>
 #include <QEvent>
 #include <QEventLoop>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QGuiApplication>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
@@ -11,8 +15,12 @@
 #include <QQuickWindow>
 #include <QTimer>
 #include <QWheelEvent>
+#include <QSysInfo>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <ctime>
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -869,11 +877,302 @@ void testQueuedQuickInputIsDroppedWhenSinkIsDestroyed()
     CHECK(probe.mouseMoves == 0);
 }
 
+// Advisory, opt-in production PUBLIC Qt Quick capture baseline. Never runs
+// as part of ordinary CTest: a hosted Xvfb/Mesa graphics environment cannot
+// establish release CPU benefit, especially not for RK3588 EGLFS or D3D11
+// private QRhi. Bracket one animated case with equivalent static A1/A2
+// workloads so large host drift is visible, rather than averaging it away.
+struct PublicQuickProfileCase
+{
+    QString name;
+    int validFrames = 0;
+    double processCpuMs = 0.0;
+    double wallMs = 0.0;
+    double p50Ms = 0.0;
+    double p95Ms = 0.0;
+    int observedWidth = 0;
+    int observedHeight = 0;
+};
+
+double profilePercentile(std::vector<double> times, double fraction)
+{
+    if (times.empty())
+        return 0.0;
+    std::sort(times.begin(), times.end());
+    const auto position = static_cast<std::size_t>(
+        std::ceil(fraction * static_cast<double>(times.size())));
+    return times[std::min(times.size() - 1U,
+                          position > 0U ? position - 1U : 0U)];
+}
+
+bool profileHasStagePixels(const hyremote::RemoteFrame &frame, int stage)
+{
+    if (!frame.storage || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
+        || frame.geometry.size.width < 8U || frame.geometry.size.height < 8U)
+        return false;
+    const auto plane = frame.storage->mapRead(0);
+    if (!plane || !plane->data)
+        return false;
+    const std::size_t width = frame.geometry.size.width;
+    const std::size_t height = frame.geometry.size.height;
+    if (plane->stride < width * 4U || height > plane->bytes / plane->stride)
+        return false;
+
+    const auto sample = [&](std::size_t x) {
+        const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                            + (height / 2U) * plane->stride + x * 4U;
+        return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+               | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+               | static_cast<std::uint32_t>(pixel[2]);
+    };
+    constexpr std::uint32_t a = 0x143ca0U;
+    constexpr std::uint32_t b = 0xe11e28U;
+    return sample(width / 4U) == (stage >= 1 ? b : a)
+           && sample(3U * width / 4U) == (stage >= 2 ? b : a);
+}
+
+PublicQuickProfileCase runPublicQuickProfileCase(
+    hyremote::CaptureSource &source, StagedQuickProbeItem &content,
+    const std::atomic<int> &renderedStage, std::optional<hyremote::RemoteFrame> &received,
+    QString name, bool animate, int &lastStage, std::uint64_t &nextRequestId)
+{
+    constexpr int warmup = 8;
+    constexpr int measured = 24;
+    using Clock = std::chrono::steady_clock;
+    PublicQuickProfileCase result;
+    result.name = std::move(name);
+    std::vector<double> latencies;
+    latencies.reserve(measured);
+    std::clock_t startCpu = 0;
+    Clock::time_point startWall{};
+    bool started = false;
+
+    for (int index = -warmup; index < measured; ++index) {
+        if (index == 0) {
+            startCpu = std::clock();
+            startWall = Clock::now();
+            started = true;
+        }
+        // Public A1 and A2 are truly static after the first paint. Dynamic
+        // switches A -> split -> B -> A and waits for the actual scene paint.
+        const int stage = animate ? ((index + warmup) % 4) : 0;
+        if (stage != lastStage) {
+            content.setStage(stage);
+            lastStage = stage;
+            const bool painted = pumpUntil([&] {
+                return renderedStage.load(std::memory_order_acquire) == stage;
+            });
+            CHECK(painted);
+            if (!painted)
+                break;
+        }
+
+        received.reset();
+        const auto issuedAt = Clock::now();
+        const auto id = ++nextRequestId;
+        const bool accepted = source.requestFrame({id, hyremote::Clock::now()});
+        CHECK(accepted);
+        if (!accepted)
+            break;
+        const bool completed = pumpUntil([&] { return received.has_value(); }, 500);
+        CHECK(completed);
+        if (!completed)
+            break;
+        const auto completedAt = Clock::now();
+        CHECK(received->requestId && *received->requestId == id);
+        CHECK(profileHasStagePixels(*received, stage));
+        if (!received->requestId || *received->requestId != id
+            || !profileHasStagePixels(*received, stage))
+            break;
+
+        if (index >= 0) {
+            ++result.validFrames;
+            result.observedWidth = static_cast<int>(received->geometry.size.width);
+            result.observedHeight = static_cast<int>(received->geometry.size.height);
+            latencies.push_back(std::chrono::duration<double, std::milli>(
+                                    completedAt - issuedAt).count());
+        }
+    }
+
+    if (started) {
+        const auto cpuTicks = std::clock() - startCpu;
+        CHECK(startCpu != static_cast<std::clock_t>(-1));
+        CHECK(cpuTicks >= 0);
+        result.processCpuMs = cpuTicks >= 0
+                                  ? 1000.0 * static_cast<double>(cpuTicks) / CLOCKS_PER_SEC
+                                  : 0.0;
+        result.wallMs = std::chrono::duration<double, std::milli>(
+                            Clock::now() - startWall).count();
+    }
+    result.p50Ms = profilePercentile(latencies, 0.50);
+    result.p95Ms = profilePercentile(latencies, 0.95);
+    CHECK(result.validFrames == measured);
+    return result;
+}
+
+QJsonObject publicProfileToJson(const PublicQuickProfileCase &sample)
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("name"), sample.name);
+    result.insert(QStringLiteral("valid_frames"), sample.validFrames);
+    result.insert(QStringLiteral("observed_width"), sample.observedWidth);
+    result.insert(QStringLiteral("observed_height"), sample.observedHeight);
+    result.insert(QStringLiteral("process_cpu_ms"), sample.processCpuMs);
+    result.insert(QStringLiteral("wall_ms"), sample.wallMs);
+    result.insert(QStringLiteral("request_p50_ms"), sample.p50Ms);
+    result.insert(QStringLiteral("request_p95_ms"), sample.p95Ms);
+    return result;
+}
+
+void runPublicQuickProfile()
+{
+    constexpr int requestedWidth = 1920;
+    constexpr int requestedHeight = 1080;
+    constexpr int measuredFrames = 24;
+    constexpr double maxStableSpreadPercent = 15.0;
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.setFlags(Qt::FramelessWindowHint);
+    window.resize(requestedWidth, requestedHeight);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(requestedWidth);
+    content.setHeight(requestedHeight);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+    const auto visible = pumpUntil([&] {
+        return window.isVisible() && painted.load(std::memory_order_acquire) >= 0;
+    });
+    CHECK(visible);
+    if (!visible)
+        return;
+
+    const auto *renderer = window.rendererInterface();
+    const auto selected = HyRemote::detail::selectQuickCaptureRoute(
+        renderer ? renderer->graphicsApi() : QSGRendererInterface::Unknown);
+    CHECK(selected.route == HyRemote::detail::QuickCaptureRoute::PublicQtGrabToImage);
+    const QString backend = [&] {
+        using B = HyRemote::detail::QuickCaptureBackend;
+        switch (selected.backend) {
+        case B::Software: return QStringLiteral("software");
+        case B::OpenGL: return QStringLiteral("opengl");
+        case B::Direct3D11: return QStringLiteral("d3d11");
+        case B::Direct3D12: return QStringLiteral("d3d12");
+        case B::Vulkan: return QStringLiteral("vulkan");
+        case B::Metal: return QStringLiteral("metal");
+        case B::Other: return QStringLiteral("other");
+        default: return QStringLiteral("unknown");
+        }
+    }();
+    const QString expectedBackend =
+        qEnvironmentVariable("HYREMOTE_PUBLIC_PROFILE_EXPECT_BACKEND");
+    if (!expectedBackend.isEmpty())
+        CHECK(backend == expectedBackend);
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::optional<hyremote::RemoteFrame> received;
+    int events = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        [&](const hyremote::CaptureEvent &) { ++events; }));
+
+    int lastStage = content.paintedStage();
+    std::uint64_t nextRequestId = 50000U;
+    const auto a1 = runPublicQuickProfileCase(
+        *components.capture, content, painted, received,
+        QStringLiteral("public_static_a1"), false, lastStage, nextRequestId);
+    const auto dynamic = runPublicQuickProfileCase(
+        *components.capture, content, painted, received,
+        QStringLiteral("public_a_split_b_a"), true, lastStage, nextRequestId);
+    const auto a2 = runPublicQuickProfileCase(
+        *components.capture, content, painted, received,
+        QStringLiteral("public_static_a2"), false, lastStage, nextRequestId);
+    CHECK(events == 0);
+    components.capture->stop();
+
+    const double meanCpu = (a1.processCpuMs + a2.processCpuMs) / 2.0;
+    const double cpuSpread = meanCpu > 0.0
+        ? 100.0 * std::abs(a1.processCpuMs - a2.processCpuMs) / meanCpu
+        : -1.0;
+    const bool fullResolution = a1.observedWidth == requestedWidth
+        && a1.observedHeight == requestedHeight
+        && dynamic.observedWidth == requestedWidth
+        && dynamic.observedHeight == requestedHeight
+        && a2.observedWidth == requestedWidth
+        && a2.observedHeight == requestedHeight;
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_PHYSICAL_1080P"))
+        CHECK(fullResolution);
+    CHECK(a1.validFrames == measuredFrames
+          && dynamic.validFrames == measuredFrames
+          && a2.validFrames == measuredFrames);
+    CHECK(a1.processCpuMs > 0.0 && a2.processCpuMs > 0.0);
+    const bool stable = cpuSpread >= 0.0 && cpuSpread <= maxStableSpreadPercent;
+
+    QJsonObject document;
+    document.insert(QStringLiteral("schema"),
+                    QStringLiteral("hyremote-quick-public-profile/1"));
+    document.insert(QStringLiteral("context"),
+                    QStringLiteral("HOSTED_SYNTHETIC_NOT_DEVICE_OR_NATIVE_GAIN"));
+    document.insert(QStringLiteral("route"), QStringLiteral("public_grabToImage"));
+    document.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    document.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    document.insert(QStringLiteral("renderer"), backend);
+    document.insert(QStringLiteral("probe_mode"),
+                    qEnvironmentVariable("HYREMOTE_PUBLIC_PROFILE_PROBE_MODE",
+                                         QStringLiteral("unspecified")));
+    document.insert(QStringLiteral("requested_width"), requestedWidth);
+    document.insert(QStringLiteral("requested_height"), requestedHeight);
+    document.insert(QStringLiteral("actual_1080p"), fullResolution);
+    document.insert(QStringLiteral("warmup_per_case"), 8);
+    document.insert(QStringLiteral("measured_per_case"), measuredFrames);
+    document.insert(QStringLiteral("whole_process_cpu_not_gpu_time"), true);
+    document.insert(QStringLiteral("source_sha"),
+                    qEnvironmentVariable("GITHUB_SHA", QStringLiteral("unstamped")));
+    document.insert(QStringLiteral("public_a1_a2_cpu_spread_percent"), cpuSpread);
+    document.insert(QStringLiteral("stable_reference_max_spread_percent"),
+                    maxStableSpreadPercent);
+    document.insert(QStringLiteral("public_reference_stability"),
+                    stable ? QStringLiteral("STABLE")
+                           : QStringLiteral("UNSTABLE_BASELINE"));
+    document.insert(QStringLiteral("native_performance_qualification"),
+                    QStringLiteral("NOT_MEASURED_DO_NOT_PROMOTE"));
+    QJsonArray cases;
+    cases.append(publicProfileToJson(a1));
+    cases.append(publicProfileToJson(dynamic));
+    cases.append(publicProfileToJson(a2));
+    document.insert(QStringLiteral("cases"), cases);
+    const QByteArray bytes = QJsonDocument(document).toJson(QJsonDocument::Compact);
+    std::cout << "QUICK_PUBLIC_PROFILE_JSON=" << bytes.constData() << '\n';
+    const QString destination =
+        qEnvironmentVariable("HYREMOTE_QUICK_PUBLIC_PROFILE_FILE");
+    if (!destination.isEmpty()) {
+        QFile file(destination);
+        const bool opened = file.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        CHECK(opened);
+        if (opened) {
+            CHECK(file.write(bytes) == bytes.size());
+            file.write("\n", 1);
+        }
+    }
+    // An unstable hosted baseline is useful evidence, not a failing
+    // correctness test and NEVER permission to cherry-pick a better run.
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
+        runPublicQuickProfile();
+        HyRemote::detail::resetFactories();
+        return failures == 0 ? 0 : 1;
+    }
 
     testQuickRendererCapabilityRouting();
     testQuickFactoryAndOwnedFrame();
