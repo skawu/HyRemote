@@ -307,6 +307,133 @@ void testQuickFactoryAndOwnedFrame()
     components.capture->stop();
 }
 
+// Public Qt 5/6 API only: two Core requests queued before the same GUI event
+// turn must share ONE actual offscreen grab and its immutable CPU storage,
+// while each accepted request receives its own terminal identity and timing.
+// A later page transition must cause a NEW image, never replay the old batch.
+void testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> received;
+    int events = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &) { ++events; }));
+    content.setStage(0);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 0; }));
+
+    const auto firstTime = hyremote::Clock::now();
+    const auto secondTime = hyremote::Clock::now();
+    // Deliberately no processEvents between the two calls.
+    CHECK(components.capture->requestFrame({701U, firstTime}));
+    CHECK(components.capture->requestFrame({702U, secondTime}));
+    CHECK(received.empty());
+    CHECK(pumpUntil([&] { return received.size() == 2U; }));
+    CHECK(events == 0);
+    if (received.size() == 2U) {
+        CHECK(received[0].requestId && *received[0].requestId == 701U);
+        CHECK(received[1].requestId && *received[1].requestId == 702U);
+        CHECK(received[0].timing.requestTime
+              && *received[0].timing.requestTime == firstTime);
+        CHECK(received[1].timing.requestTime
+              && *received[1].timing.requestTime == secondTime);
+        CHECK(received[0].storage && received[1].storage);
+        CHECK(received[0].storage == received[1].storage);
+        CHECK(received[0].timing.completionTime == received[1].timing.completionTime);
+        CHECK(received[0].geometry.size.width == received[1].geometry.size.width);
+        CHECK(received[0].geometry.size.height == received[1].geometry.size.height);
+
+        if (received[0].storage) {
+            const auto plane = received[0].storage->mapRead(0);
+            CHECK(plane && plane->data);
+            if (plane && plane->data) {
+                const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                                   + (received[0].geometry.size.height / 2U) * plane->stride
+                                   + (received[0].geometry.size.width / 4U) * 4U;
+                CHECK(pixel[0] == 20U && pixel[1] == 60U && pixel[2] == 160U);
+            }
+        }
+    }
+
+    // A new, actually rendered scene after the prior batch has completed
+    // must NOT borrow its source image or report stale page A as page B.
+    content.setStage(2);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 2; }));
+    CHECK(components.capture->requestFrame({703U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return received.size() == 3U; }));
+    if (received.size() == 3U) {
+        CHECK(received[2].requestId && *received[2].requestId == 703U);
+        CHECK(received[2].storage != received[0].storage);
+        const auto plane = received[2].storage ? received[2].storage->mapRead(0)
+                                               : std::nullopt;
+        CHECK(plane && plane->data);
+        if (plane && plane->data) {
+            const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                               + (received[2].geometry.size.height / 2U) * plane->stride
+                               + (received[2].geometry.size.width / 4U) * 4U;
+            CHECK(pixel[0] == 225U && pixel[1] == 30U && pixel[2] == 40U);
+        }
+    }
+    CHECK(events == 0);
+    components.capture->stop();
+}
+
+// A queued grab from a stopped capture lifetime must not complete using the
+// handlers or framebuffer identity of a newly started lifetime.
+void testQuickQueuedRequestsDoNotCrossStopRestart()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(120, 80);
+    PaintedProbeItem content(window.contentItem());
+    content.setWidth(120);
+    content.setHeight(80);
+    window.show();
+    QCoreApplication::processEvents();
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    int oldCallbacks = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame) { ++oldCallbacks; },
+        [&](const hyremote::CaptureEvent &) { ++oldCallbacks; }));
+    CHECK(components.capture->requestFrame({710U, hyremote::Clock::now()}));
+    CHECK(components.capture->requestFrame({711U, hyremote::Clock::now()}));
+    components.capture->stop(); // no GUI pump: both belong to old generation
+
+    std::vector<hyremote::CaptureRequestId> newCallbacks;
+    int newEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (frame.requestId)
+                newCallbacks.push_back(*frame.requestId);
+        },
+        [&](const hyremote::CaptureEvent &) { ++newEvents; }));
+    CHECK(components.capture->requestFrame({712U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return newCallbacks.size() == 1U; }));
+    CHECK(oldCallbacks == 0);
+    CHECK(newCallbacks.size() == 1U && newCallbacks[0] == 712U);
+    CHECK(newEvents == 0);
+    components.capture->stop();
+}
+
 // #609/#790: each successful asynchronous Qt Quick grab used to leave a
 // two-second singleShot callback alive after the image was delivered. Verify
 // the replacement cancels its owned timeout promptly instead of maintaining
@@ -652,6 +779,8 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
 
     testQuickFactoryAndOwnedFrame();
+    testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels();
+    testQuickQueuedRequestsDoNotCrossStopRestart();
     testCompletedQuickGrabsCancelTimeouts();
     testStagedQuickSourceCaptureFollowsPaintedScene();
     testDestroyedQuickTargetReportsTargetLost();
