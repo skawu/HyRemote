@@ -2193,7 +2193,24 @@ void testPartialIncrementalAndResize()
         return;
 
     Recorder recorder;
-    auto transport = startTransport(port, recorder, makeFrame(256, 128, 0x101820U));
+    std::mutex observedMutex;
+    std::condition_variable observedChanged;
+    unsigned int observedRevisions = 0;
+    // A transport frame is queued asynchronously. Wait until the existing
+    // worker-side served-pixel observer has seen the resize before asserting
+    // the wire update, otherwise the request can legitimately race ahead of
+    // the new framebuffer and receive the previous dimensions.
+    auto transport = startTransport(
+        port, recorder, makeFrame(256, 128, 0x101820U), {}, {},
+        [&](bool changed) {
+            if (!changed)
+                return;
+            {
+                std::lock_guard<std::mutex> lock(observedMutex);
+                ++observedRevisions;
+            }
+            observedChanged.notify_all();
+        });
     CHECK(transport != nullptr);
     if (!transport)
         return;
@@ -2227,7 +2244,18 @@ void testPartialIncrementalAndResize()
           && rectangles.front().width == 64);
     CHECK(frame.get(200, 8) == 0x00aa66U);
 
+    unsigned int priorRevisions = 0;
+    {
+        std::lock_guard<std::mutex> lock(observedMutex);
+        priorRevisions = observedRevisions;
+    }
     transport->enqueueFrame(makeFrame(80, 60, 0x445566U));
+    {
+        std::unique_lock<std::mutex> lock(observedMutex);
+        CHECK(observedChanged.wait_for(
+            lock, std::chrono::seconds(3),
+            [&] { return observedRevisions > priorRevisions; }));
+    }
     CHECK(sendUpdateRequest(socket, true, 0, 0, 80, 60));
     CHECK(readFramebufferUpdate(socket, frame, rectangles));
     CHECK(rectangles.size() == 2U);
