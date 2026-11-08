@@ -1095,6 +1095,11 @@ void testProducerBackedSkipsUnusedZeroViewerWatermark()
 
     viewer.disconnectFromHost();
     CHECK(waitForDisconnected(viewer));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::ClientDisconnected;
+        });
+    }));
     const int before = decorated.load(std::memory_order_acquire);
     auto idleAgain = makeFrame(128, 128, 0x102030U);
     const std::weak_ptr<const hyremote::FrameStorage> afterLeave = idleAgain.storage;
