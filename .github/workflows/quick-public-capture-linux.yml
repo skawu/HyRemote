@@ -1,0 +1,65 @@
+name: Qt Quick public capture Linux qualification
+
+# Compile and execute the real Qt Quick CaptureSource on a second OS and
+# scenegraph backend. Windows/D3D11 CTest cannot prove cross-platform
+# queued-grab, lifetime and rendered-pixel semantics on its own.
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/quick-public-capture-linux.yml
+      - src/runtime/src/quick/**
+      - src/runtime/tests/test_quick_capture.cpp
+      - src/runtime/CMakeLists.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-quick-public-grab:
+    name: Linux x86_64 / Qt 6.8.3 / Quick software scenegraph
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache exact Linux Qt SDK
+        id: qt-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-linux-gcc64-quick-public-v1
+
+      - name: Install exact Qt 6.8.3 and Ninja
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if [ "${{ steps.qt-cache.outputs.cache-hit }}" != "true" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          test -f "$RUNNER_TEMP/Qt/6.8.3/gcc_64/lib/libQt6Quick.so"
+
+      - name: Install real Linux Qt QPA/Xvfb dependencies
+        shell: bash
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+
+      - name: Validate public Qt Quick capture on Linux software scenegraph
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./build.cmd test \
+            --mode=runtime \
+            --qt-prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64" \
+            --build-type=Release \
+            --build-dir=build-quick-public-linux \
+            --tests --run-tests --no-examples \
+            --xvfb --clean -j4 \
+            "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
+            "--test-filter=hyremote-quick-capture-test" \
+            "--env=QT_QUICK_BACKEND=software"
