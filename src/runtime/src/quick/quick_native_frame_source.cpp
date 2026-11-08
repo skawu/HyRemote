@@ -243,15 +243,6 @@ void QuickNativeFrameSource::stop() noexcept
     m_initialized = {};
     std::lock_guard<std::mutex> lock(m_state->sampleMutex);
     m_state->sample.reset();
-    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_HIT") == "1")
-        qWarning().nospace() << "P3_RHI_DIAGNOSTIC after_rendering="
-            << m_state->afterRenderingSignals.load(std::memory_order_relaxed)
-            << " no_rhi=" << m_state->noRhi.load(std::memory_order_relaxed)
-            << " no_swapchain=" << m_state->noSwapchain.load(std::memory_order_relaxed)
-            << " unsupported_backend=" << m_state->backendIneligible.load(std::memory_order_relaxed)
-            << " missing_transfer_source=" << m_state->transferSourceUnavailable.load(std::memory_order_relaxed)
-            << " eligible_render=" << m_state->eligibleRenders.load(std::memory_order_relaxed)
-            << " readbacks_completed=" << m_state->readbacksCompleted.load(std::memory_order_relaxed);
     qInfo().nospace()
         << "HyRemote P3 native pilot: eligible_render="
         << m_state->eligibleRenders.load(std::memory_order_relaxed)
