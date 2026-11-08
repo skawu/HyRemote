@@ -66,9 +66,7 @@ void pilotQtMessageHandler(QtMsgType type, const QMessageLogContext &context,
         if (ok)
             pilotNativeHits.fetch_add(hits, std::memory_order_relaxed);
     }
-    if (message.contains(QStringLiteral("HyRemote P3 native pilot:"))
-        || message.startsWith(QStringLiteral("P3_ADMISSION"))
-        || message.startsWith(QStringLiteral("P3_RHI_DIAGNOSTIC")))
+    if (message.contains(QStringLiteral("HyRemote P3 native pilot:")))
         std::cerr << "P3_TRACE=" << message.toStdString() << '\n';
     if (previousQtMessageHandler)
         previousQtMessageHandler(type, context, message);
@@ -257,10 +255,6 @@ protected:
 void testQuickFactoryAndOwnedFrame()
 {
     HyRemote::detail::resetFactories();
-    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_FALLBACK") == "1")
-        CHECK(pilotNativeHits.load(std::memory_order_acquire) == 0);
-    if (previousQtMessageHandler)
-        qInstallMessageHandler(previousQtMessageHandler);
 
     QQuickWindow window;
     window.resize(160, 90);
@@ -1242,9 +1236,6 @@ int main(int argc, char **argv)
     testStagedQuickSourceCaptureFollowsPaintedScene();
     testConcurrentQuickNativeRequestsKeepBothTerminals();
     testQuickCaptureProcessCostAba();
-    // Keep the #900 watchdog regression after the native-frame qualification
-    // path: it exercises 20 independent offscreen grabs and can leave Qt
-    // deferred render-loop work during the immediately following test.
     testCompletedQuickGrabsCancelTimeouts();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
@@ -1252,6 +1243,10 @@ int main(int argc, char **argv)
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 
     HyRemote::detail::resetFactories();
+    if (qEnvironmentVariable("HYREMOTE_EXPECT_NATIVE_FALLBACK") == "1")
+        CHECK(pilotNativeHits.load(std::memory_order_acquire) == 0);
+    if (previousQtMessageHandler)
+        qInstallMessageHandler(previousQtMessageHandler);
     if (failures != 0)
         std::cerr << failures << " Quick adapter checks failed\n";
     return failures == 0 ? 0 : 1;
