@@ -3790,6 +3790,101 @@ void runDeliveryProfile(const QString &outputPath)
               << outputPath.toStdString() << '\n';
 }
 
+// #789: A full-viewport incremental FBU usually consumes ALL accumulated
+// damage. With 64 scattered rectangles, the old commit path rebuilt/split
+// the pending vector for every one of 64 delivered rectangles, despite the
+// mathematically empty final difference. The fast path may only clear when
+// each pending rectangle is contained in a single delivered rectangle.
+void testFullyDeliveredSparseDamageHasNoPhantomPendingUpdates()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    using HyRemote::detail::RfbUpdateState;
+    constexpr RfbRect viewport{0, 0, 1920, 1080};
+    RfbUpdateState viewer;
+    std::vector<RfbRect> tiles;
+    tiles.reserve(HyRemote::detail::kRfbMaxDamageRects);
+    for (int row = 0; row < 8; ++row) {
+        for (int col = 0; col < 8; ++col) {
+            const RfbRect tile{col * 128, row * 120, 16, 16};
+            RfbDamageRegion delta;
+            delta.add(tile);
+            viewer.accumulate(delta);
+            tiles.push_back(tile);
+        }
+    }
+    CHECK(tiles.size() == HyRemote::detail::kRfbMaxDamageRects);
+    viewer.request(true, viewport);
+    const auto first = viewer.selectEligible();
+    CHECK(first.has_value());
+    if (!first)
+        return;
+    CHECK(first->size() == HyRemote::detail::kRfbMaxDamageRects);
+    for (const RfbRect &tile : tiles) {
+        CHECK(std::any_of(first->rects().begin(), first->rects().end(),
+                          [&tile](const RfbRect &r) { return r == tile; }));
+    }
+    viewer.commitDelivered(*first);
+    CHECK(!viewer.hasPendingDamage());
+    CHECK(!viewer.hasOutstandingRequest());
+    viewer.request(true, viewport);
+    CHECK(!viewer.selectEligible().has_value());
+    viewer.cancelRequest();
+
+    // A single larger transmitted rectangle is also sufficient to consume
+    // all pending fragments. It is NOT necessary to match the exact list.
+    RfbDamageRegion pending;
+    for (const RfbRect &tile : tiles)
+        pending.add(tile);
+    RfbDamageRegion sent;
+    sent.add(viewport);
+    pending.subtract(sent);
+    CHECK(pending.empty());
+}
+
+void testDeliveryCoverageIsConservativeForPartialAndOverlappingCuts()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    // Partial FBU: the left half is delivered, the right half MUST remain.
+    RfbDamageRegion pending;
+    pending.add({0, 0, 100, 100});
+    RfbDamageRegion sent;
+    sent.add({0, 0, 50, 100});
+    pending.subtract(sent);
+    CHECK(pending.size() == 1U);
+    if (pending.size() == 1U)
+        CHECK(pending.rects().front() == (RfbRect{50, 0, 50, 100}));
+    RfbDamageRegion second;
+    second.add({50, 0, 50, 100});
+    pending.subtract(second);
+    CHECK(pending.empty());
+
+    // A pending region may be covered by the UNION of two delivered
+    // overlapping rectangles while neither single rectangle contains it.
+    // This must take the exact multi-cut path, not falsely shortcut.
+    RfbDamageRegion unionCovered;
+    unionCovered.add({0, 0, 100, 100});
+    RfbDamageRegion overlappingCuts;
+    overlappingCuts.add({0, 0, 60, 100});
+    overlappingCuts.add({40, 0, 60, 100});
+    CHECK(overlappingCuts.size() == 2U);
+    unionCovered.subtract(overlappingCuts);
+    CHECK(unionCovered.empty());
+
+    // Multiple pending regions, but a delivery of only one of them: no
+    // collateral clear of a later independently owned change.
+    RfbDamageRegion twoRegions;
+    twoRegions.add({0, 0, 20, 20});
+    twoRegions.add({80, 80, 20, 20});
+    RfbDamageRegion oneSent;
+    oneSent.add({0, 0, 20, 20});
+    twoRegions.subtract(oneSent);
+    CHECK(twoRegions.size() == 1U);
+    if (twoRegions.size() == 1U)
+        CHECK(twoRegions.rects().front() == (RfbRect{80, 80, 20, 20}));
+}
+
 // An over-capacity sparse pending set may contain overlapping bounding boxes.
 // When a Viewer consumes the entire selected update, commitDelivered must
 // remove ALL pending change, not resurrect an earlier cut because an
@@ -4676,6 +4771,8 @@ int main(int argc, char **argv)
     testPartialIncrementalAndResize();
     testContinuousUpdatesAndRequestFallback();
     testPerViewerPendingDamageRemainsBounded();
+    testFullyDeliveredSparseDamageHasNoPhantomPendingUpdates();
+    testDeliveryCoverageIsConservativeForPartialAndOverlappingCuts();
     testSparseDeliveredCutsDoNotResurrectPendingDamage();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
