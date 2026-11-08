@@ -69,7 +69,7 @@ jobs:
               sh ./build.cmd test --mode=runtime \
                 --qt-prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64" \
                 --build-type=Release --build-dir=build-overlap \
-                --tests --no-examples --clean -j4 \
+                --tests --no-examples --xvfb --clean -j4 \
                 "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
                 "--cmake=HYREMOTE_ENABLE_CPU_PROBE=ON"
               test -x build-overlap/runtime/tests/hyremote-quick-overlap-profile
