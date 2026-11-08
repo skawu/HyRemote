@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 BEFORE = "b1699ddab5b83a73d06dfc5d479dcda2cd6d8e74"
@@ -27,20 +28,45 @@ EXPECTED_QT = ("6.8.3", "msvc2022_64")
 def run(argv, *, cwd=None, env=None, timeout=180, logfile=None):
     cmd = [str(p) for p in argv]
     print("RUN:", cmd[0], " ".join(cmd[1:4]), flush=True)
-    result = subprocess.run(
+    started = time.monotonic()
+    child = subprocess.Popen(
         cmd, cwd=cwd, env=env, text=True, encoding="utf-8", errors="replace",
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
-        check=False,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
+    try:
+        while True:
+            remaining = timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                # Never leave a silent detached MSVC/CMake descendant behind.
+                subprocess.run(["taskkill.exe", "/PID", str(child.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False)
+                child.kill() if child.poll() is None else None
+                output, _ = child.communicate(timeout=30)
+                if logfile is not None:
+                    Path(logfile).write_text(output, encoding="utf-8")
+                raise RuntimeError(f"{Path(cmd[0]).name}: timed out after {timeout}s; "
+                                   f"see {logfile or 'captured output'}")
+            try:
+                output, _ = child.communicate(timeout=min(5.0, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                print(f"PROGRESS command={Path(cmd[0]).name} "
+                      f"elapsed_s={time.monotonic()-started:.0f}", flush=True)
+    finally:
+        if child.poll() is None:
+            subprocess.run(["taskkill.exe", "/PID", str(child.pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           check=False)
     if logfile is not None:
-        Path(logfile).write_text(result.stdout, encoding="utf-8")
-    if result.returncode != 0:
-        tail = "\n".join(result.stdout.splitlines()[-18:])
+        Path(logfile).write_text(output, encoding="utf-8")
+    if child.returncode != 0:
+        tail = "\n".join(output.splitlines()[-18:])
         raise RuntimeError(
-            f"{Path(cmd[0]).name} exited {result.returncode}; "
+            f"{Path(cmd[0]).name} exited {child.returncode}; "
             f"see {logfile or 'captured output'}\n{tail}"
         )
-    return result.stdout.strip()
+    return output.strip()
 
 
 def require(ok, message):
