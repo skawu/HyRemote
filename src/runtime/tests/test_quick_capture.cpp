@@ -20,8 +20,16 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <ctime>
 #include <utility>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
+#include <windows.h>
+#elif defined(__linux__)
+#include <time.h>
+#endif
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -878,6 +886,38 @@ void testQueuedQuickInputIsDroppedWhenSinkIsDestroyed()
     CHECK(probe.mouseMoves == 0);
 }
 
+// This is a process CPU clock, not a stopwatch. MSVC std::clock() returns
+// elapsed wall time and would mislabel GUI event-loop waits as "CPU". Match
+// the rootless CPU probe's OS clocks; unsupported OS builds can run ordinary
+// Quick CTest but must not emit synthetic CPU qualification data.
+bool quickProfileProcessCpuNs(std::uint64_t &out) noexcept
+{
+#if defined(_WIN32)
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return false;
+    ULARGE_INTEGER kernelTicks{}, userTicks{};
+    kernelTicks.LowPart = kernel.dwLowDateTime;
+    kernelTicks.HighPart = kernel.dwHighDateTime;
+    userTicks.LowPart = user.dwLowDateTime;
+    userTicks.HighPart = user.dwHighDateTime;
+    out = (kernelTicks.QuadPart + userTicks.QuadPart) * 100ULL;
+    return true;
+#elif defined(__linux__)
+    timespec sample{};
+    if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &sample) != 0
+        || sample.tv_sec < 0 || sample.tv_nsec < 0
+        || sample.tv_nsec >= 1000000000L)
+        return false;
+    out = static_cast<std::uint64_t>(sample.tv_sec) * 1000000000ULL
+          + static_cast<std::uint64_t>(sample.tv_nsec);
+    return true;
+#else
+    (void)out;
+    return false; // no guessed CPU-time semantics for other OS toolchains
+#endif
+}
+
 // Advisory, opt-in production PUBLIC Qt Quick capture baseline. Never runs
 // as part of ordinary CTest: a hosted Xvfb/Mesa graphics environment cannot
 // establish release CPU benefit, especially not for RK3588 EGLFS or D3D11
@@ -944,13 +984,15 @@ PublicQuickProfileCase runPublicQuickProfileCase(
     result.name = std::move(name);
     std::vector<double> latencies;
     latencies.reserve(measured);
-    std::clock_t startCpu = 0;
+    std::uint64_t startCpuNs = 0;
+    bool cpuClockValid = false;
     Clock::time_point startWall{};
     bool started = false;
 
     for (int index = -warmup; index < measured; ++index) {
         if (index == 0) {
-            startCpu = std::clock();
+            cpuClockValid = quickProfileProcessCpuNs(startCpuNs);
+            CHECK(cpuClockValid);
             startWall = Clock::now();
             started = true;
         }
@@ -996,11 +1038,12 @@ PublicQuickProfileCase runPublicQuickProfileCase(
     }
 
     if (started) {
-        const auto cpuTicks = std::clock() - startCpu;
-        CHECK(startCpu != static_cast<std::clock_t>(-1));
-        CHECK(cpuTicks >= 0);
-        result.processCpuMs = cpuTicks >= 0
-                                  ? 1000.0 * static_cast<double>(cpuTicks) / CLOCKS_PER_SEC
+        std::uint64_t endCpuNs = 0;
+        const bool cpuValid = cpuClockValid && quickProfileProcessCpuNs(endCpuNs)
+                              && endCpuNs >= startCpuNs;
+        CHECK(cpuValid);
+        result.processCpuMs = cpuValid
+                                  ? static_cast<double>(endCpuNs - startCpuNs) / 1000000.0
                                   : 0.0;
         result.wallMs = std::chrono::duration<double, std::milli>(
                             Clock::now() - startWall).count();
