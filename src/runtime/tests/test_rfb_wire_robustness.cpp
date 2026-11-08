@@ -3840,6 +3840,81 @@ void testExactTileUnionPreventsSparseFullPageInflation()
     CHECK(diagonal.size() == 2U);
 }
 
+// #789: 65 fully DISJOINT 64x64 tiles spread across a 1080p page must
+// still fit the 64-region bound WITHOUT turning ~13% real changes into an
+// almost full-screen rectangle. #888's exact-edge unions cannot help here.
+// Use the actual last-frame RGBA comparison and the per-viewer delivery state,
+// rather than asserting on an artificial list of rectangles alone.
+void testDisjointSparseOverflowDoesNotInflateFullPage()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    constexpr std::uint32_t width = 1920U;
+    constexpr std::uint32_t height = 1080U;
+    constexpr int tile = 64;
+    constexpr std::uint64_t trueArea = 65ULL * 64ULL * 64ULL;
+    constexpr std::uint64_t maxCoalescedArea = trueArea + 64ULL * 64ULL;
+
+    std::vector<std::pair<hyremote::Rect, std::uint32_t>> patches;
+    std::vector<RfbRect> expected;
+    patches.reserve(65U);
+    expected.reserve(65U);
+    for (int row = 0; row < 5; ++row) {
+        for (int col = 0; col < 13; ++col) {
+            // Separate tile columns by one full unchanged tile, and rows
+            // by two. No pair shares a full edge; any coalescing is bounded.
+            const RfbRect rect{col * 128, row * 192, tile, tile};
+            expected.push_back(rect);
+            patches.push_back({{rect.x, rect.y, tile, tile}, 0xa91b43U});
+        }
+    }
+    CHECK(expected.size() == 65U);
+    const auto oldFrame = makeFrame(width, height, 0x112233U);
+    const auto newFrame = makeFrame(width, height, 0x112233U, patches);
+    CHECK(oldFrame.storage && newFrame.storage);
+    if (!oldFrame.storage || !newFrame.storage)
+        return;
+    const RfbDamageRegion changed =
+        HyRemote::detail::changedRfbTiles(&oldFrame, newFrame);
+    CHECK(changed.size() == HyRemote::detail::kRfbMaxDamageRects);
+
+    std::uint64_t transmittedArea = 0;
+    for (const auto &rect : changed.rects())
+        transmittedArea += static_cast<std::uint64_t>(rect.width) * rect.height;
+    CHECK(transmittedArea >= trueArea);
+    // Exactly one small-gap merge is enough. Old hard-bound fallback creates
+    // a ~1600x832 rectangle, ~5x this conservative upper bound.
+    CHECK(transmittedArea <= maxCoalescedArea);
+    CHECK(transmittedArea * 100U < static_cast<std::uint64_t>(width) * height * 25U);
+    for (const RfbRect &tileRect : expected) {
+        CHECK(std::any_of(changed.rects().begin(), changed.rects().end(),
+                          [&tileRect](const RfbRect &rect) {
+                              return HyRemote::detail::containsRfbRect(rect, tileRect);
+                          }));
+    }
+    const auto paint =
+        HyRemote::detail::coalesceRfbDamageForPaint(changed, width, height);
+    CHECK(paint.size() == HyRemote::detail::kRfbMaxDamageRects);
+
+    HyRemote::detail::RfbUpdateState viewer;
+    viewer.accumulate(changed);
+    viewer.request(true, {0, 0, static_cast<int>(width), static_cast<int>(height)});
+    const auto eligible = viewer.selectEligible();
+    CHECK(eligible.has_value());
+    if (!eligible)
+        return;
+    CHECK(eligible->size() == HyRemote::detail::kRfbMaxDamageRects);
+    for (const RfbRect &tileRect : expected) {
+        CHECK(std::any_of(eligible->rects().begin(), eligible->rects().end(),
+                          [&tileRect](const RfbRect &rect) {
+                              return HyRemote::detail::containsRfbRect(rect, tileRect);
+                          }));
+    }
+    viewer.commitDelivered(*eligible);
+    CHECK(!viewer.hasPendingDamage());
+    CHECK(!viewer.hasOutstandingRequest());
+}
+
 void testLargeDamageCoalescesForPaint()
 {
     HyRemote::detail::RfbDamageRegion large;
@@ -4530,6 +4605,7 @@ int main(int argc, char **argv)
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
     testExactTileUnionPreventsSparseFullPageInflation();
+    testDisjointSparseOverflowDoesNotInflateFullPage();
     testFullPageTransitionSingleWireRectangle();
     testStaticViewerCaptureDemandFeedback();
     testRfbFeedbackUsesActualServedPixels();
