@@ -54,6 +54,16 @@ int main(int argc, char **argv)
         burnCpuFor(std::chrono::milliseconds(60));
     }
     HYREMOTE_P1_BYTES(RfbCompare, 8192U);
+    HYREMOTE_P1_COUNT(QuickAcceptedRequests);
+    HYREMOTE_P1_COUNT(QuickAcceptedRequests);
+    HYREMOTE_P1_COUNT(QuickGuiBatches);
+    HYREMOTE_P1_COUNT(WatermarkReuse);
+    addQuickBackend(QuickGraphicsBackend::Software);
+    addQuickBackend(QuickGraphicsBackend::OpenGL);
+    {
+        HYREMOTE_P1_SCOPE(WatermarkCompose);
+        burnCpuFor(std::chrono::milliseconds(12));
+    }
 
     if (!check(threadCpuNs(afterThread), "thread clock failed after work")
         || !check(processCpuNs(afterProcess), "process clock failed after work")
@@ -66,10 +76,23 @@ int main(int argc, char **argv)
     std::string json;
     if (!check(static_cast<bool>(std::getline(stream, json)), "missing JSON snapshot"))
         return 6;
-    if (!check(json.find("\"process_cpu_valid\":true") != std::string::npos,
+    if (!check(json.find("\"schema\":2") != std::string::npos,
+               "diagnostic schema 2 marker missing")
+        || !check(json.find("\"process_cpu_valid\":true") != std::string::npos,
                "process CPU timestamp invalid")
         || !check(json.find("\"rfb_compare\":{\"calls\":1") != std::string::npos,
                   "stage scope not counted")
+        || !check(json.find("\"quick_accepted_requests\":{\"calls\":2") != std::string::npos,
+                  "two admitted Quick requests not counted")
+        || !check(json.find("\"quick_gui_batches\":{\"calls\":1") != std::string::npos,
+                  "one GUI queue batch not counted")
+        || !check(json.find("\"watermark_compose\":{\"calls\":1") != std::string::npos,
+                  "watermark CPU stage not counted")
+        || !check(json.find("\"watermark_reuse\":{\"calls\":1") != std::string::npos,
+                  "watermark cache hit not counted")
+        || !check(json.find("\"software\":1") != std::string::npos
+                  || json.find("\"opengl\":1") != std::string::npos,
+                  "public Qt scenegraph backend counts absent")
         || !check(json.find("\"bytes\":8192") != std::string::npos,
                   "byte counter not recorded")
         || !check(json.find("\"cpu_samples_missing\":0") != std::string::npos,
