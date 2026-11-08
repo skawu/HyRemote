@@ -54,6 +54,78 @@ int failures = 0;
 // A successful public-Qt grabToImage fallback MUST NOT be counted as a
 // successful passive QRhi source optimization.
 std::atomic<int> pilotNativeHits{0};
+std::atomic<int> pilotMeasuredNativeHits{0};
+
+struct PilotFallbackCounts
+{
+    int noFreshRender = 0;
+    int busy = 0;
+    int deadline = 0;
+    int rejectEpoch = 0;
+    int rejectSerial = 0;
+    int rejectAge = 0;
+    int rejectTarget = 0;
+    int rejectGeometry = 0;
+    int rejectPixelFormat = 0;
+};
+
+struct PilotFallbackAtomicCounts
+{
+    std::atomic<int> noFreshRender{0};
+    std::atomic<int> busy{0};
+    std::atomic<int> deadline{0};
+    std::atomic<int> rejectEpoch{0};
+    std::atomic<int> rejectSerial{0};
+    std::atomic<int> rejectAge{0};
+    std::atomic<int> rejectTarget{0};
+    std::atomic<int> rejectGeometry{0};
+    std::atomic<int> rejectPixelFormat{0};
+};
+PilotFallbackAtomicCounts pilotFallbackCounters;
+
+PilotFallbackCounts snapshotPilotFallback(const PilotFallbackAtomicCounts &counters)
+{
+    return {
+        counters.noFreshRender.load(std::memory_order_relaxed),
+        counters.busy.load(std::memory_order_relaxed),
+        counters.deadline.load(std::memory_order_relaxed),
+        counters.rejectEpoch.load(std::memory_order_relaxed),
+        counters.rejectSerial.load(std::memory_order_relaxed),
+        counters.rejectAge.load(std::memory_order_relaxed),
+        counters.rejectTarget.load(std::memory_order_relaxed),
+        counters.rejectGeometry.load(std::memory_order_relaxed),
+        counters.rejectPixelFormat.load(std::memory_order_relaxed)
+    };
+}
+
+PilotFallbackCounts pilotFallbackDelta(const PilotFallbackCounts &after,
+                                      const PilotFallbackCounts &before)
+{
+    return {
+        after.noFreshRender - before.noFreshRender,
+        after.busy - before.busy,
+        after.deadline - before.deadline,
+        after.rejectEpoch - before.rejectEpoch,
+        after.rejectSerial - before.rejectSerial,
+        after.rejectAge - before.rejectAge,
+        after.rejectTarget - before.rejectTarget,
+        after.rejectGeometry - before.rejectGeometry,
+        after.rejectPixelFormat - before.rejectPixelFormat
+    };
+}
+
+int parsePilotField(const QString &message, const char *key)
+{
+    const int index = message.indexOf(QString::fromLatin1(key));
+    if (index < 0)
+        return 0;
+    const QString tail = message.mid(index + static_cast<int>(std::strlen(key)));
+    const int end = tail.indexOf(QLatin1Char(' '));
+    bool ok = false;
+    const int parsed = (end < 0 ? tail : tail.left(end)).toInt(&ok);
+    return ok ? parsed : 0;
+}
+
 QtMessageHandler previousQtMessageHandler = nullptr;
 void pilotQtMessageHandler(QtMsgType type, const QMessageLogContext &context,
                            const QString &message)
@@ -65,6 +137,21 @@ void pilotQtMessageHandler(QtMsgType type, const QMessageLogContext &context,
         const int hits = message.mid(index + static_cast<int>(std::strlen(needle))).toInt(&ok);
         if (ok)
             pilotNativeHits.fetch_add(hits, std::memory_order_relaxed);
+    }
+    if (message.contains(QStringLiteral("native_measured_published=")))
+        pilotMeasuredNativeHits.fetch_add(
+            parsePilotField(message, "native_measured_published="),
+            std::memory_order_relaxed);
+    if (message.contains(QStringLiteral("fallback_no_recent_render="))) {
+        pilotFallbackCounters.noFreshRender.fetch_add(parsePilotField(message, "fallback_no_recent_render="), std::memory_order_relaxed);
+        pilotFallbackCounters.busy.fetch_add(parsePilotField(message, "fallback_pending_busy="), std::memory_order_relaxed);
+        pilotFallbackCounters.deadline.fetch_add(parsePilotField(message, "fallback_native_deadline="), std::memory_order_relaxed);
+        pilotFallbackCounters.rejectEpoch.fetch_add(parsePilotField(message, "rejected_epoch="), std::memory_order_relaxed);
+        pilotFallbackCounters.rejectSerial.fetch_add(parsePilotField(message, "rejected_serial="), std::memory_order_relaxed);
+        pilotFallbackCounters.rejectAge.fetch_add(parsePilotField(message, "rejected_age="), std::memory_order_relaxed);
+        pilotFallbackCounters.rejectTarget.fetch_add(parsePilotField(message, "rejected_target="), std::memory_order_relaxed);
+        pilotFallbackCounters.rejectGeometry.fetch_add(parsePilotField(message, "rejected_geometry="), std::memory_order_relaxed);
+        pilotFallbackCounters.rejectPixelFormat.fetch_add(parsePilotField(message, "rejected_pixel_format="), std::memory_order_relaxed);
     }
     if (message.contains(QStringLiteral("HyRemote P3 native pilot:")))
         std::cerr << "P3_TRACE=" << message.toStdString() << '\n';
@@ -718,7 +805,9 @@ struct PilotBenchResult
     double cpuMs = 0.0;
     double wallMs = 0.0;
     // Reported on capture->stop(), includes 12 warmup + 48 measured frames.
-    int actualNativeFrames = 0;
+    int actualNativeFrames = 0; // includes warmup
+    int measuredNativeFrames = 0; // exact request ids 12000..12047
+    PilotFallbackCounts fallback;
     int frames = 0;
     std::uint32_t physicalWidth = 0;
     std::uint32_t physicalHeight = 0;
@@ -819,6 +908,8 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
     // 48 frames rather than 12 reduces the effect of Windows process-CPU
     // 15.625 ms clock quantization. Still an advisory hosted-renderer sample.
     const int beforeHits = pilotNativeHits.load(std::memory_order_acquire);
+    const int beforeMeasuredHits = pilotMeasuredNativeHits.load(std::memory_order_acquire);
+    const PilotFallbackCounts beforeFallback = snapshotPilotFallback(pilotFallbackCounters);
     const double cpuStart = benchmarkProcessCpuMs();
     const auto wallStart = std::chrono::steady_clock::now();
     constexpr int requestedFrames = 48;
@@ -854,6 +945,10 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
     parts.capture->stop(); // emits the exact native publication count
     result.actualNativeFrames =
         pilotNativeHits.load(std::memory_order_acquire) - beforeHits;
+    result.measuredNativeFrames =
+        pilotMeasuredNativeHits.load(std::memory_order_acquire) - beforeMeasuredHits;
+    result.fallback = pilotFallbackDelta(snapshotPilotFallback(pilotFallbackCounters),
+                                         beforeFallback);
     result.ok = usablePixels && result.frames == requestedFrames
         && result.cpuMs >= 0.0 && result.wallMs > 0.0;
     std::cout << "BENCH_DIAGNOSTIC case=" << (nativeOptIn ? "native" : "public")
@@ -865,14 +960,24 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
               << " usable=" << (usablePixels ? 1 : 0)
               << " frames=" << result.frames
               << " cpu_ms=" << result.cpuMs << " wall_ms=" << result.wallMs
-              << " native_hits=" << result.actualNativeFrames
+              << " native_hits_including_warmup=" << result.actualNativeFrames
+              << " native_measured_hits=" << result.measuredNativeFrames
               << " p50_latency_ms=" << result.requestP50Ms
               << " p95_latency_ms=" << result.requestP95Ms << '\n';
     CHECK(result.ok);
-    if (nativeOptIn)
-        CHECK(result.actualNativeFrames == result.frames + warmupFrames);
-    else
+    // CaptureSource guarantees a callback per accepted request, not that
+    // every eligible native readback is usable before the bounded deadline.
+    // A fallback is valid for image correctness but INVALIDATES pure-native
+    // performance attribution. Never turn a fallback into a native hit.
+    CHECK(result.actualNativeFrames >= 0
+          && result.actualNativeFrames <= result.frames + warmupFrames);
+    CHECK(result.measuredNativeFrames >= 0
+          && result.measuredNativeFrames <= result.frames);
+    CHECK(result.measuredNativeFrames <= result.actualNativeFrames);
+    if (!nativeOptIn) {
         CHECK(result.actualNativeFrames == 0);
+        CHECK(result.measuredNativeFrames == 0);
+    }
     return result;
 }
 
@@ -917,6 +1022,8 @@ void testQuickCaptureProcessCostAba()
     double sumPublicA2Wall = 0.0;
     double maxBaselineSpread = 0.0;
     int nativeHitsIncludingWarmup = 0;
+    int nativeHitsMeasured = 0;
+    bool pureNativeCapture = true;
     bool resolutionMatched = true;
     bool exactRequestedResolution = true;
     const std::uint32_t commonWidth = publicA1.front().physicalWidth;
@@ -941,9 +1048,17 @@ void testQuickCaptureProcessCostAba()
         const double ratio = publicCpu > 0.0 ? nativeCpu / publicCpu : -1.0;
         const double spread = publicCpu > 0.0
             ? std::abs(a.cpuMs - z.cpuMs) / framesPerCase / publicCpu : -1.0;
-        // qInfo/native publication count is emitted on capture stop, so
-        // the 12 warmup native hits belong to the same total.
-        CHECK(n.actualNativeFrames == framesPerCase + 12);
+        // A real native-source request may time out and safely fall back to
+        // public grab. Correctness and performance qualification are different:
+        // never assert that all 12 warmups and 48 measured frames MUST be
+        // native; instead reject mixed cases for a pure-native CPU claim.
+        CHECK(n.actualNativeFrames >= 0
+              && n.actualNativeFrames <= framesPerCase + 12);
+        CHECK(n.measuredNativeFrames >= 0
+              && n.measuredNativeFrames <= framesPerCase);
+        pureNativeCapture = pureNativeCapture
+            && n.actualNativeFrames == framesPerCase + 12
+            && n.measuredNativeFrames == framesPerCase;
         CHECK(ratio > 0.0 && spread >= 0.0);
         for (const PilotBenchResult *sample : {&a, &n, &z}) {
             resolutionMatched = resolutionMatched
@@ -962,6 +1077,7 @@ void testQuickCaptureProcessCostAba()
         sumNativeWall += n.wallMs;
         sumPublicA2Wall += z.wallMs;
         nativeHitsIncludingWarmup += n.actualNativeFrames;
+        nativeHitsMeasured += n.measuredNativeFrames;
         output << "BENCH_CYCLE_" << (i + 1)
                << "_PUBLIC_A1_CPU_MS=" << a.cpuMs << '\n'
                << "BENCH_CYCLE_" << (i + 1)
@@ -972,6 +1088,22 @@ void testQuickCaptureProcessCostAba()
                << "_CPU_RATIO=" << ratio << '\n'
                << "BENCH_CYCLE_" << (i + 1)
                << "_BASELINE_SPREAD=" << spread << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_NATIVE_MEASURED_HITS=" << n.measuredNativeFrames << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_NATIVE_WARMUP_HITS=" << (n.actualNativeFrames - n.measuredNativeFrames) << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_NATIVE_PUBLIC_FALLBACK_MEASURED=" << (framesPerCase - n.measuredNativeFrames) << '\n'
+               << "BENCH_CYCLE_" << (i + 1)
+               << "_FALLBACK_noFreshRender=" << n.fallback.noFreshRender << '\n'
+               << "_FALLBACK_busy=" << n.fallback.busy << '\n'
+               << "_FALLBACK_deadline=" << n.fallback.deadline << '\n'
+               << "_FALLBACK_rejectEpoch=" << n.fallback.rejectEpoch << '\n'
+               << "_FALLBACK_rejectSerial=" << n.fallback.rejectSerial << '\n'
+               << "_FALLBACK_rejectAge=" << n.fallback.rejectAge << '\n'
+               << "_FALLBACK_rejectTarget=" << n.fallback.rejectTarget << '\n'
+               << "_FALLBACK_rejectGeometry=" << n.fallback.rejectGeometry << '\n'
+               << "_FALLBACK_rejectPixelFormat=" << n.fallback.rejectPixelFormat << '\n'
                << "BENCH_CYCLE_" << (i + 1)
                << "_PUBLIC_A1_P95_MS=" << a.requestP95Ms << '\n'
                << "BENCH_CYCLE_" << (i + 1)
@@ -999,8 +1131,11 @@ void testQuickCaptureProcessCostAba()
            << "NATIVE_TOTAL_WALL_MS=" << sumNativeWall << '\n'
            << "PUBLIC_A2_TOTAL_WALL_MS=" << sumPublicA2Wall << '\n'
            << "NATIVE_TOTAL_HITS_INCLUDING_WARMUP=" << nativeHitsIncludingWarmup << '\n'
-           << "NATIVE_MEASURED_HITS="
-           << (nativeHitsIncludingWarmup - repetitions * 12) << '\n'
+           << "NATIVE_MEASURED_HITS=" << nativeHitsMeasured << '\n'
+           << "NATIVE_WARMUP_HITS=" << (nativeHitsIncludingWarmup - nativeHitsMeasured) << '\n'
+           << "NATIVE_PUBLIC_FALLBACK_MEASURED="
+           << (repetitions * framesPerCase - nativeHitsMeasured) << '\n'
+           << "BENCH_NATIVE_PURITY=" << (pureNativeCapture ? "ALL_NATIVE" : "MIXED_WITH_PUBLIC_FALLBACK") << '\n'
            << "BENCH_RESOLUTION_MATCHED_ACROSS_CASES="
            << (resolutionMatched ? "YES" : "NO") << '\n'
            << "BENCH_ACTUAL_1080P="
@@ -1014,9 +1149,11 @@ void testQuickCaptureProcessCostAba()
                                           ? "BASELINE_WITHIN_15_PERCENT"
                                           : "UNSTABLE_BASELINE") << '\n'
            << "BENCH_PERFORMANCE_SIGNAL="
-           << (stableReference && consistentImprovement
-                   ? "REPEATED_HOSTED_GAIN_AT_OBSERVED_RESOLUTION_ONLY"
-                   : "INSUFFICIENT_FOR_GAIN_CLAIM") << '\n'
+           << (!pureNativeCapture
+                   ? "MIXED_WITH_PUBLIC_FALLBACK_NO_PURE_NATIVE_CLAIM"
+                   : stableReference && consistentImprovement
+                       ? "REPEATED_HOSTED_GAIN_AT_OBSERVED_RESOLUTION_ONLY"
+                       : "INSUFFICIENT_FOR_GAIN_CLAIM") << '\n'
            << "BENCH_QUALIFICATION=ADVISORY_NOT_FIELD_PROOF\n"
            << "BENCH_RELEASE_GATE=NOT_QUALIFIED\n";
 
