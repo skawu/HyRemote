@@ -14,6 +14,7 @@
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickItemGrabResult>
 #include <QtQuick/QQuickWindow>
+#include <QtQuick/QSGRendererInterface>
 
 #include <algorithm>
 #include <condition_variable>
@@ -33,6 +34,7 @@
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
+#include "quick/quick_capture_backend.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -128,6 +130,7 @@ public:
             state->batchDispatchScheduled = true;
         }
         state->pendingRequests.push_back(request);
+        HYREMOTE_P1_COUNT(QuickAcceptedRequests);
         return true;
     }
 
@@ -187,6 +190,7 @@ private:
         if (requests.empty())
             return;
 
+        HYREMOTE_P1_COUNT(QuickGuiBatches);
         auto batch = std::make_shared<GrabBatch>();
         batch->generation = generation;
         batch->requests = std::move(requests);
@@ -432,6 +436,23 @@ private:
         const QSize logicalSize(qMax(1, qCeil(window->width())),
                                 qMax(1, qCeil(window->height())));
         const auto grab = std::make_shared<GrabAttempt>();
+        // RendererInterface is Qt's public backend identity, not evidence
+        // of permission for a private GPU readback implementation. Public
+        // Qt capture is the selected route on software/GL/D3D/Vulkan/Metal,
+        // and also when the renderer has not yet reported an API.
+        const auto *renderer = window->rendererInterface();
+        const auto selection = selectQuickCaptureRoute(
+            renderer ? renderer->graphicsApi() : QSGRendererInterface::Unknown);
+        if (selection.route != QuickCaptureRoute::PublicQtGrabToImage)
+            return; // future new route must implement its own safety contract
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+        static_assert(static_cast<std::size_t>(QuickCaptureBackend::Other)
+                          == static_cast<std::size_t>(
+                              ::HyRemote::detail::p1perf::QuickGraphicsBackend::Other),
+                      "Qt backend diagnostic categories must have identical order");
+        HYREMOTE_P1_QUICK_BACKEND(static_cast<
+            ::HyRemote::detail::p1perf::QuickGraphicsBackend>(selection.backend));
+#endif
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
         grab->p1GrabStart = std::chrono::steady_clock::now();
 #endif
