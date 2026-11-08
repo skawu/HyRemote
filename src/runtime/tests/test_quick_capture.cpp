@@ -735,11 +735,17 @@ PilotBenchResult runPilotBenchCase(bool nativeOptIn)
     qputenv("HYREMOTE_QUICK_NATIVE_FRAME", nativeOptIn ? "1" : "0");
     HyRemote::detail::resetFactories();
     QQuickWindow window;
+    // A decorated 1920x1080 top-level can be clamped by the Windows taskbar
+    // and title bar even on a real 1080p monitor. Use borderless geometry
+    // for this synthetic experiment only; still measure/record the *actual*
+    // framebuffer rather than assuming the request was honored.
+    window.setFlags(window.flags() | Qt::FramelessWindowHint);
     QSurfaceFormat surface = window.format();
     surface.setAlphaBufferSize(8);
     window.setFormat(surface);
     window.setColor(Qt::transparent);
     window.resize(1920, 1080);
+    window.setPosition(0, 0);
     LightweightBenchItem content(window.contentItem());
     content.setWidth(1920);
     content.setHeight(1080);
