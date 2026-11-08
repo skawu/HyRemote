@@ -4009,6 +4009,94 @@ void testExactTileUnionPreventsSparseFullPageInflation()
     CHECK(diagonal.size() == 2U);
 }
 
+// #789/#567: compare the REAL RGB changes before applying lossy 64-rect
+// bounding. A 1080p checkerboard has >200 disjoint dirty tiles and covers
+// roughly half the screen: scan should collapse once, not re-run the greedy
+// 64-pair search after each tile. This is the same single-rect paint rule
+// already required for an actual large page transition.
+void testDenseChangedTilesAvoidSparseBoundingAndPaintAsOne()
+{
+    using HyRemote::detail::RfbRect;
+    constexpr std::uint32_t width = 1920U, height = 1080U;
+    std::vector<std::pair<hyremote::Rect, std::uint32_t>> patches;
+    std::uint64_t actualChangedTileArea = 0;
+    for (std::uint32_t row = 0; row < 17U; ++row) {
+        const std::uint32_t tileHeight = std::min<std::uint32_t>(64U, height - row * 64U);
+        for (std::uint32_t col = 0; col < 30U; ++col) {
+            if ((row + col) % 2U != 0U)
+                continue;
+            patches.push_back({{static_cast<std::int32_t>(col * 64U),
+                                static_cast<std::int32_t>(row * 64U),
+                                64U, tileHeight}, 0xD22C13U});
+            actualChangedTileArea += 64U * tileHeight;
+        }
+    }
+    CHECK(patches.size() > HyRemote::detail::kRfbMaxDamageRects * 3U);
+    CHECK(actualChangedTileArea * 4U >= static_cast<std::uint64_t>(width) * height);
+    const auto oldFrame = makeFrame(width, height, 0x102030U);
+    const auto newFrame = makeFrame(width, height, 0x102030U, patches);
+    CHECK(oldFrame.storage && newFrame.storage);
+    if (!oldFrame.storage || !newFrame.storage)
+        return;
+
+    const auto changed = HyRemote::detail::changedRfbTiles(&oldFrame, newFrame);
+    CHECK(changed.size() == 1U);
+    if (changed.size() == 1U)
+        CHECK(changed.rects().front() == (RfbRect{0, 0, 1920, 1080}));
+    HyRemote::detail::RfbUpdateState viewer;
+    viewer.accumulate(changed);
+    viewer.request(true, {0, 0, 1920, 1080});
+    const auto eligible = viewer.selectEligible();
+    CHECK(eligible.has_value());
+    if (eligible) {
+        CHECK(eligible->size() == 1U);
+        CHECK(eligible->rects().front() == (RfbRect{0, 0, 1920, 1080}));
+        viewer.commitDelivered(*eligible);
+        CHECK(!viewer.hasPendingDamage());
+    }
+}
+
+// Exact threshold, one tile below, and clipped far-edge tiles must retain
+// the original 64x64 RFB granularity. The large-paint decision uses the
+// ACTUAL changed tile area, not the sum of intermediate greedy boxes.
+void testChangedTileAreaThresholdAndClippedEdges()
+{
+    using HyRemote::detail::RfbRect;
+    using Patch = std::pair<hyremote::Rect, std::uint32_t>;
+    const auto old256 = makeFrame(256, 256, 0x123456U);
+    const std::vector<Patch> threeCorners = {
+        {{0, 0, 64, 64}, 0xE13223U},
+        {{192, 0, 64, 64}, 0xE13223U},
+        {{0, 192, 64, 64}, 0xE13223U}
+    };
+    const auto sparse = makeFrame(256, 256, 0x123456U, threeCorners);
+    const auto stillSparse = HyRemote::detail::changedRfbTiles(&old256, sparse);
+    CHECK(stillSparse.size() == 3U); // 18.75%, not a full-screen paint
+    if (stillSparse.size() == 3U) {
+        for (const auto &patch : threeCorners) {
+            const RfbRect expected{patch.first.x, patch.first.y, 64, 64};
+            CHECK(std::find(stillSparse.rects().begin(), stillSparse.rects().end(),
+                            expected) != stillSparse.rects().end());
+        }
+    }
+
+    auto fourCorners = threeCorners;
+    fourCorners.push_back({{192, 192, 64, 64}, 0xE13223U});
+    const auto quarter = makeFrame(256, 256, 0x123456U, fourCorners);
+    const auto large = HyRemote::detail::changedRfbTiles(&old256, quarter);
+    CHECK(large.size() == 1U); // exactly 25%, intentional paint collapse
+    if (large.size() == 1U)
+        CHECK(large.rects().front() == (RfbRect{0, 0, 256, 256}));
+
+    const auto oldEdge = makeFrame(130, 130, 0x123456U);
+    const auto newEdge = makeFrame(130, 130, 0x123456U,
+                                 std::vector<Patch>{{{128, 128, 2, 2}, 0xE13223U}});
+    const auto edgeDamage = HyRemote::detail::changedRfbTiles(&oldEdge, newEdge);
+    CHECK(edgeDamage.size() == 1U);
+    if (edgeDamage.size() == 1U)
+        CHECK(edgeDamage.rects().front() == (RfbRect{128, 128, 2, 2}));
+}
+
 // #789: 65 fully DISJOINT 64x64 tiles spread across a 1080p page must
 // still fit the 64-region bound WITHOUT turning ~13% real changes into an
 // almost full-screen rectangle. #888's exact-edge unions cannot help here.
@@ -4777,6 +4865,8 @@ int main(int argc, char **argv)
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
     testExactTileUnionPreventsSparseFullPageInflation();
+    testDenseChangedTilesAvoidSparseBoundingAndPaintAsOne();
+    testChangedTileAreaThresholdAndClippedEdges();
     testDisjointSparseOverflowDoesNotInflateFullPage();
     testFullPageTransitionSingleWireRectangle();
     testStaticViewerCaptureDemandFeedback();
