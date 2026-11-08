@@ -230,6 +230,19 @@ void packEncodedPixel(std::uint8_t *out,
     }
 }
 
+// Cursor pixels use the same RFB channel scaling/byte order, but their
+// payloads are tiny and retain the existing append-style framing.
+void appendEncodedPixel(QByteArray &out,
+                        std::uint8_t r,
+                        std::uint8_t g,
+                        std::uint8_t b,
+                        const PixelSpec &spec)
+{
+    std::uint8_t bytes[4]{};
+    packEncodedPixel(bytes, r, g, b, spec);
+    out.append(reinterpret_cast<const char *>(bytes), spec.bitsPerPixel / 8);
+}
+
 hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
 {
     using hyremote::KeyCode;
