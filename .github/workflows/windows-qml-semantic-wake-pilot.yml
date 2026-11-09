@@ -86,6 +86,17 @@ jobs:
           } finally {
             Pop-Location
           }
+          # The arm label is NOT evidence. Verify the actual CMakeCache value
+          # of the compiled Runtime and fail if build.cmd ignored the option.
+          $cache = Join-Path $tree 'build-semantic-wake-pilot/CMakeCache.txt'
+          if (!(Test-Path $cache)) { throw 'Missing CMake cache identity for installed package' }
+          $featureValue = @(Get-Content $cache | Where-Object {
+            $_ -match '^HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE:BOOL='
+          })
+          if ($featureValue.Count -ne 1 -or
+              $featureValue[0] -ne "HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE:BOOL=$arm") {
+            throw "Build configuration not proven: $($featureValue -join '; ') expected=$arm"
+          }
           $installed = Join-Path $tree 'build-semantic-wake-pilot/install'
           $exe = Join-Path $installed 'bin/hyremote-learning-03-quick.exe'
           $runtime = Join-Path $installed 'bin/HyRemoteRemoteAccess.dll'
@@ -99,6 +110,7 @@ jobs:
             source_sha = $sha
             feature_flag = 'HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE'
             arm = $arm
+            verified_cmakecache_option = $featureValue[0]
             experimental_arm_only = $true
             test_property = 'root.phase'
             no_generic_QML_scene_dirty_claim = $true
