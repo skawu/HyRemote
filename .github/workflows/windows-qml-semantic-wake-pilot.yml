@@ -1,0 +1,135 @@
+name: Qt Quick semantic source wake A-B (TEST ONLY; NOT shipping)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/windows-qml-semantic-wake-pilot.yml
+      - src/runtime/CMakeLists.txt
+      - src/runtime/src/access_instance.cpp
+      - src/runtime/src/detail/viewer_capture_demand.hpp
+      - src/runtime/tests/test_viewer_capture_demand.cpp
+      - tools/perf/fixtures/windows_dynamic_generic/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pilot-windows-qt:
+    name: Qt6.8.3 MSVC 2022 Generic / semantic source wake ${{ matrix.arm }} / build-only
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Restore exact Qt 6.8.3 MSVC Kit
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Install/verify source fixture and Qt 6.8.3 SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Exact Qt6.8.3 Quick kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          python -m py_compile tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Source-pinned two-arm fixture and full installed product build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sha -ne '${{ github.event.pull_request.head.sha || github.sha }}') {
+            throw "Check-out SHA mismatch: actual=$sha"
+          }
+          $arm = '${{ matrix.arm }}'
+          $tree = Join-Path $env:RUNNER_TEMP ('hyremote-source-wake-' + $arm)
+          git worktree add --detach $tree $sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C $tree rev-parse HEAD).Trim() -ne $sha) { throw 'Worktree SHA mismatch' }
+          $evidence = Join-Path $env:GITHUB_WORKSPACE ('semantic-wake/' + $arm)
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          python tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py --worktree $tree --fixture tools/perf/fixtures/windows_dynamic_generic/Main.qml --manifest (Join-Path $evidence 'fixture-identity.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $changes = @((git -C $tree diff --name-only))
+          if ($changes.Count -ne 2 -or
+              $changes -notcontains 'examples/learning/03-generic/quick-app/main.cpp' -or
+              $changes -notcontains 'examples/learning/03-generic/quick-app/Main.qml') {
+            throw "Unexpected tracked source patch, only Qt-only fixture files allowed: $($changes -join ',')"
+          }
+          Push-Location $tree
+          try {
+            & .\build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-semantic-wake-pilot --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE=$arm"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          # The arm label is NOT evidence. Verify the actual CMakeCache value
+          # of the compiled Runtime and fail if build.cmd ignored the option.
+          $cache = Join-Path $tree 'build-semantic-wake-pilot/CMakeCache.txt'
+          if (!(Test-Path $cache)) { throw 'Missing CMake cache identity for installed package' }
+          $featureValue = @(Get-Content $cache | Where-Object {
+            $_ -match '^HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE:BOOL='
+          })
+          if ($featureValue.Count -ne 1 -or
+              $featureValue[0] -ne "HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE:BOOL=$arm") {
+            throw "Build configuration not proven: $($featureValue -join '; ') expected=$arm"
+          }
+          $installed = Join-Path $tree 'build-semantic-wake-pilot/install'
+          $exe = Join-Path $installed 'bin/hyremote-learning-03-quick.exe'
+          $runtime = Join-Path $installed 'bin/HyRemoteRemoteAccess.dll'
+          $plugin = Join-Path $installed 'plugins/generic/qhyremote.dll'
+          foreach ($p in @($exe, $runtime, $plugin)) {
+            if (!(Test-Path $p)) { throw "Missing actual installed product component: $p" }
+          }
+          Copy-Item -Path $installed -Destination (Join-Path $evidence 'install') -Recurse -Force
+          @{
+            schema = 'hyremote-qml-semantic-wake-e2e-pilot/1'
+            source_sha = $sha
+            feature_flag = 'HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE'
+            arm = $arm
+            verified_cmakecache_option = $featureValue[0]
+            experimental_arm_only = $true
+            test_property = 'root.phase'
+            no_generic_QML_scene_dirty_claim = $true
+            qt = '6.8.3 MSVC2022_64 Release'
+            runtime_probe_ms = 250
+            fixture_only_changed_tracked_files = $changes
+            app_hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+            runtime_hash = (Get-FileHash $runtime -Algorithm SHA256).Hash
+            plugin_hash = (Get-FileHash $plugin -Algorithm SHA256).Hash
+            pre_run_real_viewer = 'NOT_TESTED'
+            full_product_B_admission = 'FAIL_PREVIOUS_CANDIDATE'
+            rk3588_handoff = 'BLOCKED'
+          } | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $evidence 'installed-identity.json') -Encoding utf8
+          Write-Host "SEMANTIC_WAKE_PILOT_BUILD=PASS SOURCE_SHA=$sha ARM=$arm"
+      - name: Publish strictly test-only complete installed package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-qml-root-phase-source-wake-${{ matrix.arm }}
+          path: semantic-wake/${{ matrix.arm }}/
+          if-no-files-found: error
+          retention-days: 14

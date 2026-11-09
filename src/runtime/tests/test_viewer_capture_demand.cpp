@@ -62,6 +62,31 @@ bool expectRemoteInputWakeFromStaticWait(Gate &gate)
                  "remote input did not wake the real blocked static capture");
 }
 
+// This is a SOURCE-owned invalidation, not the Qt grab/afterAnimating signal.
+// A timer set one hour into the future makes a successful capture wake
+// unambiguously notification-driven rather than a periodic probe.
+bool expectSourceInvalidationWakeFromStaticWait(Gate &gate)
+{
+    std::promise<void> waiting;
+    auto entered = waiting.get_future();
+    gate.armStaticWaitObserverForTest([&] { waiting.set_value(); });
+
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool reachedStaticWait = entered.wait_for(2s) == std::future_status::ready;
+    if (reachedStaticWait)
+        gate.noteSourceInvalidation();
+    else
+        gate.stop();
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    return check(reachedStaticWait && woke && result.get(),
+                 "source-owned change did not wake the dormant static capture");
+}
+
 void enterStaticGate(Gate &gate)
 {
     gate.start();
@@ -198,7 +223,55 @@ int main()
         return 12;
     gate.stop();
 
+    // Reset after previous tests. The source-change seam has no producer
+    // connection until a future, separately qualified experiment.
+    enterStaticGate(gate);
+    if (!expectSourceInvalidationWakeFromStaticWait(gate))
+        return 13;
+    gate.stop();
+
+    // A source change in 0-viewer mode must never trigger background captures.
+    // Only a real client connection can release this indefinite sleep.
+    gate.start();
+    gate.frameQueued(true);
+    gate.noteSourceInvalidation(); // no viewer, no implicit wake
+    if (!expectZeroViewerWake(
+            gate, [&] { gate.setViewerCount(1); }, true,
+            "source invalidation bypassed zero-viewer sleep or blocked reconnect"))
+        return 14;
+    gate.stop();
+
+    // Local scene change must NOT override transport backpressure. The
+    // downstream Viewer cannot consume an additional FBU until it drains.
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.waitForViewer(), "first Viewer backpressure escape unavailable"))
+        return 15;
+    std::promise<bool> remainedBlocked;
+    auto backpressured = remainedBlocked.get_future();
+    std::thread blockedSourceWaiter([&] {
+        remainedBlocked.set_value(gate.waitForViewer());
+    });
+    const bool enteredBlockedWait = backpressured.wait_for(40ms)
+                                    == std::future_status::timeout;
+    gate.noteSourceInvalidation();
+    const bool stayedBlocked = backpressured.wait_for(50ms)
+                               == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool finallyWoke = backpressured.wait_for(2s)
+                             == std::future_status::ready;
+    if (!finallyWoke)
+        gate.stop();
+    blockedSourceWaiter.join();
+    if (!check(enteredBlockedWait && stayedBlocked && finallyWoke
+               && backpressured.get(),
+               "source invalidation escaped existing transport backpressure"))
+        return 16;
+    gate.stop();
+
     std::cout << "PASS 250ms bounded probe, remote input prompt wake, "
-                 "disconnect/reconnect, delivery backpressure, no-demand freshness and stop\n";
+                 "disconnect/reconnect, delivery backpressure, no-demand freshness, source-only wake, backpressure and stop\n";
     return 0;
 }

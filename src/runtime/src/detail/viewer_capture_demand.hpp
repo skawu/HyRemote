@@ -125,6 +125,26 @@ public:
         m_changed.notify_all();
     }
 
+    // Explicit SOURCE-side semantic invalidation, never a Qt render-loop
+    // notification. Only a producer with knowledge of a real scene change may
+    // call this; do not wire QQuickWindow::afterAnimating/frameSwapped here:
+    // Windows #925 proved those fire for our own 250ms offscreen grabs.
+    //
+    // This private seam is deliberately UNWIRED in production until a
+    // platform-independent, source-owned notifier has passed correctness,
+    // lifetime and real-Viewer tests. It resets the idle suppression but
+    // must not override zero-viewer sleep or delivery backpressure.
+    void noteSourceInvalidation()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_stopped || m_viewers == 0)
+                return;
+            resetIdleLocked();
+        }
+        m_changed.notify_all();
+    }
+
     // A non-incremental RFB request explicitly asks for a full refresh.
     // Without this escape, successive full requests can be served from the
     // last cached source frame while an encoder/network-constrained viewer

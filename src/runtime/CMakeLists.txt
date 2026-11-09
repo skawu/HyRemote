@@ -178,6 +178,14 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
+# B=FAIL investigation only. NEVER enabled in shipped Runtime; this is
+# strictly the source-owned root.phase test fixture, not generic QML detection.
+option(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE
+    "TEST ONLY: QML root.phase semantic NOTIFY -> private ViewerCaptureDemand" OFF)
+if(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE AND NOT HYREMOTE_BUILD_QUICK_ADAPTER)
+    message(FATAL_ERROR "Quick semantic source wake pilot requires Quick adapter")
+endif()
+
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
 if(HYREMOTE_BUILD_QUICK_ADAPTER)
@@ -191,6 +199,12 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
+        if(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE=1)
+            message(WARNING
+                "TEST-ONLY QML root.phase semantic notify pilot is ON. NOT qualified for release or generic QML targets.")
+        endif()
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
     else()
