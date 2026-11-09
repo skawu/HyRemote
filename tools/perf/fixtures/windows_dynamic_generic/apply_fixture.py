@@ -30,9 +30,41 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     assert original_text.count(OLD_RESIZE) == 1, (
         "historical app main.cpp no longer has the expected 460x190 viewport"
     )
-    adjusted = original_text.replace(OLD_RESIZE, NEW_RESIZE).encode("utf-8")
+    # A C++ QTimer, not the Qt logging subsystem, produces an ASCII stage
+    # line on stdout after updating the QML property. std::endl flushes it so
+    # an independent Windows Viewer pixel observer can correlate UTC clocks.
+    import_line = "#include <QGuiApplication>"
+    assert original_text.count(import_line) == 1
+    altered = original_text.replace(
+        import_line,
+        import_line + "\n#include <QDateTime>",
+    )
+    show_line = "    view.show();"
+    assert altered.count(show_line) == 1
+    stage_driver = r'''
+    view.show();
+
+    int fixturePhase = 0;
+    const auto publishFixturePhase = [&] {
+        std::cout << "HYREMOTE_DYNAMIC_STAGE_JSON={\"phase\":" << fixturePhase
+                  << ",\"utc_ms\":" << QDateTime::currentMSecsSinceEpoch()
+                  << ",\"source\":\"QTimer_property_before_render\"}" << std::endl;
+    };
+    publishFixturePhase();
+    QTimer fixtureStageTimer;
+    QObject::connect(&fixtureStageTimer, &QTimer::timeout, &view, [&] {
+        fixturePhase = 1 - fixturePhase;
+        if (view.rootObject()) {
+            view.rootObject()->setProperty("phase", fixturePhase);
+            publishFixturePhase();
+        }
+    });
+    fixtureStageTimer.start(1200);
+'''.strip("\n")
+    altered = altered.replace(show_line, stage_driver)
+    adjusted = altered.replace(OLD_RESIZE, NEW_RESIZE).encode("utf-8")
     qml = fixture.read_bytes()
-    assert b"HYREMOTE_DYNAMIC_STAGE_JSON" in qml
+    assert b"phase" in qml and b"#173cdb" in qml and b"#e8263b" in qml
     assert b"1920" in qml and b"1080" in qml
     (app / "main.cpp").write_bytes(adjusted)
     (app / "Main.qml").write_bytes(qml)
