@@ -13,6 +13,7 @@ on:
       - tools/perf/prepare_windows_generic_pair.py
       - tools/perf/fixtures/windows_dynamic_generic/Main.qml
       - tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+      - tools/perf/observe_windows_viewer_pixels.py
   workflow_dispatch:
 
 permissions:
@@ -52,7 +53,7 @@ jobs:
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Exact Qt 6.8.3 Quick Kit missing' }
           "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          python -m py_compile tools/perf/prepare_quick_overlap_probe.py tools/perf/assess_quick_overlap.py tools/perf/run_quick_overlap_windows.py tools/perf/sample_windows_process_cpu.py tools/perf/prepare_windows_generic_pair.py tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+          python -m py_compile tools/perf/prepare_quick_overlap_probe.py tools/perf/assess_quick_overlap.py tools/perf/run_quick_overlap_windows.py tools/perf/sample_windows_process_cpu.py tools/perf/prepare_windows_generic_pair.py tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py tools/perf/observe_windows_viewer_pixels.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/perf/assess_quick_overlap.py --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
