@@ -110,7 +110,7 @@ jobs:
             app_sha256 = (Get-FileHash $app -Algorithm SHA256).Hash
             generic_plugins = $pluginHashes
             pin = 'One candidate source SHA plus exact app test fixture; one private constexpr is the ONLY difference between 100 and 250ms arms'
-            application = 'test-only 1080p solid A-B-A, 1200ms stage'
+            application = 'test-only 1080p solid A-B-A, 1200ms stage or --fixture-static for matched stationary CPU'
             ci_performance = 'NOT_MEASURED'
             real_d3d11 = 'NOT_RUN'
             real_vnc_viewer_p95 = 'NOT_RUN'
