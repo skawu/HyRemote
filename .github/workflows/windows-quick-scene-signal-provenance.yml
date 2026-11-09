@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/windows-quick-scene-signal-provenance.yml
       - tools/perf/prepare_windows_probe_tradeoff.py
+      - tools/perf/assess_quick_scene_signals.py
       - tools/perf/fixtures/windows_dynamic_generic/Main.qml
       - tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
   workflow_dispatch:
@@ -53,9 +54,11 @@ jobs:
           }
           "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          python -m py_compile tools/perf/prepare_windows_probe_tradeoff.py tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+          python -m py_compile tools/perf/prepare_windows_probe_tradeoff.py tools/perf/assess_quick_scene_signals.py tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/perf/prepare_windows_probe_tradeoff.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/assess_quick_scene_signals.py --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare fixed source and build one exact probe-interval variant
