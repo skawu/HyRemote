@@ -1,0 +1,128 @@
+name: Windows source-fixed Quick probe tradeoff (100ms vs 250ms, NOT site candidate)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/windows-quick-probe-tradeoff.yml
+      - tools/perf/prepare_windows_probe_tradeoff.py
+      - tools/perf/fixtures/windows_dynamic_generic/Main.qml
+      - tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-probe-variants:
+    name: Windows source-locked Qt6.8.3 / ${{ matrix.probe_ms }} / build-only
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        probe_ms: [100, 250]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Restore exact Qt 6.8.3 MSVC kit
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Validate Qt and verify source-patch tool syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            throw 'Qt6.8.3 MSVC2022_64 Quick DLL missing'
+          }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          python -m py_compile tools/perf/prepare_windows_probe_tradeoff.py tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/prepare_windows_probe_tradeoff.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Prepare fixed source and build one exact probe-interval variant
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = '5095d0bc3bb07966c03dad77296f6ec04a631adc'
+          $interval = [int]'${{ matrix.probe_ms }}'
+          $tree = Join-Path $env:RUNNER_TEMP ('hyremote-probe-' + $interval)
+          git worktree add --detach $tree $source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C $tree rev-parse HEAD).Trim() -ne $source) {
+            throw 'Fixed source SHA differs from requested candidate'
+          }
+          $evidence = Join-Path $env:GITHUB_WORKSPACE ('windows-probe-variant/' + $interval)
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          python tools/perf/prepare_windows_probe_tradeoff.py --probe-ms $interval --worktree $tree --fixture tools/perf/fixtures/windows_dynamic_generic/Main.qml --manifest (Join-Path $evidence 'source-patch-identity.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location $tree
+          try {
+            & .\build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-probe-tradeoff --no-tests --clean -j4
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $installed = Join-Path $tree 'build-probe-tradeoff/install'
+          $app = Join-Path $installed 'bin/hyremote-learning-03-quick.exe'
+          if (!(Test-Path $app)) { throw 'Missing real Qt Quick installed example' }
+          $generic = @(Get-ChildItem -Path $installed -Recurse -File -Filter '*hyremote*.dll' | Where-Object {
+            $_.FullName -match '[\\/]generic[\\/]'
+          })
+          if ($generic.Count -lt 1) { throw 'Missing compiled, installed Generic plugin' }
+          Copy-Item -Path $installed -Destination (Join-Path $evidence 'install') -Recurse -Force
+          $json = Get-Content (Join-Path $evidence 'source-patch-identity.json') -Raw | ConvertFrom-Json
+          if ($json.source_sha -ne $source -or $json.probe_constant_ms -ne $interval) {
+            throw 'Wrong probe constant/source identity'
+          }
+          $pluginHashes = @($generic | ForEach-Object {
+            @{
+              path = $_.FullName.Substring($installed.Length + 1).Replace('\', '/')
+              sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+            }
+          })
+          @{
+            schema = 'hyremote-windows-quick-probe-tradeoff-install/1'
+            parent_source_sha = $source
+            source_modified_in_temp_worktree_only = $true
+            probe_constant_ms = $interval
+            source_patch_identity_sha256 = (Get-FileHash (Join-Path $evidence 'source-patch-identity.json') -Algorithm SHA256).Hash
+            qt = '6.8.3 MSVC2022_64 Release'
+            app = 'install/bin/hyremote-learning-03-quick.exe'
+            app_sha256 = (Get-FileHash $app -Algorithm SHA256).Hash
+            generic_plugins = $pluginHashes
+            pin = 'One candidate source SHA plus exact app test fixture; one private constexpr is the ONLY difference between 100 and 250ms arms'
+            application = 'test-only 1080p solid A-B-A, 1200ms stage'
+            ci_performance = 'NOT_MEASURED'
+            real_d3d11 = 'NOT_RUN'
+            real_vnc_viewer_p95 = 'NOT_RUN'
+            site_handoff = 'BLOCKED'
+          } | ConvertTo-Json -Depth 7 | Out-File -FilePath (Join-Path $evidence 'installed-identity.json') -Encoding utf8
+          Write-Host "WINDOWS_PROBE_VARIANT_BUILT=PASS SOURCE_SHA=$source PROBE_MS=$interval"
+
+      - name: Upload two strictly attributable test-only complete installed packages
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: windows-quick-probe-${{ matrix.probe_ms }}-candidate-5095d0bc
+          path: windows-probe-variant/${{ matrix.probe_ms }}/
+          if-no-files-found: error
+          retention-days: 14
