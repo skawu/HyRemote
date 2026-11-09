@@ -78,6 +78,33 @@ def git(*args, cwd=None):
     return run(["git", *args], cwd=cwd, timeout=120)
 
 
+def tracked_diagnostic_changes(worktree: Path):
+    """Audit Git path bytes, never parse stderr CRLF warnings as filenames.
+
+    -z also avoids quoting Windows/non-ASCII paths. Diagnostics from Git
+    remain visible as stderr but do not become supposed modified paths.
+    """
+    cmd = ["git", "diff", "--name-only", "-z", "--no-ext-diff"]
+    result = subprocess.run(cmd, cwd=worktree, capture_output=True, check=False)
+    require(result.returncode == 0,
+            f"Git source-patch audit failed (exit {result.returncode}): "
+            f"{result.stderr.decode('utf-8', errors='replace')[-1000:]}")
+    paths = result.stdout.decode("utf-8", errors="strict").split("\0")
+    return set(x.replace("\\", "/") for x in paths if x)
+
+
+def untracked_diagnostic_changes(worktree: Path):
+    result = subprocess.run(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+        cwd=worktree, capture_output=True, check=False,
+    )
+    require(result.returncode == 0,
+            f"Git untracked-source audit failed (exit {result.returncode}): "
+            f"{result.stderr.decode('utf-8', errors='replace')[-1000:]}")
+    return set(x.replace("\\", "/") for x in
+               result.stdout.decode("utf-8", errors="strict").split("\0") if x)
+
+
 def environment_snapshot():
     user32 = ctypes.windll.user32
     width, height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
@@ -167,19 +194,27 @@ def main():
                              tree / "src/runtime/tests/test_quick_overlap_profile.cpp")
                 run([sys.executable, str(repo / "tools/perf/prepare_quick_overlap_probe.py"),
                      str(tree)], cwd=repo)
-                changed = set(git("diff", "--name-only", cwd=tree).splitlines())
+                changed = tracked_diagnostic_changes(tree)
                 expect = {
                     "src/runtime/src/detail/perf_probe.hpp",
                     "src/runtime/src/quick/quick_target.cpp",
                     "src/runtime/tests/CMakeLists.txt",
                 }
                 require(changed == expect, f"{label}: unexpected source patch {changed}")
+                untracked = untracked_diagnostic_changes(tree)
+                require(untracked == {"src/runtime/tests/test_quick_overlap_profile.cpp"},
+                        f"{label}: unexpected untracked files {untracked}")
                 require(
                     (tree / "src/runtime/tests/test_quick_overlap_profile.cpp").is_file(),
                     f"{label}: missing same source workload",
                 )
+                # Only build diagnostics against both exact historical SHAs.
+                # Full unrelated historical CTest suites are qualified separately;
+                # running them here would confound a Qt Quick A/B/A capture probe
+                # with independent release-readiness / RFB watermarks and MSVC
+                # nested-PDB test harness issues. build.cmd remains the authority.
                 run(
-                    ["cmd.exe", "/d", "/c", "build.cmd", "test", "--mode=runtime",
+                    ["cmd.exe", "/d", "/c", "build.cmd", "build", "--mode=runtime",
                      f"--qt-prefix={qt}", "--build-type=Release",
                      "--build-dir=build-overlap", "--tests", "--no-examples",
                      "--clean", "-j4",
