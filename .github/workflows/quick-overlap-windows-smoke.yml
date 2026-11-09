@@ -53,6 +53,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/perf/assess_quick_overlap.py --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/run_quick_overlap_windows.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build real Qt CaptureSource diagnostic against pinned after revision
         shell: pwsh
