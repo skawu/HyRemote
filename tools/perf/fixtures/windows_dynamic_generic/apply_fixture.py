@@ -37,7 +37,7 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     assert original_text.count(import_line) == 1
     altered = original_text.replace(
         import_line,
-        import_line + "\n#include <QDateTime>\n#include <QQuickItem>\n#include <QQuickWindow>\n#include <QJsonArray>\n#include <QJsonDocument>\n#include <QJsonObject>",
+        import_line + "\n#include <QDateTime>\n#include <QQuickItem>\n#include <QQuickWindow>\n#include <QJsonArray>\n#include <QJsonDocument>\n#include <QJsonObject>\n#include <QMetaObject>\n#include <QMetaMethod>\n#include <QMetaProperty>",
     )
     show_line = "    view.show();"
     assert altered.count(show_line) == 1
@@ -90,6 +90,69 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     sceneSignalReportTimer.start(1000);
     view.show();
 
+    // This observer is scoped deliberately to the fixture's app-owned
+    // source property. It never treats a render-loop notification as source
+    // change, and it does not call window.update() or HyRemote code.
+    // QMetaMethod -> zero-arg QTimer::start() is supported in Qt 5.15/6.8;
+    // the Qt 6.10 QMetaMethod-to-lambda overload is NOT used.
+    QQuickItem *sourceRoot = view.rootObject();
+    if (!sourceRoot) {
+        std::cerr << "PROPERTY_NOTIFY_PROBE=BLOCKED_NO_ROOT" << std::endl;
+        return 72;
+    }
+    const QMetaObject *sourceMeta = sourceRoot->metaObject();
+    const int propertyIndex = sourceMeta->indexOfProperty("phase");
+    if (propertyIndex < 0 || !sourceMeta->property(propertyIndex).hasNotifySignal()) {
+        std::cerr << "PROPERTY_NOTIFY_PROBE=BLOCKED_NO_PHASE_NOTIFY" << std::endl;
+        return 73;
+    }
+    const QMetaProperty sourcePhase = sourceMeta->property(propertyIndex);
+    QTimer sourceNotifyCoalescer;
+    sourceNotifyCoalescer.setSingleShot(true);
+    sourceNotifyCoalescer.setInterval(0);
+    const int startSlotIndex = sourceNotifyCoalescer.metaObject()->indexOfSlot("start()");
+    if (startSlotIndex < 0) {
+        std::cerr << "PROPERTY_NOTIFY_PROBE=BLOCKED_TIMER_META_SLOT" << std::endl;
+        return 74;
+    }
+    const QMetaMethod startSlot = sourceNotifyCoalescer.metaObject()->method(startSlotIndex);
+    const QMetaObject::Connection notifyConnection =
+        QObject::connect(sourceRoot, sourcePhase.notifySignal(),
+                         &sourceNotifyCoalescer, startSlot, Qt::AutoConnection);
+    if (!notifyConnection) {
+        std::cerr << "PROPERTY_NOTIFY_PROBE=BLOCKED_META_CONNECT" << std::endl;
+        return 75;
+    }
+    QJsonArray phaseSourceNotifyStamps;
+    quint64 phaseNotifyOverflow = 0;
+    QObject::connect(&sourceNotifyCoalescer, &QTimer::timeout, &view, [&] {
+        if (phaseSourceNotifyStamps.size() < 256)
+            phaseSourceNotifyStamps.append(QDateTime::currentMSecsSinceEpoch());
+        else
+            ++phaseNotifyOverflow;
+    });
+    QTimer phaseNotifyReportTimer;
+    QObject::connect(&phaseNotifyReportTimer, &QTimer::timeout, &view, [&] {
+        const QJsonObject row{
+            {"utc_ms", QDateTime::currentMSecsSinceEpoch()},
+            {"monitored_qml_property", "root.phase"},
+            {"notify_signal_signature",
+                QString::fromLatin1(sourcePhase.notifySignal().methodSignature())},
+            {"phase_notify_1s", phaseSourceNotifyStamps.size()
+                                + static_cast<int>(phaseNotifyOverflow)},
+            {"phase_notify_utc_ms", phaseSourceNotifyStamps},
+            {"phase_notify_overflow", static_cast<double>(phaseNotifyOverflow)},
+            {"not_a_general_QML_scene_dirty_detector", true},
+        };
+        std::cout << "HYREMOTE_QML_PROPERTY_NOTIFIES_JSON="
+                  << QJsonDocument(row).toJson(QJsonDocument::Compact).toStdString()
+                  << std::endl;
+        phaseSourceNotifyStamps = QJsonArray{};
+        phaseNotifyOverflow = 0;
+    });
+    phaseNotifyReportTimer.start(1000);
+    std::cout << "PROPERTY_NOTIFY_PROBE=CONNECTED_ROOT_PHASE" << std::endl;
+
     int fixturePhase = 0;
     const auto publishFixturePhase = [&] {
         std::cout << "HYREMOTE_DYNAMIC_STAGE_JSON={\"phase\":" << fixturePhase
@@ -141,6 +204,8 @@ def patch(tree: Path, fixture: Path, manifest: Path):
         "static_mode_switch": "--fixture-static",
         "signal_logging": "HYREMOTE_QUICK_SCENE_SIGNALS_JSON bounded 1s batches with UTC ms stamps and overflow on original main QQuickWindow",
         "diagnostic_does_not_trigger_capture": True,
+        "property_probe": "QMetaProperty root.phase notifySignal -> QTimer.start() 0ms coalescer; no capture and no Qt6.10-only dynamic lambda",
+        "property_logging": "HYREMOTE_QML_PROPERTY_NOTIFIES_JSON per-second UTC-millisecond stamps",
         "viewer_paint_not_measured_by_fixture": True,
     }
     manifest.parent.mkdir(parents=True, exist_ok=True)
