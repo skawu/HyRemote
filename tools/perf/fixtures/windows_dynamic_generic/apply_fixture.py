@@ -37,7 +37,7 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     assert original_text.count(import_line) == 1
     altered = original_text.replace(
         import_line,
-        import_line + "\n#include <QDateTime>\n#include <QQuickItem>\n#include <QQuickWindow>",
+        import_line + "\n#include <QDateTime>\n#include <QQuickItem>\n#include <QQuickWindow>\n#include <QJsonArray>\n#include <QJsonDocument>\n#include <QJsonObject>",
     )
     show_line = "    view.show();"
     assert altered.count(show_line) == 1
@@ -45,24 +45,47 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     // Diagnostic ONLY: monitor Qt's public QQuickWindow render-loop signals.
     // Neither callback makes a capture request, calls update(), or affects
     // Runtime's private ViewerCaptureDemand. Record only 1s aggregate counts.
-    quint64 afterAnimatingCount = 0;
-    quint64 frameSwappedCount = 0;
+    // Retain source-correlatable per-event UTC stamps in bounded 1-second
+    // batches, not per-frame stdout (which itself can disturb scene timing).
+    // Counts include overflow so a hot signal cannot silently masquerade as
+    // a quiet signal just because the in-memory array reached its bound.
+    QJsonArray afterAnimatingStamps;
+    QJsonArray frameSwappedStamps;
+    quint64 afterAnimatingOverflow = 0;
+    quint64 frameSwappedOverflow = 0;
     QObject::connect(&view, &QQuickWindow::afterAnimating, &view, [&] {
-        ++afterAnimatingCount; // Qt documents GUI-thread delivery
+        if (afterAnimatingStamps.size() < 256)
+            afterAnimatingStamps.append(QDateTime::currentMSecsSinceEpoch());
+        else
+            ++afterAnimatingOverflow;
     }, Qt::AutoConnection);
     QObject::connect(&view, &QQuickWindow::frameSwapped, &view, [&] {
-        ++frameSwappedCount; // render loop may deliver from other thread
+        if (frameSwappedStamps.size() < 256)
+            frameSwappedStamps.append(QDateTime::currentMSecsSinceEpoch());
+        else
+            ++frameSwappedOverflow;
     }, Qt::AutoConnection);
     QTimer sceneSignalReportTimer;
     QObject::connect(&sceneSignalReportTimer, &QTimer::timeout, &view, [&] {
-        std::cout << "HYREMOTE_QUICK_SCENE_SIGNALS_JSON={\"utc_ms\":"
-                  << QDateTime::currentMSecsSinceEpoch()
-                  << ",\"after_animating_1s\":" << afterAnimatingCount
-                  << ",\"frame_swapped_1s\":" << frameSwappedCount
-                  << ",\"signal_kind\":\"main_visible_QQuickWindow_not_offscreen_grab\"}"
+        const QJsonObject record{
+            {"utc_ms", QDateTime::currentMSecsSinceEpoch()},
+            {"after_animating_1s", afterAnimatingStamps.size()
+                                 + static_cast<int>(afterAnimatingOverflow)},
+            {"frame_swapped_1s", frameSwappedStamps.size()
+                               + static_cast<int>(frameSwappedOverflow)},
+            {"after_animating_utc_ms", afterAnimatingStamps},
+            {"frame_swapped_utc_ms", frameSwappedStamps},
+            {"after_animating_overflow", static_cast<double>(afterAnimatingOverflow)},
+            {"frame_swapped_overflow", static_cast<double>(frameSwappedOverflow)},
+            {"signal_kind", "passive_main_visible_QQuickWindow"},
+        };
+        std::cout << "HYREMOTE_QUICK_SCENE_SIGNALS_JSON="
+                  << QJsonDocument(record).toJson(QJsonDocument::Compact).toStdString()
                   << std::endl;
-        afterAnimatingCount = 0;
-        frameSwappedCount = 0;
+        afterAnimatingStamps = QJsonArray{};
+        frameSwappedStamps = QJsonArray{};
+        afterAnimatingOverflow = 0;
+        frameSwappedOverflow = 0;
     });
     sceneSignalReportTimer.start(1000);
     view.show();
@@ -116,7 +139,7 @@ def patch(tree: Path, fixture: Path, manifest: Path):
         "framebuffer": [1920, 1080],
         "stage_interval_ms": 1200,
         "static_mode_switch": "--fixture-static",
-        "signal_logging": "HYREMOTE_QUICK_SCENE_SIGNALS_JSON one-second counts on original main QQuickWindow",
+        "signal_logging": "HYREMOTE_QUICK_SCENE_SIGNALS_JSON bounded 1s batches with UTC ms stamps and overflow on original main QQuickWindow",
         "diagnostic_does_not_trigger_capture": True,
         "viewer_paint_not_measured_by_fixture": True,
     }
