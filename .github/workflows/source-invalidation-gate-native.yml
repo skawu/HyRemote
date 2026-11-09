@@ -31,7 +31,7 @@ jobs:
           mkdir -p build-gate-native
           g++ -std=c++17 -pthread -O2 -Wall -Wextra -Werror \
             -DHYREMOTE_VIEWER_DEMAND_TEST_HOOK=1 \
-            -Isrc/runtime/src `
+            -Isrc/runtime/src \
             src/runtime/tests/test_viewer_capture_demand.cpp \
             -o build-gate-native/test-viewer-capture-demand
           ./build-gate-native/test-viewer-capture-demand
@@ -48,7 +48,7 @@ jobs:
           New-Item -ItemType Directory -Path build-gate-native -Force | Out-Null
           & cl.exe /nologo /std:c++17 /EHsc /W4 /WX /O2 `
             /DHYREMOTE_VIEWER_DEMAND_TEST_HOOK=1 `
-            /Isrc/runtime/src \
+            /Isrc/runtime/src `
             src/runtime/tests/test_viewer_capture_demand.cpp `
             /Febuild-gate-native/test-viewer-capture-demand.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
