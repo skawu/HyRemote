@@ -150,6 +150,11 @@ jobs:
             'examples/learning/03-generic/quick-app/main.cpp' = '750d44a22610ef3b463da90b8927d0acd9fabfc1'
             'examples/learning/03-generic/quick-app/Main.qml' = '3b7d504ef6dd67eeb114cb53245b507573cf3fd7'
             'examples/learning/03-generic/quick-app/CMakeLists.txt' = 'd85454eddbda9ea21952382607e6806d14b7ec88'
+            'examples/hyremote_branding.cpp' = '6a9451007e9127090c19198394434c075720c5f6'
+            'logo/hyremote-branding.qrc' = 'efa696fdb3d28a1589950049bce4c58023064b8d'
+            'logo/huayan-logo-single.png' = 'c92958abf1b8301957e790aa769f5a3d5eca9c2c'
+            'logo/hyremote-app-icon.rc' = 'e2fac482056641eb76e549bc1afadda8cd5a1d77'
+            'logo/hyremote-app.ico' = '61368523b5bebb481abfb9245f45c99755cd156f'
           }
           foreach ($item in $appSourceBlobs.GetEnumerator()) {
             $actual = (git -C $tree rev-parse "HEAD:$($item.Key)").Trim()
@@ -185,7 +190,7 @@ jobs:
             source_sha = $sha
             qt_kit = 'Qt 6.8.3 MSVC2022_64'
             build_type = 'Release'
-            generic_route = 'Transparent generic QPA plugin; native windows platform preserved'
+            generic_route = 'Qt Generic plugin; native windows platform preserved (not Transparent QPA proxy)'
             app_executable = 'install/bin/hyremote-learning-03-quick.exe'
             app_sha256 = $appHash
             app_source_git_blobs = $appSourceBlobs
