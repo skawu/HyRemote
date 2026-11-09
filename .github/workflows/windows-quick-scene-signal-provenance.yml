@@ -103,7 +103,7 @@ jobs:
             }
           })
           @{
-            schema = 'hyremote-windows-quick-probe-tradeoff-install/1'
+            schema = 'hyremote-windows-quick-signal-provenance-install/1'
             parent_source_sha = $source
             source_modified_in_temp_worktree_only = $true
             probe_constant_ms = $interval
@@ -119,13 +119,13 @@ jobs:
             real_vnc_viewer_p95 = 'NOT_RUN'
             site_handoff = 'BLOCKED'
           } | ConvertTo-Json -Depth 7 | Out-File -FilePath (Join-Path $evidence 'installed-identity.json') -Encoding utf8
-          Write-Host "WINDOWS_PROBE_VARIANT_BUILT=PASS SOURCE_SHA=$source PROBE_MS=$interval"
+          Write-Host "WINDOWS_QUICK_SIGNAL_FIXTURE_BUILT=PASS SOURCE_SHA=$source PROBE_MS=$interval"
 
-      - name: Upload two strictly attributable test-only complete installed packages
+      - name: Upload one passive-Qt-signal test-only full installation package
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: windows-quick-probe-${{ matrix.probe_ms }}-candidate-5095d0bc
+          name: windows-quick-signal-provenance-250ms-candidate-5095d0bc
           path: windows-probe-variant/${{ matrix.probe_ms }}/
           if-no-files-found: error
           retention-days: 14
