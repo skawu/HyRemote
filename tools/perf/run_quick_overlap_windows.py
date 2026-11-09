@@ -270,7 +270,13 @@ def main():
                             f"{label}: expected exactly one benchmark exe, got {len(binaries)}")
                     env = dict(os.environ)
                     env.pop("QT_QUICK_BACKEND", None)
-                    env["PATH"] = str(qt / "bin") + os.pathsep + env.get("PATH", "")
+                    # HyRemote Runtime is a shared DLL in the build tree.
+                    # A local Release exe cannot resolve it from only Qt/bin:
+                    # this diagnostic executes before installation/deployment.
+                    runtime_bin = tree / "build-overlap" / "runtime"
+                    require(runtime_bin.is_dir(), f"{label}: Runtime build DLL directory missing")
+                    env["PATH"] = (str(runtime_bin) + os.pathsep
+                                   + str(qt / "bin") + os.pathsep + env.get("PATH", ""))
                     env["QT_QPA_PLATFORM"] = "windows"
                     env["QSG_RHI_BACKEND"] = "d3d11"
                     env["HYREMOTE_QUICK_OVERLAP_BACKEND"] = "d3d11"
@@ -292,7 +298,12 @@ def main():
                  "--dir", str(out), "--backends", "d3d11"],
                 cwd=repo, timeout=60, logfile=out / "assessment.log")
             print(f"WINDOWS_D3D11_A_B_A=MEASURED\nEVIDENCE={out}", flush=True)
-            print((out / "assessment.log").read_text(encoding="utf-8"), flush=True)
+            # JSON/probe files are the authoritative UTF-8 outputs. Avoid
+            # Windows CP936/GBK console crashes when displaying Unicode text:
+            # ASCII with backslash escapes is deterministic and lossless.
+            assessment_text = (out / "assessment.log").read_text(encoding="utf-8")
+            print(assessment_text.encode("ascii", errors="backslashreplace").decode("ascii"),
+                  flush=True)
         finally:
             for label, tree in reversed(list(trees.items())):
                 if tree.exists():
