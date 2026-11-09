@@ -1,7 +1,7 @@
-// Test-only 1920x1080 full-scene A -> B -> A workload for Windows Generic Qt Quick.
-// Only the application fixture changes. HyRemote product at each source SHA remains untouched.
-// Both historical versions consume these EXACT SAME bytes. No animations, partial repaint,
-// gradients or intentionally split-screen phases: mixed colors in the Viewer are defects.
+// Test-only 1920x1080 full-scene A-B-A workload for Windows Generic Qt Quick.
+// The identical fixture overlays each pinned historical app; product Runtime is NOT edited.
+// A and B each paint one SOLID color across the entire window. Half-red/half-blue
+// on the physical Viewer screen is not an intentional intermediate page.
 import QtQuick
 
 Rectangle {
@@ -11,30 +11,9 @@ Rectangle {
     property int phase: 0
     color: phase === 0 ? "#173cdb" : "#e8263b"
 
-    function emitStage() {
-        // Host application clock; Qt scene rendering/public capture happens later.
-        // This is the source-change timestamp, NOT Viewer presentation time.
-        console.log("HYREMOTE_DYNAMIC_STAGE_JSON=" + JSON.stringify({
-            phase: phase,
-            utc_ms: Date.now(),
-            scene: "full-screen-solid",
-            pixels: "1920x1080",
-            source_timestamp_kind: "QML_TIMER_NOT_RENDER_OR_VIEWER"
-        }))
-    }
-
-    Timer {
-        interval: 1200
-        repeat: true
-        running: true
-        onTriggered: {
-            root.phase = 1 - root.phase
-            root.emitStage()
-        }
-    }
-
-    Component.onCompleted: emitStage()
-
+    // The paired fixture C++ main.cpp sets "phase" every 1200ms and writes
+    // an unbuffered HYREMOTE_DYNAMIC_STAGE_JSON line to stdout with UTC ms.
+    // It timestamps the source change before Qt render/capture, not Viewer paint.
     Rectangle {
         anchors.centerIn: parent
         width: 820
