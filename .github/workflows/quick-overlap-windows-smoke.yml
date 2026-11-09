@@ -1,4 +1,4 @@
-name: Windows Qt 6.8.3 diagnostic compile and CTest (NOT physical qualification)
+name: Windows Qt 6.8.3 diagnostics and reference package build (NOT physical qualification)
 
 on:
   pull_request:
@@ -164,7 +164,7 @@ jobs:
           }
           Push-Location $tree
           try {
-            & .\build.cmd install --integrations=generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-reference-pair --no-tests --clean -j4
+            & .\build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-reference-pair --no-tests --clean -j4
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
@@ -190,6 +190,7 @@ jobs:
             source_sha = $sha
             qt_kit = 'Qt 6.8.3 MSVC2022_64'
             build_type = 'Release'
+            built_frontends = 'cpp,generic (historical C++ learning examples require the C++ facade)'
             generic_route = 'Qt Generic plugin; native windows platform preserved (not Transparent QPA proxy)'
             app_executable = 'install/bin/hyremote-learning-03-quick.exe'
             app_sha256 = $appHash
