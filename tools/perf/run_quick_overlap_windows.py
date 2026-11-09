@@ -173,7 +173,8 @@ def environment_snapshot():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--self-test", action="store_true",\n                        help="Test CRLF-safe Git path audit without requiring Windows Qt")\n    parser.add_argument("--qt-prefix", type=Path,
+    parser.add_argument("--self-test", action="store_true",
+                        help="Test CRLF-safe Git path audit without requiring Windows Qt")\n    parser.add_argument("--qt-prefix", type=Path,
                         help=r"Exact native Kit, e.g. C:\Qt\6.8.3\msvc2022_64")
     parser.add_argument("--out", type=Path,
                         help="Evidence directory, outside both historical worktrees")
