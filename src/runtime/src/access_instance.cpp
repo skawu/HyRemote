@@ -17,6 +17,13 @@
 #endif
 #include <QThread>
 #include <QTimer>
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE) && defined(HYREMOTE_HAS_QUICK_ADAPTER)
+#  include <QDateTime>
+#  include <QMetaMethod>
+#  include <QMetaProperty>
+#  include <QQuickView>
+#  include <iostream>
+#endif
 #include <QObject>
 #include <QPointer>
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
@@ -503,6 +510,15 @@ public:
             return false;
         m_demand->start();
 
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE) && defined(HYREMOTE_HAS_QUICK_ADAPTER)
+        // DIAGNOSTIC ONLY: A source-owned, explicitly named QML phase property.
+        // Generic automatic access wraps a CompositeTarget, so targetObject
+        // need not be QQuickView. Look only for ONE live QQuickView with this
+        // specific test property in the same GUI thread; ambiguous or missing
+        // targets fail closed. No support for arbitrary QML changes is implied.
+        attachTestSourcePropertyNotify();
+#endif
+
         // Target adapters normally detect TargetLost while requestFrame runs.
         // The zero-viewer demand gate intentionally stops those requests, so
         // preserve fault/lifecycle notifications independently via QObject.
@@ -535,6 +551,12 @@ public:
         if (m_targetLossGate)
             m_targetLossGate->closeAndDrain();
         QObject::disconnect(m_targetDestroyedConnection);
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE) && defined(HYREMOTE_HAS_QUICK_ADAPTER)
+        QObject::disconnect(m_testSourceNotifyConnection);
+        QObject::disconnect(m_testCoalescerConnection);
+        if (QThread::currentThread() == m_testSourceNotifyCoalescer.thread())
+            m_testSourceNotifyCoalescer.stop();
+#endif
         m_demand->stop();
         m_source->stop();
     }
@@ -547,6 +569,81 @@ public:
     }
 
 private:
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_PHASE_WAKE) && defined(HYREMOTE_HAS_QUICK_ADAPTER)
+    void attachTestSourcePropertyNotify()
+    {
+        // The test is intentionally fail-closed if AccessInstance is not
+        // started on the actual GUI thread. No BlockingQueuedConnection:
+        // Core/requestFrame stop paths must never deadlock the render loop.
+        if (QThread::currentThread() != m_testSourceNotifyCoalescer.thread()
+            || QThread::currentThread() != QCoreApplication::instance()->thread()) {
+            std::cout << "HYREMOTE_TEST_SOURCE_WAKE=BLOCKED_THREAD" << std::endl;
+            return;
+        }
+
+        QQuickItem *root = nullptr;
+        int phaseIndex = -1;
+        for (QWindow *window : QGuiApplication::allWindows()) {
+            auto *view = qobject_cast<QQuickView *>(window);
+            if (!view || !view->rootObject() || view->thread() != QThread::currentThread())
+                continue;
+            QQuickItem *candidate = view->rootObject();
+            const int index = candidate->metaObject()->indexOfProperty("phase");
+            if (index < 0 || !candidate->metaObject()->property(index).hasNotifySignal())
+                continue;
+            if (root != nullptr) {
+                std::cout << "HYREMOTE_TEST_SOURCE_WAKE=BLOCKED_AMBIGUOUS_ROOT" << std::endl;
+                return;
+            }
+            root = candidate;
+            phaseIndex = index;
+        }
+        if (!root) {
+            std::cout << "HYREMOTE_TEST_SOURCE_WAKE=BLOCKED_NO_ROOT_PHASE" << std::endl;
+            return;
+        }
+
+        m_testSourceNotifyCoalescer.setSingleShot(true);
+        m_testSourceNotifyCoalescer.setInterval(0);
+        const int slot = m_testSourceNotifyCoalescer.metaObject()->indexOfSlot("start()");
+        if (slot < 0) {
+            std::cout << "HYREMOTE_TEST_SOURCE_WAKE=BLOCKED_TIMER_SLOT" << std::endl;
+            return;
+        }
+        const QMetaProperty phase = root->metaObject()->property(phaseIndex);
+        m_testSourceNotifyConnection = QObject::connect(
+            root, phase.notifySignal(), &m_testSourceNotifyCoalescer,
+            m_testSourceNotifyCoalescer.metaObject()->method(slot), Qt::AutoConnection);
+        if (!m_testSourceNotifyConnection) {
+            std::cout << "HYREMOTE_TEST_SOURCE_WAKE=BLOCKED_META_CONNECT" << std::endl;
+            return;
+        }
+
+        const std::weak_ptr<ViewerCaptureDemand> weakDemand(m_demand);
+        const std::shared_ptr<std::atomic<bool>> active = m_runActive;
+        const QPointer<QQuickItem> safeRoot(root);
+        m_testCoalescerConnection = QObject::connect(
+            &m_testSourceNotifyCoalescer, &QTimer::timeout,
+            &m_targetEventReceiver, [weakDemand, active, safeRoot] {
+                if (!active->load(std::memory_order_acquire) || !safeRoot)
+                    return;
+                // The only producer is root.phase NOTIFY. Never use render
+                // loop afterAnimating/frameSwapped or offscreen grab callbacks.
+                if (const auto demand = weakDemand.lock())
+                    demand->noteSourceInvalidation();
+                std::cout << "HYREMOTE_TEST_SOURCE_WAKE_JSON={\"utc_ms\":"
+                          << QDateTime::currentMSecsSinceEpoch()
+                          << ",\"phase\":" << safeRoot->property("phase").toInt()
+                          << ",\"kind\":\"source_root_phase_notify\"}"
+                          << std::endl;
+            }, Qt::AutoConnection);
+        std::cout << "HYREMOTE_TEST_SOURCE_WAKE=CONNECTED_ROOT_PHASE" << std::endl;
+    }
+
+    QTimer m_testSourceNotifyCoalescer;
+    QMetaObject::Connection m_testSourceNotifyConnection;
+    QMetaObject::Connection m_testCoalescerConnection;
+#endif
     std::unique_ptr<hyremote::CaptureSource> m_source;
     QPointer<QObject> m_target;
     // Owned by the capture wrapper, created on the AccessInstance lifecycle
