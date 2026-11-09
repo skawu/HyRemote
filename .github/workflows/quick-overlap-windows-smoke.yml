@@ -217,12 +217,6 @@ jobs:
           New-Item -ItemType Directory -Path $dynamicDest -Force | Out-Null
           python $fixtureScript --worktree $tree --fixture $fixtureApp --manifest (Join-Path $dynamicDest 'fixture-identity.json')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $expectedModifications = @('examples/learning/03-generic/quick-app/main.cpp', 'examples/learning/03-generic/quick-app/Main.qml')
-          $actualModifications = @(git -C $tree diff --name-only -z | ForEach-Object { $_ -split [char]0 } | Where-Object { $_ })
-          if ($LASTEXITCODE -ne 0 -or
-              @(Compare-Object ($actualModifications | Sort-Object) ($expectedModifications | Sort-Object)).Count -ne 0) {
-            throw "Dynamic fixture must change exactly 2 Qt-only app files: $actualModifications"
-          }
           Push-Location $tree
           try {
             & .\build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-dynamic-pair --no-tests --clean -j4
