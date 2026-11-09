@@ -37,7 +37,7 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     assert original_text.count(import_line) == 1
     altered = original_text.replace(
         import_line,
-        import_line + "\n#include <QDateTime>",
+        import_line + "\n#include <QDateTime>\n#include <QQuickItem>",
     )
     show_line = "    view.show();"
     assert altered.count(show_line) == 1
