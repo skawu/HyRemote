@@ -40,7 +40,7 @@ def match_current_visible_transition(events, phase, measured_at_ms):
     a real change from the last known visible color before calling this.
     """
     for index, event in enumerate(events):
-        if (event["measured_viewer_ms"] is not None:
+        if (event["measured_viewer_ms"] is not None
                 or event["phase"] != phase
                 or event["utc_ms"] > measured_at_ms):
             continue
