@@ -39,7 +39,7 @@ def main():
     parser.add_argument("--rect", required=True,
                         help="Unobscured real Viewer canvas in physical desktop pixels: x,y,width,height")
     parser.add_argument("--stage-log", required=True, type=Path,
-                        help="Captured Qt dynamic fixture stderr including HYREMOTE_DYNAMIC_STAGE_JSON")
+                        help="Captured fixture C++ stdout including HYREMOTE_DYNAMIC_STAGE_JSON")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--seconds", type=int, default=90,
                         help="10..180, 90s default for >50 full A-B-A changes")
@@ -213,7 +213,7 @@ def main():
         "viewport_rect": [x, y, width, height],
         "sampling_interval_ms": args.interval_ms,
         "duration_seconds": args.seconds,
-        "source_change_timestamp": "Qt QML Date.now() / wall UTC ms (not GPU render)",
+        "source_change_timestamp": "Qt C++ QDateTime::currentMSecsSinceEpoch / wall UTC ms (not GPU render)",
         "viewer_visible_timestamp": "Python local Windows wall clock at sample",
         "timing_limitations": "wall-clock and finite pixel polling; not per-frame GPU timing",
         "observed_event_count": len(outstanding),
