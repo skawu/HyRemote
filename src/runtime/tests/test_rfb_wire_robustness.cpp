@@ -1506,7 +1506,29 @@ void testWatermarkFollowsDevicePixelRatio()
     Recorder recorder;
     hyremote::RemoteFrame first = makeFrame(128, 128, 0x203040U);
     first.geometry.devicePixelRatio = 1.0F;
-    auto transport = startTransport(port, recorder, std::move(first), {}, dprAwareMarkDecorator());
+
+    // The producer publishes to the RFB worker asynchronously. Merely
+    // enqueueing the DPR=2 frame and immediately connecting a new viewer
+    // races that worker: ServerInit can still legitimately use the prior
+    // observed DPR=1 picture. Signal after the new immutable decorated
+    // pixels are actually produced on the worker, not after a guessed delay.
+    std::mutex composedMutex;
+    std::condition_variable composedChanged;
+    bool composedDpr2 = false;
+    const auto baseDecorator = dprAwareMarkDecorator();
+    auto observedDecorator = [&](const hyremote::RemoteFrame &source,
+                                 hyremote::RemoteFrame &decorated, QString &error) {
+        const bool ok = baseDecorator(source, decorated, error);
+        if (ok && source.geometry.devicePixelRatio == 2.0F) {
+            {
+                std::lock_guard<std::mutex> lock(composedMutex);
+                composedDpr2 = true;
+            }
+            composedChanged.notify_all();
+        }
+        return ok;
+    };
+    auto transport = startTransport(port, recorder, std::move(first), {}, observedDecorator);
     CHECK(transport != nullptr);
     if (!transport)
         return;
@@ -1537,6 +1559,21 @@ void testWatermarkFollowsDevicePixelRatio()
     second.geometry.devicePixelRatio = 2.0F;
     transport->enqueueFrame(std::move(second));
 
+    bool secondComposed = false;
+    {
+        std::unique_lock<std::mutex> lock(composedMutex);
+        secondComposed = composedChanged.wait_for(
+            lock, std::chrono::seconds(3), [&] { return composedDpr2; });
+    }
+    CHECK(secondComposed);
+    if (!secondComposed) {
+        transport->stop();
+        return;
+    }
+
+    // The worker is single-threaded. A new socket acceptance follows this
+    // completed decoration callback, so the new viewer may no longer race
+    // the older frame. Do not weaken any on-wire pixel assertion.
     QTcpSocket afterRescale;
     CHECK(connectRawRfb(afterRescale, port, false, &width, &height));
     CHECK(sendSetEncodings(afterRescale, {15, 0}));
