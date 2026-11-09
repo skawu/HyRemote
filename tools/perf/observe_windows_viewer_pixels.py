@@ -170,6 +170,9 @@ def main():
         return result
 
     def observation():
+        # Four DWM/GDI pixels are read sequentially, not atomically.
+        # Two colors here alone do NOT prove one simultaneously torn frame.
+        pixel_read_start_ns = time.perf_counter_ns()
         # Verify EVERY sample point belongs to the supplied Viewer PID.
         # A foreground Host frame matching the test colors is NOT Viewer proof.
         for px, py in points:
@@ -191,9 +194,10 @@ def main():
                 -1,
             )
             values.append(stage)
+        pixel_read_ms = (time.perf_counter_ns() - pixel_read_start_ns) / 1_000_000.0
         if len(set(values)) == 1:
-            return values[0], False
-        return -1, 0 in values and 1 in values
+            return values[0], False, pixel_read_ms
+        return -1, 0 in values and 1 in values, pixel_read_ms
 
     first = read_stage_events()
     require(first and first[0]["phase"] in COLORS,
@@ -202,6 +206,9 @@ def main():
     started = time.monotonic()
     prior_events = len(first)
     last_visible_stage = None
+    sample_intervals_ms = []
+    pixel_read_spans_ms = []
+    last_sample_start_ns = None
     mixed_samples = 0
     unknown_samples = 0
     samples = 0
@@ -214,14 +221,22 @@ def main():
     outstanding = []
     try:
         while time.monotonic() - started < args.seconds:
-            now_ms = time.time_ns() // 1_000_000
+            sample_start_ns = time.perf_counter_ns()
+            if last_sample_start_ns is not None:
+                sample_intervals_ms.append(
+                    (sample_start_ns - last_sample_start_ns) / 1_000_000.0)
+            last_sample_start_ns = sample_start_ns
             newest = read_stage_events()
             require(len(newest) >= prior_events, "Qt stage log shrank or rotated during observation")
             for event in newest[prior_events:]:
                 outstanding.append({"phase": event["phase"], "utc_ms": event["utc_ms"],
                                     "measured_viewer_ms": None})
             prior_events = len(newest)
-            stage, mixed = observation()
+            stage, mixed, pixel_read_ms = observation()
+            pixel_read_spans_ms.append(pixel_read_ms)
+            # Time after observing the actual screen pixels; never stamp
+            # before the expensive four-point DWM/GDI read.
+            now_ms = time.time_ns() // 1_000_000
             samples += 1
             if mixed:
                 mixed_samples += 1
@@ -276,10 +291,23 @@ def main():
         "viewer_pid": args.viewer_pid,
         "viewport_rect": [x, y, width, height],
         "sampling_interval_ms": args.interval_ms,
+        "actual_sample_start_interval_p50_ms":
+            statistics.median(sample_intervals_ms) if sample_intervals_ms else None,
+        "actual_sample_start_interval_p95_ms":
+            percentile(sample_intervals_ms, 0.95) if sample_intervals_ms else None,
+        "actual_sample_start_interval_max_ms":
+            max(sample_intervals_ms) if sample_intervals_ms else None,
+        "actual_sample_start_interval_count": len(sample_intervals_ms),
+        "sequential_four_pixel_read_p50_ms":
+            statistics.median(pixel_read_spans_ms) if pixel_read_spans_ms else None,
+        "sequential_four_pixel_read_p95_ms":
+            percentile(pixel_read_spans_ms, 0.95) if pixel_read_spans_ms else None,
+        "sequential_four_pixel_read_max_ms":
+            max(pixel_read_spans_ms) if pixel_read_spans_ms else None,
         "duration_seconds": args.seconds,
         "source_change_timestamp": "Qt C++ QDateTime::currentMSecsSinceEpoch / wall UTC ms (not GPU render)",
         "viewer_visible_timestamp": "Python local Windows wall clock at sample",
-        "timing_limitations": "wall-clock and finite pixel polling; not per-frame GPU timing",
+        "timing_limitations": "wall-clock, measured actual polling cadence, and sequential pixel reads; mixed corners could straddle a normal repaint and do not prove a simultaneously torn GPU frame",
         "observed_event_count": len(outstanding),
         "matched_events": len(latencies),
         "missed_events": missed,
@@ -308,6 +336,10 @@ def main():
     print("REAL_VIEWER_PIXELS=" + data["result"], flush=True)
     print("REAL_VIEWER_P95_MS=" + str(data["viewer_change_to_visible_p95_ms"]), flush=True)
     print("REAL_VIEWER_MIXED_SAMPLES=" + str(mixed_samples), flush=True)
+    print("REAL_VIEWER_ACTUAL_SAMPLE_INTERVAL_P95_MS=" +
+          str(data["actual_sample_start_interval_p95_ms"]), flush=True)
+    print("REAL_VIEWER_SEQUENTIAL_PIXEL_READ_P95_MS=" +
+          str(data["sequential_four_pixel_read_p95_ms"]), flush=True)
     print("REAL_VIEWER_EVIDENCE=" + str(args.out), flush=True)
 
 
