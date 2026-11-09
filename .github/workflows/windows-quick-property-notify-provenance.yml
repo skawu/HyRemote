@@ -9,6 +9,7 @@ on:
       - tools/perf/assess_quick_property_notifies.py
       - tools/perf/fixtures/windows_dynamic_generic/Main.qml
       - tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+      - tools/perf/tests/qmeta_notify/**
   workflow_dispatch:
 
 permissions:
@@ -59,6 +60,18 @@ jobs:
           python tools/perf/prepare_windows_probe_tradeoff.py --self-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tools/perf/assess_quick_property_notifies.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build and RUN public Qt6.8 QMetaProperty notify-to-QTimer coalescing test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'qmeta-notify-build'
+          & cmake -S tools/perf/tests/qmeta_notify -B $dir -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build $dir --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & (Join-Path $dir 'hyremote-qmeta-notify-smoke.exe')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Prepare fixed source and build one exact probe-interval variant
