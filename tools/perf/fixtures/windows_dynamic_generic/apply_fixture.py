@@ -59,7 +59,11 @@ def patch(tree: Path, fixture: Path, manifest: Path):
             publishFixturePhase();
         }
     });
-    fixtureStageTimer.start(1200);
+    // A test-only launch switch uses the identical binary/Qt scene to
+    // compare prolonged 0V/1V static CPU without rebuilding a different app.
+    // In dynamic mode the exact same scene continues at 1200ms intervals.
+    if (!QCoreApplication::arguments().contains(QStringLiteral("--fixture-static")))
+        fixtureStageTimer.start(1200);
 '''.strip("\n")
     altered = altered.replace(show_line, stage_driver)
     adjusted = altered.replace(OLD_RESIZE, NEW_RESIZE).encode("utf-8")
@@ -88,6 +92,7 @@ def patch(tree: Path, fixture: Path, manifest: Path):
         "app_qml_sha256": digest(qml),
         "framebuffer": [1920, 1080],
         "stage_interval_ms": 1200,
+        "static_mode_switch": "--fixture-static",
         "viewer_paint_not_measured_by_fixture": True,
     }
     manifest.parent.mkdir(parents=True, exist_ok=True)
