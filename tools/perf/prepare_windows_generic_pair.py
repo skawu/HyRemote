@@ -79,7 +79,7 @@ def main():
                 print(f"BUILD_PRODUCT_PAIR={label} SOURCE_SHA={sha}", flush=True)
                 run(
                     ["cmd.exe", "/d", "/c", "build.cmd", "install",
-                     "--integrations=generic", "--examples",
+                     "--integrations=cpp,generic", "--examples",
                      f"--qt-prefix={qt}", "--build-type=Release",
                      "--build-dir=build-reference-pair", "--no-tests",
                      "--clean", "-j4"],
@@ -106,7 +106,7 @@ def main():
                                       if label == "site-source-baseline"
                                       else "current pinned refactored develop candidate"),
                     "kit": "Qt 6.8.3 MSVC2022_64",
-                    "build": "Release / canonical build.cmd install --integrations=generic --examples",
+                    "build": "Release / canonical build.cmd install --integrations=cpp,generic --examples",
                     "source_app_hash_sha256": app_hashes,
                     "installed_executable": f"bin/{APP}",
                     "installed_executable_sha256": digest(installed_exe),
