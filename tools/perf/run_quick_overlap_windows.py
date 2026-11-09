@@ -105,6 +105,33 @@ def untracked_diagnostic_changes(worktree: Path):
                result.stdout.decode("utf-8", errors="strict").split("\0") if x)
 
 
+def self_test_git_path_audit():
+    # Exercise the real Git porcelain path channel with autocrlf enabled.
+    # Warnings go to stderr, never into the audited NUL-delimited filenames.
+    with tempfile.TemporaryDirectory(prefix="hyremote-git-audit-") as temp:
+        root = Path(temp)
+        def call(*argv):
+            result = subprocess.run(["git", *argv], cwd=root,
+                                    capture_output=True, check=False)
+            require(result.returncode == 0,
+                    f"Git self-test failed {argv}: "
+                    f"{result.stderr.decode(errors='replace')[-400:]}")
+        call("init", "-q")
+        call("config", "user.name", "HyRemote Diagnostic")
+        call("config", "user.email", "diagnostic@example.invalid")
+        (root / "a.txt").write_bytes(b"before\n")
+        call("add", "a.txt")
+        call("commit", "-q", "-m", "fixture")
+        call("config", "core.autocrlf", "true")
+        (root / "a.txt").write_bytes(b"after\r\n")
+        (root / "new.txt").write_bytes(b"untracked\r\n")
+        require(tracked_diagnostic_changes(root) == {"a.txt"},
+                "NUL Git tracked paths under core.autocrlf=true")
+        require(untracked_diagnostic_changes(root) == {"new.txt"},
+                "NUL Git untracked paths under core.autocrlf=true")
+    print("PASS: Windows Git CRLF warnings cannot contaminate source-patch audit")
+
+
 def environment_snapshot():
     user32 = ctypes.windll.user32
     width, height = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
@@ -146,11 +173,16 @@ def environment_snapshot():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--qt-prefix", required=True, type=Path,
+    parser.add_argument("--self-test", action="store_true",\n                        help="Test CRLF-safe Git path audit without requiring Windows Qt")\n    parser.add_argument("--qt-prefix", type=Path,
                         help=r"Exact native Kit, e.g. C:\Qt\6.8.3\msvc2022_64")
-    parser.add_argument("--out", required=True, type=Path,
+    parser.add_argument("--out", type=Path,
                         help="Evidence directory, outside both historical worktrees")
     args = parser.parse_args()
+    if args.self_test:
+        self_test_git_path_audit()
+        return
+    require(args.qt_prefix is not None and args.out is not None,
+            "Real Windows capture requires --qt-prefix and --out")
     require(sys.platform == "win32", "This runner requires real Windows")
     repo = Path(git("rev-parse", "--show-toplevel")).resolve()
     require((repo / "tools/perf/prepare_quick_overlap_probe.py").is_file(),
