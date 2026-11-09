@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 APP = Path("examples/learning/03-generic/quick-app")
 OLD_RESIZE = "view.resize(460, 190);"
@@ -35,6 +36,18 @@ def patch(tree: Path, fixture: Path, manifest: Path):
     assert b"1920" in qml and b"1080" in qml
     (app / "main.cpp").write_bytes(adjusted)
     (app / "Main.qml").write_bytes(qml)
+    # Git audit in bytes: stderr CRLF conversion warnings MUST NOT become
+    # filenames. No other tracked source may be changed by the diagnostic.
+    audited = subprocess.run(
+        ["git", "diff", "--name-only", "-z", "--no-ext-diff"],
+        cwd=tree, capture_output=True, check=False,
+    )
+    assert audited.returncode == 0, audited.stderr.decode(errors="replace")[-500:]
+    changed = set(p.replace("\\", "/") for p in
+                  audited.stdout.decode("utf-8").split("\0") if p)
+    expected = {str(APP / "main.cpp").replace("\\", "/"),
+                str(APP / "Main.qml").replace("\\", "/")}
+    assert changed == expected, f"unexpected product source changes: {changed}"
     info = {
         "schema": "hyremote-windows-dynamic-quick-fixture/1",
         "fixture_is_app_only_not_product_patch": True,
