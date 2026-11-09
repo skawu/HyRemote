@@ -32,15 +32,76 @@ def percentile(values, p):
     return sorted(values)[max(0, math.ceil(len(values) * p) - 1)]
 
 
+def match_current_visible_transition(events, phase, measured_at_ms):
+    """Match only a newly VISIBLE transition while its source phase is active.
+
+    A viewer remaining on A across an unseen B and a later source A must
+    never be counted as having displayed that later A. The caller enforces
+    a real change from the last known visible color before calling this.
+    """
+    for index, event in enumerate(events):
+        if (event["measured_viewer_ms"] is not None:
+                or event["phase"] != phase
+                or event["utc_ms"] > measured_at_ms):
+            continue
+        # A late stale B after source has already changed to A is NOT a
+        # successful Viewer rendering of B for this transition window.
+        if (index + 1 < len(events)
+                and measured_at_ms >= events[index + 1]["utc_ms"]):
+            continue
+        event["measured_viewer_ms"] = measured_at_ms
+        return True
+    return False
+
+
+def self_test_transition_oracle():
+    # A Viewer stuck on blue A may not claim a second A event after skipping B.
+    sequence = [
+        {"phase": 1, "utc_ms": 1200, "measured_viewer_ms": None},
+        {"phase": 0, "utc_ms": 2400, "measured_viewer_ms": None},
+    ]
+    visible = 0
+    for measured_at_ms, phase in ((1300, 0), (2500, 0)):
+        if phase != visible:
+            match_current_visible_transition(sequence, phase, measured_at_ms)
+            visible = phase
+    require(all(e["measured_viewer_ms"] is None for e in sequence),
+            "False-positive: stale A counted as an actual Viewer transition")
+
+    # Normal A->B->A as observed by screen pixels is two distinct matches.
+    real = [
+        {"phase": 1, "utc_ms": 1200, "measured_viewer_ms": None},
+        {"phase": 0, "utc_ms": 2400, "measured_viewer_ms": None},
+    ]
+    require(match_current_visible_transition(real, 1, 1320),
+            "B transition should match the B source event")
+    require(match_current_visible_transition(real, 0, 2540),
+            "A transition should match the A source event")
+    require([e["measured_viewer_ms"] for e in real] == [1320, 2540],
+            "Correct A-B-A latency stamps were lost")
+
+    # A late B response after the next A source event started is a stale
+    # frame observation, not an accepted B transition.
+    stale = [
+        {"phase": 1, "utc_ms": 1200, "measured_viewer_ms": None},
+        {"phase": 0, "utc_ms": 2400, "measured_viewer_ms": None},
+    ]
+    require(not match_current_visible_transition(stale, 1, 2500),
+            "False-positive: stale B counted after newer A source event")
+    print("PASS viewer transition oracle: skipped-B, A-B-A, stale-B")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--viewer-pid", required=True, type=int,
+    parser.add_argument("--self-test", action="store_true",
+                        help="Run deterministic transition false-positive tests; no Viewer needed")
+    parser.add_argument("--viewer-pid", type=int,
                         help="PID that OWNS the displayed remote Viewer window, not Host")
-    parser.add_argument("--rect", required=True,
+    parser.add_argument("--rect",
                         help="Unobscured real Viewer canvas in physical desktop pixels: x,y,width,height")
-    parser.add_argument("--stage-log", required=True, type=Path,
+    parser.add_argument("--stage-log", type=Path,
                         help="Captured fixture C++ stdout including HYREMOTE_DYNAMIC_STAGE_JSON")
-    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--out", type=Path)
     parser.add_argument("--seconds", type=int, default=90,
                         help="10..180, 90s default for >50 full A-B-A changes")
     parser.add_argument("--interval-ms", type=int, default=50,
@@ -48,7 +109,12 @@ def main():
     parser.add_argument("--rgb-tolerance", type=int, default=22,
                         help="0..50: conservative per-channel Viewer color tolerance")
     args = parser.parse_args()
-
+    if args.self_test:
+        self_test_transition_oracle()
+        return
+    require(args.viewer_pid is not None and args.rect is not None
+            and args.stage_log is not None and args.out is not None,
+            "Real Viewer observation requires --viewer-pid, --rect, --stage-log, --out")
     require(sys.platform == "win32", "Real Windows visible Viewer is required")
     require(args.viewer_pid > 0 and 10 <= args.seconds <= 180
             and 20 <= args.interval_ms <= 200
@@ -131,13 +197,11 @@ def main():
 
     first = read_stage_events()
     require(first and first[0]["phase"] in COLORS,
-            "No readable QML stage events: start/redirect the fixture Host before Observer")
+            "No readable C++ source-stage events: start/redirect the fixture Host before Observer")
 
     started = time.monotonic()
-    events = first
-    seen_event_count = len(events)
-    prior_events = len(events)
-    transitions = []
+    prior_events = len(first)
+    last_visible_stage = None
     mixed_samples = 0
     unknown_samples = 0
     samples = 0
@@ -145,7 +209,6 @@ def main():
     b_samples = 0
     consecutive_mixed = 0
     max_consecutive_mixed = 0
-    last_matched_event_idx = max(0, seen_event_count - 1)
     # Ignore any stage before observer began: it has no meaningful screen
     # latency baseline. Only count stage changes observed after we started.
     outstanding = []
@@ -172,14 +235,15 @@ def main():
                 a_samples += 1
             else:
                 b_samples += 1
-            for event in outstanding:
-                if event["measured_viewer_ms"] is not None:
-                    continue
-                if event["utc_ms"] > now_ms + 5:
-                    continue
-                if stage == event["phase"] and now_ms >= event["utc_ms"]:
-                    event["measured_viewer_ms"] = now_ms
-                    break
+            # A source event counts only when actual screen pixels CHANGE
+            # to that color while that event is current. Merely already being
+            # that color (e.g. skipped B then source returns A) is no proof.
+            if stage in COLORS:
+                if last_visible_stage is None:
+                    last_visible_stage = stage  # establish initial screen baseline
+                elif stage != last_visible_stage:
+                    match_current_visible_transition(outstanding, stage, now_ms)
+                    last_visible_stage = stage
             if samples % max(1, round(5000 / args.interval_ms)) == 0:
                 print(f"PROGRESS viewer_pid={args.viewer_pid} "
                       f"samples={samples} events={len(outstanding)}", flush=True)
