@@ -90,3 +90,121 @@ jobs:
           Write-Host 'WINDOWS_DIAGNOSTIC_COMPILE_AND_CTEST=PASS'
           Write-Host 'WINDOWS_INTERACTIVE_D3D11_A_B_A=NOT_RUN'
           Write-Host 'WINDOWS_REAL_VIEWER_PERFORMANCE=NOT_RUN'
+
+
+  windows-generic-reference-packages:
+    name: Windows hosted / Generic Qt Quick reference pair / ${{ matrix.variant }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: site-source-baseline
+            source_sha: 6a4b7b373ae1dce1f161771d5caab1cdb51a45d0
+          - variant: refactor-candidate
+            source_sha: 5095d0bc3bb07966c03dad77296f6ec04a631adc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Restore exact Qt6.8.3 MSVC2022_64 Kit
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Validate or install exact Windows Qt Quick Kit
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            throw 'Qt6.8.3 MSVC2022_64 Quick SDK missing'
+          }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build and install source-pinned Generic product with identical Qt-only app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '${{ matrix.source_sha }}'
+          $label = '${{ matrix.variant }}'
+          $tree = Join-Path $env:RUNNER_TEMP ('hyremote-' + $label)
+          git worktree add --detach $tree $sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C $tree rev-parse HEAD).Trim() -ne $sha) {
+            throw "Wrong frozen product source identity: $label"
+          }
+          $appSourceBlobs = @{
+            'examples/learning/03-generic/quick-app/main.cpp' = '750d44a22610ef3b463da90b8927d0acd9fabfc1'
+            'examples/learning/03-generic/quick-app/Main.qml' = '3b7d504ef6dd67eeb114cb53245b507573cf3fd7'
+            'examples/learning/03-generic/quick-app/CMakeLists.txt' = 'd85454eddbda9ea21952382607e6806d14b7ec88'
+          }
+          foreach ($item in $appSourceBlobs.GetEnumerator()) {
+            $actual = (git -C $tree rev-parse "HEAD:$($item.Key)").Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -ne $item.Value) {
+              throw "Reference Qt Quick application source differs: $($item.Key)"
+            }
+          }
+          Push-Location $tree
+          try {
+            & .\build.cmd install --integrations=generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-reference-pair --no-tests --clean -j4
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $installed = Join-Path $tree 'build-reference-pair/install'
+          $app = Join-Path $installed 'bin/hyremote-learning-03-quick.exe'
+          if (!(Test-Path $app)) { throw 'Actual installed Generic Qt Quick application missing' }
+          $generic = @(Get-ChildItem $installed -Recurse -File -Filter '*hyremote*.dll' |
+            Where-Object { $_.FullName -match '[\\/]generic[\\/]' })
+          if ($generic.Count -lt 1) {
+            throw 'Missing actual Generic plugin deployment; cannot publish plain-Qt-only package'
+          }
+          $dest = Join-Path $env:GITHUB_WORKSPACE ('windows-product-evidence/' + $label)
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          Copy-Item -Path $installed -Destination (Join-Path $dest 'install') -Recurse -Force
+          $appHash = (Get-FileHash $app -Algorithm SHA256).Hash
+          $pluginPaths = @($generic | ForEach-Object {
+            $_.FullName.Substring($installed.Length + 1).Replace('\', '/')
+          })
+          $identity = @{
+            schema = 'hyremote-windows-generic-product-pair/1'
+            label = $label
+            source_sha = $sha
+            qt_kit = 'Qt 6.8.3 MSVC2022_64'
+            build_type = 'Release'
+            generic_route = 'Transparent generic QPA plugin; native windows platform preserved'
+            app_executable = 'install/bin/hyremote-learning-03-quick.exe'
+            app_sha256 = $appHash
+            app_source_git_blobs = $appSourceBlobs
+            installed_generic_plugin_paths = $pluginPaths
+            reference_app_is_identical_between_versions = $true
+            actual_viewer_qualification = 'NOT_RUN'
+            actual_windows_d3d11_performance = 'NOT_RUN'
+            site_binary_equivalence = 'UNVERIFIED'
+            source_age = 'Pinned historical SHA; not a claim of final shipping version'
+          }
+          $identity | ConvertTo-Json -Depth 6 |
+            Out-File -FilePath (Join-Path $dest 'product-identity.json') -Encoding utf8
+          Write-Host "GENERIC_PRODUCT_PACKAGE_BUILT=$label SOURCE_SHA=$sha APP_SHA256=$appHash"
+
+      - name: Preserve real installed product reference package (not performance approval)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-generic-${{ matrix.variant }}-${{ matrix.source_sha }}
+          path: windows-product-evidence/${{ matrix.variant }}/
+          if-no-files-found: error
+          retention-days: 14
