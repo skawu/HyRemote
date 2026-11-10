@@ -1,0 +1,106 @@
+name: Qt6.8.3 QRhi PRIVATE async readback scientific qualification R3 (NON-PRODUCT)
+
+on:
+  pull_request:
+    branches: [feature/609-qt68-public-rhi-eligibility-and-window-grab-r2-20261110, develop]
+    paths:
+      - .github/workflows/qt68-rhi-private-async-r3.yml
+      - tools/perf/tests/qt68_rhi_private_async_r3/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-qt68-private-rhi:
+    name: Qt6.8.3 MSVC2022 D3D11 visible swapchain async GPU readback - R3
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Establish exact Qt6.8.3 MSVC private headers; do not change installed Runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'include/QtGui/6.8.3/QtGui/private/qrhi_p.h')) -and
+              !(Test-Path (Join-Path $prefix 'include/QtGui/6.8.3/QtGui/rhi/qrhi.h'))) {
+            Write-Host 'QTGUI_PRIVATE_RHI_HEADER_NOT_FOUND'
+          }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile Qt6 GuiPrivate *research-only* QRhi swapchain readback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_rhi_private_async_r3 -B build-r3-qt68 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build build-r3-qt68 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Execute real visible D3D11 360p and 1080p GPU readback, fail on invalid pixels
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path tmp/r3 -Force | Out-Null
+          foreach ($width in @(640, 1920)) {
+            $height = if ($width -eq 640) { 360 } else { 1080 }
+            & .\build-r3-qt68\hyremote-qt68-private-rhi-async-r3.exe "--width=$width" "--height=$height" | Tee-Object -FilePath ("tmp/r3/readback-$width" + "x$height.jsonl")
+            if ($LASTEXITCODE -ne 0) { throw "R3 actual GPU readback failed at $width x $height" }
+          }
+      - name: Verify real asynchronous results, zero-viewer skip and nonproduct gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          paths = sorted(Path("tmp/r3").glob("readback-*.jsonl"))
+          assert len(paths) == 2, paths
+          for path in paths:
+              data = path.read_text(encoding="utf-8-sig")
+              assert "R3_VERDICT=PASS_R3_QT68_D3D11_ASYNC_SWAPCHAIN_PIXEL_PROVEN" in data, path
+              lines = [x for x in data.splitlines() if x.startswith("R3_RESULT_JSON=")]
+              assert len(lines) == 1, (path,lines)
+              v = json.loads(lines[0].partition("=")[2])
+              assert v["qt"] == "6.8.3" and v["graphics_backend"] == "d3d11", v
+              assert v["stages_completed"] == v["stages_expected"] == 15, v
+              assert v["rhi_recorded_readbacks"] == v["rhi_async_callbacks"] == 15, v
+              assert v["wrong_pixel_frames"] == 0, v
+              assert v["swapchain_resource_valid"] and v["swapchain_transfer_flag_enabled"], v
+              assert v["scenegraph_thread_distinct_from_gui"], v
+              assert v["zero_viewer_readback_gate"] and v["no_demand_render_frames_skipped"] >= 1, v
+              assert v["readback_completion_p95_ms"] > 0 and v["sync_rhi_finish_calls"] == 0, v
+              assert v["qtgui_private_used"] and not v["production_api_authorized"] and not v["product_qualified"], v
+              print("R3_D3D11_VISIBLE_ASYNC=PASS_SCOPED",path,"readback_complete_p95",v["readback_completion_p95_ms"],"pump_frames",v["frame_pumps_while_waiting"])
+          print("R3_NONPRODUCT_PRIVATE_RHI_PASS_SCOPED_ONLY")
+          '@ | Set-Content tmp/r3/audit.py -Encoding UTF8
+          python tmp/r3/audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Archive tiny research log, not an installable program
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-qt68-private-async-readback-research-evidence
+          path: tmp/r3/readback-*.jsonl
+          if-no-files-found: warn
+          retention-days: 10
