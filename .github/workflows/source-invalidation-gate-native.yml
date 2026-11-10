@@ -1,0 +1,56 @@
+name: Source-owned wake gate native concurrency smoke (NO Qt or product qualification)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/source-invalidation-gate-native.yml
+      - src/runtime/src/detail/viewer_capture_demand.hpp
+      - src/runtime/tests/test_viewer_capture_demand.cpp
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-gate:
+    name: Native gate C++17 / ${{ matrix.os }} / test-only
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and execute real standard-C++ concurrency test on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-gate-native
+          g++ -std=c++17 -pthread -O2 -Wall -Wextra -Werror \
+            -DHYREMOTE_VIEWER_DEMAND_TEST_HOOK=1 \
+            -Isrc/runtime/src \
+            src/runtime/tests/test_viewer_capture_demand.cpp \
+            -o build-gate-native/test-viewer-capture-demand
+          ./build-gate-native/test-viewer-capture-demand
+      - name: Activate MSVC2022 native C++17
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build and execute real standard-C++ concurrency test on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path build-gate-native -Force | Out-Null
+          & cl.exe /nologo /std:c++17 /EHsc /W4 /WX /O2 `
+            /DHYREMOTE_VIEWER_DEMAND_TEST_HOOK=1 `
+            /Isrc/runtime/src `
+            src/runtime/tests/test_viewer_capture_demand.cpp `
+            /Febuild-gate-native/test-viewer-capture-demand.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\build-gate-native\test-viewer-capture-demand.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
