@@ -49,6 +49,26 @@ namespace {
 using Microsoft::WRL::ComPtr;
 constexpr int kStages = 15;
 
+// Qt6 Quick RHI records D3D11 commands and flushes them at endFrame.
+// The public beginExternalCommands/endExternalCommands pair is REQUIRED
+// to put the RHI command buffer into a native D3D11 state. It flushes
+// recorded Qt render commands before an external D3D11 API is accessed
+// and restores QRhi's cached state after returning.
+// Exact Qt6.8.3 qquickwindow.cpp and qrhid3d11.cpp confirm this.
+class NativeCommandsScope
+{
+public:
+    explicit NativeCommandsScope(QQuickWindow &window) : m_window(window)
+    {
+        m_window.beginExternalCommands();
+    }
+    ~NativeCommandsScope() { m_window.endExternalCommands(); }
+    NativeCommandsScope(const NativeCommandsScope &) = delete;
+    NativeCommandsScope &operator=(const NativeCommandsScope &) = delete;
+private:
+    QQuickWindow &m_window;
+};
+
 QColor color(int epoch)
 {
     switch (epoch % 3) {
@@ -201,6 +221,7 @@ int main(int argc, char **argv)
         const int phase = state.synced.load(std::memory_order_acquire);
         if (phase < 0)
             return;
+        NativeCommandsScope nativeCommands(window);
         ComPtr<ID3D11RenderTargetView> view;
         context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
         if (!view)
@@ -233,6 +254,7 @@ int main(int argc, char **argv)
             state.rejected.fetch_add(1);
             return;
         }
+        NativeCommandsScope nativeCommands(window);
         if (state.pendingStagingTexture) {
             D3D11_MAPPED_SUBRESOURCE mapped{};
             const HRESULT hr = context->Map(state.pendingStagingTexture.Get(),
