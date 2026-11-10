@@ -186,6 +186,16 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
     endif()
 
     if(TARGET Qt6::Quick)
+        # R3 research-only: compile-time OFF and additionally explicit runtime
+        # opt-in required. Never select a GPU frame tap in qualified packages.
+        # Qt6 OpenGL RHI + current context + DPR=1 are checked again at runtime.
+        option(HYREMOTE_EXPERIMENTAL_QUICK_GL_RENDER_TAP
+               "NON-PRODUCT Qt6 OpenGL RHI afterFrameEnd readback (requires runtime opt-in)" OFF)
+        if(HYREMOTE_EXPERIMENTAL_QUICK_GL_RENDER_TAP)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_GL_RENDER_TAP=1)
+            message(WARNING "Qt Quick OpenGL RHI render-tap R3 ENABLED: experimental, NOT release qualified")
+        endif()
         target_sources(hyremote-remoteaccess PRIVATE
             src/quick/quick_target.cpp
         )
