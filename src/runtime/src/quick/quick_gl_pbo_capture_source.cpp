@@ -98,10 +98,16 @@ public:
         ++s->generation;
         s->queued.clear();
         s->inFlight.clear();
+        // A queued GUI dispatch from an earlier Session may never have run.
+        // Never let its posted-token suppress the first request of this
+        // generation. Old tasks still verify their captured generation.
+        s->kickPosted = false;
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->active = true;
-        s->cleanupRequested = false;
+        // Do NOT clear cleanupRequested from the previous generation here.
+        // Its fence/PBO objects belong to the Qt render thread and must
+        // retire there, before the new generation can reuse GL objects.
         return true;
     }
 
@@ -115,6 +121,7 @@ public:
             ++s->generation;
             s->queued.clear();
             s->inFlight.clear();
+            s->kickPosted = false;
             s->onFrame = {};
             s->onEvent = {};
             s->cleanupRequested = true;
