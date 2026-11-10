@@ -1,4 +1,4 @@
-// R1 qualification probe: LEGACY Qt5.15 OpenGL Scene Graph only.
+// R1 qualification probe: LEGACY Qt6.8.3 OpenGL Scene Graph only.
 // Render-tap reads the framebuffer after NORMAL on-screen rendering.
 // Public-grab comparison uses QQuickItem::grabToImage on identical content.
 // This is a separate test app; does not ship or change the HyRemote Runtime.
@@ -203,12 +203,12 @@ int main(int argc, char **argv)
         else if (arg.rfind("--height=", 0) == 0)
             height = std::stoi(arg.substr(9));
         else {
-            std::cerr << "R1=BLOCKED_UNRECOGNIZED_ARG " << arg << '\n';
+            std::cerr << "R2_GL=BLOCKED_UNRECOGNIZED_ARG " << arg << '\n';
             return 10;
         }
     }
     if (width < 32 || height < 32 || width > 3840 || height > 2160) {
-        std::cerr << "R1=BLOCKED_INVALID_SIZE\n";
+        std::cerr << "R2_GL=BLOCKED_INVALID_SIZE\n";
         return 11;
     }
 
@@ -328,7 +328,7 @@ int main(int argc, char **argv)
         }
         std::cout << "R2_GL_VERDICT="
                   << (success ? (mode == "render-baseline"
-                          ? "PASS_QT5_OPENGL_NO_READBACK_CONTROL"
+                          ? "PASS_QT68_RHI_OPENGL_NO_READBACK_CONTROL"
                           : "PASS_SCOPED_QT68_RHI_OPENGL_PIXEL_CORRECT")
                               : reason) << std::endl;
         app.exit(success ? 0 : 20);
