@@ -158,8 +158,11 @@ private:
         if (!currentMember)
             return;
 
+        // This is a source notification, NOT proof that a fresh Qt grab or
+        // Viewer paint occurred. ViewerCaptureDemand may suppress it at 0V,
+        // under output backpressure, or when the session has stopped.
         access->notifySemanticSourceInvalidation();
-        qInfo().noquote() << "HYREMOTE_TEST_AUTO_SEMANTIC_WAKE_SURFACE_ID=" << id;
+        qInfo().noquote() << "HYREMOTE_TEST_AUTO_SEMANTIC_NOTIFY_SURFACE_ID=" << id;
     }
 
     void reconcileSemanticSource(quint64 id, QObject *target, bool visible)
