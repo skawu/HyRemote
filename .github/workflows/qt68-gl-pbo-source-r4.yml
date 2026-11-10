@@ -1,0 +1,67 @@
+name: R4 Qt6.8.3 OpenGL PBO CaptureSource native compile gates (TEST ONLY)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt68-gl-pbo-source-r4.yml
+      - src/runtime/CMakeLists.txt
+      - src/runtime/src/quick/quick_target.cpp
+      - src/runtime/src/quick/quick_gl_pbo_capture_source.*
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-runtime:
+    name: Windows MSVC Qt6.8.3 Runtime+Generic flag=${{ matrix.arm }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Prepare exact Qt6.8.3 MSVC Quick kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual Qt Quick Runtime and Generic integration (no packages)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arm = '${{ matrix.arm }}'
+          $build = 'build-r4-' + $arm.ToLowerInvariant()
+          if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
+          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setting = @(Get-Content "$build/CMakeCache.txt" | Where-Object {
+            $_ -match '^HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL='
+          })
+          if ($setting.Count -ne 1 -or $setting[0] -ne "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=$arm") {
+            throw "Incorrect actual CMake option: $($setting -join ',')"
+          }
+          $runtime = Get-ChildItem -Path $build -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
+          if (!$runtime) { throw 'Native Runtime DLL absent' }
+          Write-Host "R4_RUNTIME_COMPILE=PASS ${{ matrix.arm }}=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
