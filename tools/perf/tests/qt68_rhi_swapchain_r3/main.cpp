@@ -30,6 +30,8 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <vector>
 #include <string>
 
 namespace {
@@ -117,6 +119,9 @@ struct State
     std::atomic<int> callbackPixelHeight{-1};
     std::atomic<int> callbackFormat{-1};
     std::atomic<int> actualRenderCallbacks{0};
+    std::atomic<bool> renderThreadDistinctFromGui{false};
+    std::mutex latencyMutex;
+    std::vector<int> asyncCallbackLatenciesMs;
     std::atomic<int> noViewerFrames{0};
     std::atomic<bool> viewerDemand{true};
     std::atomic<bool> alive{true};
@@ -168,6 +173,8 @@ int main(int argc, char **argv)
     QObject::connect(&window, &QQuickWindow::afterRendering, &window,
        [&, state] {
         state->actualRenderCallbacks.fetch_add(1);
+        if (QThread::currentThread() != app.thread())
+            state->renderThreadDistinctFromGui.store(true);
         if (!state->alive.load())
             return;
         if (!state->viewerDemand.load()) {
@@ -209,6 +216,10 @@ int main(int argc, char **argv)
             const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now()-begin).count();
             state->lastCallbackMs.store(static_cast<int>(took));
+            {
+                std::lock_guard<std::mutex> guard(state->latencyMutex);
+                state->asyncCallbackLatenciesMs.push_back(static_cast<int>(took));
+            }
             if (QThread::currentThread()!=renderThread->thread())
                 state->callbackWrongThread.fetch_add(1); // expected: RHI thread != GUI
             const int bytes = result->data.size();
@@ -248,6 +259,14 @@ int main(int argc, char **argv)
         if(finished) return;
         finished=true;
         state->alive.store(false);
+        std::vector<int> latencies;
+        {
+            std::lock_guard<std::mutex> guard(state->latencyMutex);
+            latencies = state->asyncCallbackLatenciesMs;
+        }
+        std::sort(latencies.begin(), latencies.end());
+        const int latencyP95 = latencies.empty() ? -1 : latencies[
+            static_cast<std::size_t>(std::ceil(latencies.size()*0.95)-1)];
         std::cout<<"R3_RESULT_JSON={"
                  <<"\"qt\":\""<<QT_VERSION_STR<<"\","
                  <<"\"backend\":\"d3d11\","
@@ -257,6 +276,12 @@ int main(int argc, char **argv)
                  <<"\"async_readbacks_submitted\":"<<state->submitted.load()<<","
                  <<"\"async_readbacks_completed\":"<<state->completed.load()<<","
                  <<"\"last_callback_latency_ms\":"<<state->lastCallbackMs.load()<<","
+                 <<"\"callback_latency_p95_ms\":"<<latencyP95<<","
+                 <<"\"render_loop\":\""
+                 <<qEnvironmentVariable("QSG_RENDER_LOOP").toStdString()<<"\","
+                 <<"\"render_thread_distinct_from_gui\":"
+                 <<(state->renderThreadDistinctFromGui.load()?"true":"false")<<","
+                 <<"\"callback_samples\":"<<latencies.size()<<","
                  <<"\"callback_bytes\":"<<state->asyncDataBytes.load()<<","
                  <<"\"callback_pixel_size\":["
                  <<state->callbackPixelWidth.load()<<","
