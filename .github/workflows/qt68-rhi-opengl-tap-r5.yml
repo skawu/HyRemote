@@ -34,9 +34,9 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check aqtinstall ninja
           if [ "${{ steps.qt-cache.outputs.cache-hit }}" != "true" ]; then
-            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$${{ runner.temp }}/Qt"
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
           fi
-          test -f "$${{ runner.temp }}/Qt/6.8.3/gcc_64/lib/libQt6Quick.so"
+          test -f "$RUNNER_TEMP/Qt/6.8.3/gcc_64/lib/libQt6Quick.so"
           bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
       - name: Compile public Qt6 OpenGL RHI rendered-frame readback program
         shell: bash
@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           cmake -S tools/perf/tests/qt68_rhi_opengl_tap_r5 -B build-r5-qt68 -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            "-DCMAKE_PREFIX_PATH=$${{ runner.temp }}/Qt/6.8.3/gcc_64"
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/Qt/6.8.3/gcc_64"
           cmake --build build-r5-qt68 --parallel 2
       - name: Run actual RHI OpenGL framebuffer readback and equivalent scene-only/grab control
         shell: bash
