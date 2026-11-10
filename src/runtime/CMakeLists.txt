@@ -198,6 +198,21 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
     endif()
 endif()
 
+# NON-PRODUCT R2 prototype: reuse a naturally finished Qt 6.8 OpenGL RHI
+# framebuffer only after a real Core capture request; no QtPrivate/RHI or
+# public SDK contract change. Other graphics APIs and idle-window captures
+# retain the existing grabToImage path. OFF by default on every platform.
+option(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP
+    "TEST ONLY: request-scoped Qt6 OpenGL RHI existing-frame tap with public-grab fallback" OFF)
+if(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+    if(NOT HYREMOTE_REMOTEACCESS_WITH_QUICK)
+        message(FATAL_ERROR "Qt6 OpenGL frame tap pilot requires the Qt Quick adapter")
+    endif()
+    target_compile_definitions(hyremote-remoteaccess PRIVATE
+        HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP=1)
+    message(WARNING "TEST ONLY OpenGL RHI frame tap enabled: not qualified for shipping")
+endif()
+
 # Pointer input enters Qt at the same QPA/window-system boundary used by platform plugins. Keep the
 # private dependency isolated to one Runtime translation unit; integration frontends remain peers and
 # never need to include or understand Qt private headers themselves.
