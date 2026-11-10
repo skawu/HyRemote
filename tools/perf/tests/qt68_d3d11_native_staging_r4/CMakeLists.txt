@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.21)
+project(HyRemoteQt68D3D11NativeStagingR4 LANGUAGES CXX)
+if(NOT WIN32)
+    message(FATAL_ERROR "This research experiment is D3D11-specific and intentionally not a cross-platform Runtime API")
+endif()
+find_package(Qt6 6.8.3 REQUIRED COMPONENTS Core Gui Quick)
+add_executable(hyremote-qt68-d3d11-native-staging-r4 main.cpp)
+target_compile_features(hyremote-qt68-d3d11-native-staging-r4 PRIVATE cxx_std_17)
+target_link_libraries(hyremote-qt68-d3d11-native-staging-r4 PRIVATE
+    Qt6::Core Qt6::Gui Qt6::Quick d3d11)
+if(MSVC)
+    target_compile_options(hyremote-qt68-d3d11-native-staging-r4 PRIVATE /W4 /permissive-)
+endif()
