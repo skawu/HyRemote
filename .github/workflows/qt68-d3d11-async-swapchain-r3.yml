@@ -1,0 +1,96 @@
+name: Qt6.8.3 real async D3D11 swapchain QRhi readback R3 (NON-PRODUCT)
+on:
+  pull_request:
+    branches: [feature/609-qt68-public-rhi-eligibility-and-window-grab-r2-20261110, develop]
+    paths:
+      - .github/workflows/qt68-d3d11-async-swapchain-r3.yml
+      - tools/perf/tests/qt68_rhi_swapchain_r3/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-qrhi-readback:
+    name: Windows2022 Qt6.8.3 D3D11 swapchain GPU async readback pixel qualification
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Confirm exact Qt6.8.3 Kit with private headers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Exact QtQuick Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual QRhi async readback independent research executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_rhi_swapchain_r3 -B build-r3 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build build-r3 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run actual async QRhi D3D11 swapchain readback of 4 quadrants
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path tmp/r3 -Force | Out-Null
+          foreach ($width in @(640, 1920)) {
+            $height = if ($width -eq 640) { 360 } else { 1080 }
+            $out = "tmp/r3/d3d11-$width" + "x$height.log"
+            & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" | Tee-Object -FilePath $out
+            if ($LASTEXITCODE -ne 0) { throw "R3 was not qualified for $width x $height" }
+          }
+      - name: Fail-closed assert REAL async callback, full pixels, no Viewer demand
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          paths = sorted(Path("tmp/r3").glob("d3d11-*.log"))
+          assert len(paths) == 2, paths
+          for p in paths:
+              t = p.read_text(encoding="utf-8-sig")
+              assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in t, (p,t[-2500:])
+              lines=[x.partition("=")[2] for x in t.splitlines() if x.startswith("R3_RESULT_JSON=")]
+              assert len(lines)==1, (p,lines)
+              x=json.loads(lines[0])
+              assert x["qt"]=="6.8.3" and x["backend"]=="d3d11", x
+              assert x["stages_verified"]==x["stages_expected"]==12, x
+              assert x["async_readbacks_submitted"]==x["async_readbacks_completed"]==12, x
+              assert x["callback_bytes"]==x["size"][0]*x["size"][1]*4, x
+              assert x["no_viewer_render_callbacks"]>=1, x
+              assert x["missing_resource"]==x["missing_transfer_flag"]==0, x
+              assert x["qt_private_research_only"] and not x["qualified_for_product"], x
+              print("R3_REAL_D3D11_ASYNC_READBACK=PASS_SCOPED", p, x)
+          '@ | Set-Content -Path tmp/r3/check.py -Encoding utf8
+          python tmp/r3/check.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish text-only R3 evidence, not product install packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-qt68-d3d11-research-evidence
+          path: tmp/r3/*.log
+          if-no-files-found: warn
+          retention-days: 10
