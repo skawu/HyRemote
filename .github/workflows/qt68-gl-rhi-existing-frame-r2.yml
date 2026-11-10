@@ -57,14 +57,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S tools/perf/tests/qt68_gl_render_frame_r2 -B build-r2-qt68-gl -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX"
+          cmake -S tools/perf/tests/qt68_gl_render_frame_r2 -B build-r2-qt68-gl -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX" -DHYREMOTE_GL_RHI_CAPTURE_AFTER_FRAME_END=ON
           cmake --build build-r2-qt68-gl --parallel 2
       - name: Run actual Qt6 OpenGL RHI 640x360 and 1920x1080 pixels
         shell: bash
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
           QSG_RHI_BACKEND: opengl
-          QT_DEBUG_PLUGINS: "1"
         run: |
           set -euo pipefail
           mkdir -p tmp/r2-gl
@@ -94,6 +93,7 @@ jobs:
               expected_verdict = ("PASS_QT68_RHI_OPENGL_NO_READBACK_CONTROL" if d["mode"] == "render-baseline" else "PASS_SCOPED_QT68_RHI_OPENGL_PIXEL_CORRECT")
               assert "R2_GL_VERDICT=" + expected_verdict in lines, (f, lines)
               assert d["qt"] == "6.8.3" and d["backend"] == "Qt6_RHI_OpenGL", d
+              assert d["tap_signal"] == "afterFrameEnd", d
               assert d["stages_expected"] == d["stages_completed"] == 30, d
               assert d["gl_errors"] == 0 and d["missing_gl_context"] == 0, d
               assert d["qualified_for_product"] is False, d
