@@ -115,6 +115,9 @@ struct State
     std::atomic<int> missingResource{0};
     std::atomic<int> invalidSwapchainFlags{0};
     std::atomic<int> asyncDataBytes{0};
+    std::atomic<int> intendedWidth{0};
+    std::atomic<int> intendedHeight{0};
+    std::atomic<int> resizeRecreateCount{0};
     std::atomic<int> callbackPixelWidth{-1};
     std::atomic<int> callbackPixelHeight{-1};
     std::atomic<int> callbackFormat{-1};
@@ -133,18 +136,27 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     int width = 640, height = 360;
+    int resizeWidth = 0, resizeHeight = 0;
     for (int i=1; i<argc; ++i) {
         const QString arg=QString::fromLocal8Bit(argv[i]);
         if (arg.startsWith("--width="))
             width = arg.mid(8).toInt();
         else if (arg.startsWith("--height="))
             height = arg.mid(9).toInt();
+        else if (arg.startsWith("--resize-width="))
+            resizeWidth = arg.mid(15).toInt();
+        else if (arg.startsWith("--resize-height="))
+            resizeHeight = arg.mid(16).toInt();
         else {
             std::cerr << "R3_VERDICT=BLOCKED_UNKNOWN_ARG\n";
             return 11;
         }
     }
-    if (width<128 || height<128 || width>3840 || height>2160)
+    if (width<128 || height<128 || width>3840 || height>2160
+        || ((resizeWidth == 0) != (resizeHeight == 0))
+        || resizeWidth < 0 || resizeHeight < 0
+        || resizeWidth > 3840 || resizeHeight > 2160
+        || (resizeWidth != 0 && (resizeWidth < 128 || resizeHeight < 128)))
         return 12;
     // The first stage is D3D11 ONLY. Other QRhi backends must qualify on
     // their own Kit and render loop, without assuming transfer-source flags.
@@ -161,6 +173,8 @@ int main(int argc, char **argv)
     Quadrants scene(window.contentItem());
     scene.setSize(QSizeF(width, height));
     auto state = std::make_shared<State>();
+    state->intendedWidth.store(width);
+    state->intendedHeight.store(height);
     int requested = -1;
     int verified = 0;
     bool finished = false;
@@ -210,9 +224,11 @@ int main(int argc, char **argv)
         // afterRendering, scenegraph's renderpass has ended, but frame is
         // still open and its GPU commands have not yet been submitted.
         // The QRhi API owns/reclaims batch after resourceUpdate().
+        const int expectedWidth = state->intendedWidth.load();
+        const int expectedHeight = state->intendedHeight.load();
         auto *result = new QRhiReadbackResult;
         auto begin = std::chrono::steady_clock::now();
-        result->completed = [state, result, stage, begin, width, height, renderThread]() {
+        result->completed = [state, result, stage, begin, expectedWidth, expectedHeight, renderThread]() {
             const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now()-begin).count();
             state->lastCallbackMs.store(static_cast<int>(took));
@@ -227,19 +243,19 @@ int main(int argc, char **argv)
             state->callbackPixelWidth.store(result->pixelSize.width());
             state->callbackPixelHeight.store(result->pixelSize.height());
             state->callbackFormat.store(static_cast<int>(result->format));
-            bool good = result->pixelSize==QSize(width,height)
-                && bytes == width*height*4;
+            bool good = result->pixelSize==QSize(expectedWidth,expectedHeight)
+                && bytes == expectedWidth*expectedHeight*4;
             bool topDown = false, bottomUp = false;
             if (good) {
                 QImage img(reinterpret_cast<const uchar *>(result->data.constData()),
-                           width,height,width*4,QImage::Format_RGBA8888);
+                           expectedWidth,expectedHeight,expectedWidth*4,QImage::Format_RGBA8888);
                 topDown = true;
                 bottomUp = true;
                 for (int q=0;q<4;++q) {
-                    const int x=(q%2 ? width*3/4 : width/4);
-                    const int y=(q/2 ? height*3/4 : height/4);
+                    const int x=(q%2 ? expectedWidth*3/4 : expectedWidth/4);
+                    const int y=(q/2 ? expectedHeight*3/4 : expectedHeight/4);
                     topDown &= near(img.pixelColor(x,y),colorFor(stage,q));
-                    bottomUp &= near(img.pixelColor(x,height-1-y),colorFor(stage,q));
+                    bottomUp &= near(img.pixelColor(x,expectedHeight-1-y),colorFor(stage,q));
                 }
             }
             state->responseStage.store(stage);
@@ -271,6 +287,12 @@ int main(int argc, char **argv)
                  <<"\"qt\":\""<<QT_VERSION_STR<<"\","
                  <<"\"backend\":\"d3d11\","
                  <<"\"size\":["<<width<<","<<height<<"],"
+                 <<"\"final_expected_size\":["
+                 <<state->intendedWidth.load()<<","
+                 <<state->intendedHeight.load()<<"],"
+                 <<"\"resize_recreate_count\":"<<state->resizeRecreateCount.load()<<","
+                 <<"\"resized_during_test\":"
+                 <<(resizeWidth>0?"true":"false")<<","
                  <<"\"stages_expected\":"<<kStages<<","
                  <<"\"stages_verified\":"<<verified<<","
                  <<"\"async_readbacks_submitted\":"<<state->submitted.load()<<","
@@ -348,6 +370,16 @@ int main(int argc, char **argv)
                     state->outstandingStage.store(-1);
                     state->responseStage.store(-1);
                     ++nextStage;
+                    if (nextStage == kStages/2 && resizeWidth > 0) {
+                        // No asynchronous copy outstanding: this boundary
+                        // is safe to reconfigure the visible QtQuick surface.
+                        // Every next copy must target the NEW pixel extent.
+                        window.resize(resizeWidth, resizeHeight);
+                        scene.setSize(QSizeF(resizeWidth, resizeHeight));
+                        state->intendedWidth.store(resizeWidth);
+                        state->intendedHeight.store(resizeHeight);
+                        state->resizeRecreateCount.fetch_add(1);
+                    }
                 } else if(status>1) {
                     quit(false, status==2
                        ? "FAIL_ASYNC_GPU_READBACK_WRONG_QUADRANT_PIXELS"
