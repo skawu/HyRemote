@@ -212,9 +212,11 @@ int main(int argc, char **argv)
         return 11;
     }
 
+    // Qt6.8 OpenGL RHI MUST be explicitly selected. Unlike the Qt5 classic
+    // GL test, QSG_RHI_BACKEND=opengl is an expected and valid setting.
     if (qEnvironmentVariable("QT_QUICK_BACKEND") == QStringLiteral("software")
-        || qEnvironmentVariable("QSG_RHI_BACKEND").size()) {
-        std::cerr << "R1=BLOCKED_NO_LEGACY_OPENGL_SCENEGRAPH\n";
+        || qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("opengl")) {
+        std::cerr << "R2_GL_RHI=BLOCKED_NOT_EXPLICIT_OPENGL_RHI\n";
         return 12;
     }
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
