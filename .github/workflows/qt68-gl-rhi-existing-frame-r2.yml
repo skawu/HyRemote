@@ -170,6 +170,8 @@ jobs:
               d=records[0]
               assert d["mode"]=="static-cold" and d["source_stages"]==1 and d["source_interval_ms"]==25,d
               assert d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==1,d
+              assert d["core_validated_owned_frames"]==1 and d["core_frame_errors"]==0,d
+              assert d["first_frame_storage_retained_after_pbo_reuse"] is True,d
               assert d["zero_viewer_skipped_render_frames"]>=1 and d["resource_cleanup_on_render_thread"],d
               for key in ("gl_errors","pixel_errors","source_phase_order_errors","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
                   assert d[key]==0,(key,d)
@@ -197,6 +199,8 @@ jobs:
               assert d["qt"]=="6.8.3" and d["backend"]=="Qt6_RHI_OpenGL",d
               assert d["mode"]=="dynamic" and d["source_interval_ms"]==100,d
               assert d["source_stages"]==d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==30,d
+              assert d["core_validated_owned_frames"]==30 and d["core_frame_errors"]==0,d
+              assert d["first_frame_storage_retained_after_pbo_reuse"] is True,d
               for key in ("source_phase_order_errors","pixel_errors","gl_errors","missing_context","unsupported_pbo_context","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
                   assert d[key]==0,(key,d)
               assert d["zero_viewer_skipped_render_frames"]>=1,d
