@@ -89,6 +89,41 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Bounded pump budget 2 not qualified: loop=$loop size=$width x $height" }
             }
           }
+      - name: Test whether GPU callback finishes without ANY self-triggered new frame
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+          QSG_RENDER_LOOP: threaded
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = "tmp/r3/no-pump-1920x1080-threaded.log"
+          & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=1920" "--height=1080" "--pump-budget=0" | Tee-Object -FilePath $out
+          $resultCode = $LASTEXITCODE
+          if ($resultCode -ne 0 -and $resultCode -ne 20) { throw "Unrecognized no-pump probe result=$resultCode" }
+          $env:R3_NO_PUMP_EXIT = "$resultCode"
+          @'
+          import json, pathlib, os
+          t = pathlib.Path("tmp/r3/no-pump-1920x1080-threaded.log").read_text(encoding="utf-8-sig")
+          lines = t.splitlines()
+          row = [json.loads(s.partition("=")[2]) for s in lines if s.startswith("R3_RESULT_JSON=")]
+          assert len(row)==1, lines[-10:]
+          d=row[0]
+          assert d["completion_pump_budget_per_stage"] == 0, d
+          assert d["completion_pump_requests"] == 0, d
+          assert d["qt_private_research_only"] and not d["qualified_for_product"], d
+          code = int(os.environ["R3_NO_PUMP_EXIT"])
+          if code == 0:
+              assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in lines, d
+              assert d["async_readbacks_completed"] == d["async_readbacks_submitted"] == 12, d
+              print("R3_NO_EXTRA_FRAME_REQUIRED=PASS_SCOPED_FOR_THIS_KIT")
+          else:
+              assert "R3_VERDICT=BLOCKED_COMPLETION_REQUIRES_MORE_GPU_FRAMES" in lines, d
+              assert d["async_readbacks_completed"] < d["async_readbacks_submitted"], d
+              assert d["completion_pump_budget_exceeded"] >= 1, d
+              print("R3_NO_EXTRA_FRAME_REQUIRED=BLOCKED; QRhi completion requires more scene frames in this Kit")
+          '@ | Set-Content -Path tmp/r3/no-pump-audit.py -Encoding utf8
+          python tmp/r3/no-pump-audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify at most 2 artificial frames per captured stage
         shell: pwsh
         run: |
