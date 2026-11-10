@@ -54,7 +54,10 @@ bool near(const QColor &actual, const QColor &expected)
 class Quadrants final : public QQuickItem
 {
 public:
-    explicit Quadrants(QQuickItem *parent) : QQuickItem(parent)
+    explicit Quadrants(QQuickItem *parent, std::atomic<int> *syncedStage,
+                       std::atomic<int> *syncedWidth, std::atomic<int> *syncedHeight)
+        : QQuickItem(parent), m_syncedStage(syncedStage),
+          m_syncedWidth(syncedWidth), m_syncedHeight(syncedHeight)
     {
         setFlag(ItemHasContents, true);
     }
@@ -94,10 +97,19 @@ protected:
                 ->setColor(colorFor(m_stage, i));
             q->markDirty(QSGNode::DirtyMaterial);
         }
+        // Executed by Qt's QSG synchronization, not just GUI-side
+        // QQuickItem::setStage(). A grab may only represent this generation
+        // after all scenegraph geometry/materials have been updated.
+        m_syncedWidth->store(static_cast<int>(width()), std::memory_order_release);
+        m_syncedHeight->store(static_cast<int>(height()), std::memory_order_release);
+        m_syncedStage->store(m_stage, std::memory_order_release);
         return node;
     }
 private:
     int m_stage = 0;
+    std::atomic<int> *m_syncedStage;
+    std::atomic<int> *m_syncedWidth;
+    std::atomic<int> *m_syncedHeight;
 };
 
 struct State
@@ -118,6 +130,7 @@ struct State
     std::atomic<int> intendedWidth{0};
     std::atomic<int> intendedHeight{0};
     std::atomic<int> resizeRecreateCount{0};
+    std::atomic<int> skippedUnsyncedSceneFrames{0};
     std::atomic<int> callbackPixelWidth{-1};
     std::atomic<int> callbackPixelHeight{-1};
     std::atomic<int> callbackFormat{-1};
@@ -170,7 +183,11 @@ int main(int argc, char **argv)
     window.setPosition(0, 0);
     window.resize(width, height);
     window.setColor(Qt::black);
-    Quadrants scene(window.contentItem());
+    std::atomic<int> synchronizedStage{-1};
+    std::atomic<int> synchronizedWidth{-1};
+    std::atomic<int> synchronizedHeight{-1};
+    Quadrants scene(window.contentItem(), &synchronizedStage,
+                    &synchronizedWidth, &synchronizedHeight);
     scene.setSize(QSizeF(width, height));
     auto state = std::make_shared<State>();
     state->intendedWidth.store(width);
@@ -199,6 +216,17 @@ int main(int argc, char **argv)
         if (stage<0 || state->lastSubmittedStage.load()==stage
             || state->submitted.load()>state->completed.load())
             return;
+        // A new window swapchain extent may already exist before the item's
+        // QSG geometry/materials are synchronized to its new generation.
+        // Reject such intermediate frames instead of publishing old color.
+        const int requiredW = state->intendedWidth.load();
+        const int requiredH = state->intendedHeight.load();
+        if (synchronizedStage.load(std::memory_order_acquire)!=stage
+            || synchronizedWidth.load(std::memory_order_acquire)!=requiredW
+            || synchronizedHeight.load(std::memory_order_acquire)!=requiredH) {
+            state->skippedUnsyncedSceneFrames.fetch_add(1);
+            return;
+        }
         auto *ri = window.rendererInterface();
         if (!ri || ri->graphicsApi()!=QSGRendererInterface::Direct3D11) {
             state->missingResource.fetch_add(1);
@@ -258,6 +286,19 @@ int main(int argc, char **argv)
                     bottomUp &= near(img.pixelColor(x,expectedHeight-1-y),colorFor(stage,q));
                 }
             }
+            if (good && !topDown && !bottomUp) {
+                QImage diagnostic(reinterpret_cast<const uchar *>(result->data.constData()),
+                                  expectedWidth,expectedHeight,expectedWidth*4,QImage::Format_RGBA8888);
+                std::cerr << "R3_BAD_SCENE_EPOCH stage=" << stage
+                          << " size=" << expectedWidth << "x" << expectedHeight;
+                for (int q=0; q<4; ++q) {
+                    const int x=q%2?expectedWidth*3/4:expectedWidth/4;
+                    const int y=q/2?expectedHeight*3/4:expectedHeight/4;
+                    std::cerr << " q" << q << "_rgb="
+                              << diagnostic.pixelColor(x,y).name().toStdString();
+                }
+                std::cerr << std::endl;
+            }
             state->responseStage.store(stage);
             state->responseStatus.store(!good ? 3 : (topDown || bottomUp ? 1 : 2));
             state->completed.fetch_add(1);
@@ -291,6 +332,11 @@ int main(int argc, char **argv)
                  <<state->intendedWidth.load()<<","
                  <<state->intendedHeight.load()<<"],"
                  <<"\"resize_recreate_count\":"<<state->resizeRecreateCount.load()<<","
+                 <<"\"skipped_unsynced_scene_frames\":"
+                 <<state->skippedUnsyncedSceneFrames.load()<<","
+                 <<"\"last_qsg_synchronized_stage\":"<<synchronizedStage.load()<<","
+                 <<"\"last_qsg_synchronized_geometry\":["
+                 <<synchronizedWidth.load()<<","<<synchronizedHeight.load()<<"],"
                  <<"\"resized_during_test\":"
                  <<(resizeWidth>0?"true":"false")<<","
                  <<"\"stages_expected\":"<<kStages<<","
@@ -374,10 +420,10 @@ int main(int argc, char **argv)
                         // No asynchronous copy outstanding: this boundary
                         // is safe to reconfigure the visible QtQuick surface.
                         // Every next copy must target the NEW pixel extent.
-                        window.resize(resizeWidth, resizeHeight);
-                        scene.setSize(QSizeF(resizeWidth, resizeHeight));
                         state->intendedWidth.store(resizeWidth);
                         state->intendedHeight.store(resizeHeight);
+                        window.resize(resizeWidth, resizeHeight);
+                        scene.setSize(QSizeF(resizeWidth, resizeHeight));
                         state->resizeRecreateCount.fetch_add(1);
                     }
                 } else if(status>1) {
