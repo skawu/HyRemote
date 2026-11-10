@@ -106,6 +106,41 @@ jobs:
           '@ | Set-Content -Path tmp/r2/audit.py -Encoding UTF8
           python tmp/r2/audit.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Independently inspect actual default Qt Quick D3D11 SwapChain transfer source (PRIVATE KIT RESEARCH ONLY)
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_rhi_public_eligibility -B build-r2-private-inspection -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release -DHYREMOTE_RHI_PRIVATE_INSPECTION_ONLY=ON
+          if ($LASTEXITCODE -ne 0) { throw "Exact Qt 6.8.3 GuiPrivate research Kit not available or build impossible" }
+          & cmake --build build-r2-private-inspection --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "Private read-only RHI flag inspection build failed" }
+          foreach ($width in @(640, 1920)) {
+            $height = if ($width -eq 640) { 360 } else { 1080 }
+            & .\build-r2-private-inspection\hyremote-qt68-public-rhi-eligibility.exe --mode=rhi-resource-audit "--width=$width" "--height=$height" --stages=15 | Tee-Object -FilePath ("tmp/r2/private-swapchain-$width" + "x$height.jsonl")
+            if ($LASTEXITCODE -ne 0) { throw "Native private inspection failed for width $width" }
+          }
+      - name: Fail closed on private borrowed swapchain eligibility (do not assume capability)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          for f in sorted(Path("tmp/r2").glob("private-swapchain-*.jsonl")):
+              rows = [ln.split("=",1)[1] for ln in f.read_text(encoding="utf-8-sig").splitlines() if ln.startswith("R2_RESULT_JSON=")]
+              assert len(rows) == 1, (f, rows)
+              x = json.loads(rows[0])
+              assert x["private_inspection_only"] is True and x["qtgui_private_used"] is True, x
+              assert x["graphics_api_enum"] == 4 and x["swapchain_resource_observed"], x
+              assert x["swapchain_transfer_source_flag"] in (0,1), x
+              assert x["readback_operations"] == 0 and x["public_rhi_gpu_readback_qualified"] is False, x
+              print("QT68_D3D11_DEFAULT_SWAPCHAIN_USED_AS_TRANSFER_SOURCE=", x["swapchain_transfer_source_flag"], "WIDTH=", x["size_px"][0])
+          assert len(list(Path("tmp/r2").glob("private-swapchain-*.jsonl"))) == 2
+          '@ | Set-Content -Path tmp/r2/private-audit.py -Encoding utf8
+          python tmp/r2/private-audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish small CPU/RHI/capture metadata, NOT a product package
         if: always()
         uses: actions/upload-artifact@v4
