@@ -14,6 +14,7 @@
 #include <QImage>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QSGFlatColorMaterial>
 #include <QSGGeometryNode>
 #include <QSGRendererInterface>
@@ -112,6 +113,9 @@ struct State
     std::atomic<int> missingResource{0};
     std::atomic<int> invalidSwapchainFlags{0};
     std::atomic<int> asyncDataBytes{0};
+    std::atomic<int> callbackPixelWidth{-1};
+    std::atomic<int> callbackPixelHeight{-1};
+    std::atomic<int> callbackFormat{-1};
     std::atomic<int> actualRenderCallbacks{0};
     std::atomic<int> noViewerFrames{0};
     std::atomic<bool> viewerDemand{true};
@@ -203,6 +207,9 @@ int main(int argc, char **argv)
                 state->callbackWrongThread.fetch_add(1); // expected: RHI thread != GUI
             const int bytes = result->data.size();
             state->asyncDataBytes.store(bytes);
+            state->callbackPixelWidth.store(result->pixelSize.width());
+            state->callbackPixelHeight.store(result->pixelSize.height());
+            state->callbackFormat.store(static_cast<int>(result->format));
             bool good = result->pixelSize==QSize(width,height)
                 && bytes == width*height*4;
             bool topDown = false, bottomUp = false;
@@ -245,6 +252,16 @@ int main(int argc, char **argv)
                  <<"\"async_readbacks_completed\":"<<state->completed.load()<<","
                  <<"\"last_callback_latency_ms\":"<<state->lastCallbackMs.load()<<","
                  <<"\"callback_bytes\":"<<state->asyncDataBytes.load()<<","
+                 <<"\"callback_pixel_size\":["
+                 <<state->callbackPixelWidth.load()<<","
+                 <<state->callbackPixelHeight.load()<<"],"
+                 <<"\"callback_texture_format\":"<<state->callbackFormat.load()<<","
+                 <<"\"actual_qquickwindow_size\":["
+                 <<window.width()<<","<<window.height()<<"],"
+                 <<"\"actual_qquickwindow_dpr\":"<<window.effectiveDevicePixelRatio()<<","
+                 <<"\"screen_geometry\":["
+                 <<(window.screen()?window.screen()->geometry().width():0)<<","
+                 <<(window.screen()?window.screen()->geometry().height():0)<<"],"
                  <<"\"missing_resource\":"<<state->missingResource.load()<<","
                  <<"\"missing_transfer_flag\":"<<state->invalidSwapchainFlags.load()<<","
                  <<"\"render_callbacks\":"<<state->actualRenderCallbacks.load()<<","
