@@ -145,6 +145,12 @@ int main(int argc, char **argv)
     // their own Kit and render loop, without assuming transfer-source flags.
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
     QQuickWindow window;
+    // Hosted Windows virtual desktop is only 1024x768. A decorated Win32
+    // window requested at 1920x1080 was resized by the OS to 1028x749.
+    // Use a borderless, positioned research surface to make the requested
+    // render-target pixel size an actual testable condition, not a guess.
+    window.setFlags(Qt::FramelessWindowHint);
+    window.setPosition(0, 0);
     window.resize(width, height);
     window.setColor(Qt::black);
     Quadrants scene(window.contentItem());
