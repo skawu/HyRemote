@@ -135,8 +135,10 @@ jobs:
               assert x["private_inspection_only"] is True and x["qtgui_private_used"] is True, x
               assert x["graphics_api_enum"] == 4 and x["swapchain_resource_observed"], x
               assert x["swapchain_transfer_source_flag"] in (0,1), x
+              assert all(isinstance(x[k], int) and 0 <= x[k] <= 31 for k in ("command_list_stage_mask", "rhi_stage_mask", "swapchain_stage_mask")), x
               assert x["readback_operations"] == 0 and x["public_rhi_gpu_readback_qualified"] is False, x
               print("QT68_D3D11_DEFAULT_SWAPCHAIN_USED_AS_TRANSFER_SOURCE=", x["swapchain_transfer_source_flag"], "WIDTH=", x["size_px"][0])
+              print("QT68_D3D11_STAGE_MASKS: command_list=",x["command_list_stage_mask"],"rhi=",x["rhi_stage_mask"],"swapchain=",x["swapchain_stage_mask"])
           assert len(list(Path("tmp/r2").glob("private-swapchain-*.jsonl"))) == 2
           '@ | Set-Content -Path tmp/r2/private-audit.py -Encoding utf8
           python tmp/r2/private-audit.py
