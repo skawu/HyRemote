@@ -30,3 +30,16 @@ if(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
         PRIVATE HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY=1)
     message(WARNING "RESEARCH ONLY: EXACT Qt6.8.3 GuiPrivate inspection; do not ship")
 endif()
+
+# Deliberately separate from the fully PUBLIC API probe above. This binary
+# inspects only QRhiSwapChain flags from exact Qt6.8.3; no rendering changes,
+# no GPU readback, and no installation into HyRemote.
+option(HYREMOTE_R2_BUILD_PRIVATE_METADATA_AUDIT
+    "Test only: read default Qt6 swapchain flags with exact GuiPrivate" OFF)
+if(HYREMOTE_R2_BUILD_PRIVATE_METADATA_AUDIT)
+    find_package(Qt6 6.8.3 REQUIRED COMPONENTS GuiPrivate)
+    add_executable(hyremote-qt68-rhi-private-metadata-audit private_swapchain_metadata.cpp)
+    target_compile_features(hyremote-qt68-rhi-private-metadata-audit PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-qt68-rhi-private-metadata-audit
+        PRIVATE Qt6::Core Qt6::Gui Qt6::GuiPrivate Qt6::Quick)
+endif()
