@@ -38,9 +38,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check aqtinstall ninja
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
-            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Required exact Qt6.8.3 toolkit missing' }
@@ -85,9 +85,9 @@ jobs:
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-xinput0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1 libxkbcommon0
           python -m pip install --disable-pip-version-check aqtinstall ninja
-          prefix="$${{ runner.temp }}/Qt/6.8.3/gcc_64"
+          prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64"
           if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
-            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$${{ runner.temp }}/Qt"
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
           fi
           test -f "$prefix/lib/libQt6Quick.so"
           printf 'QT_PREFIX=%s\n' "$prefix" >> "$GITHUB_ENV"
