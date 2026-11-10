@@ -146,8 +146,8 @@ private:
 class PboFrameTap final
 {
 public:
-    explicit PboFrameTap(int width,int height)
-       : m_width(width),m_height(height),
+    explicit PboFrameTap(int width,int height,int expected)
+       : m_width(width),m_height(height),m_expected(expected),
          m_bytes(static_cast<size_t>(width)*height*4)
     {}
 
@@ -242,12 +242,12 @@ public:
 
         if(!m_demand.load(std::memory_order_acquire)) {
             ++m_noDemandRenderFrames;
-            if(m_completed.load()==kStages && m_busyCount()==0)
+            if(m_completed.load()==m_expected && m_busyCount()==0)
                 cleanup(gl);
             restore();
             return;
         }
-        if(phase>=0 && phase<kStages && phase>m_lastQueued) {
+        if(phase>=0 && phase<m_expected && phase>m_lastQueued) {
             if(phase!=m_lastQueued+1)
                 m_droppedStage.fetch_add(1);
             auto it=std::find_if(m_slots.begin(),m_slots.end(),
@@ -283,7 +283,7 @@ public:
             it->busy=true;
             m_lastQueued=phase;
             ++m_queued;
-        } else if(phase>=kStages) {
+        } else if(phase>=m_expected) {
             ++m_flushRenderFrames;
         }
         restore();
@@ -312,7 +312,7 @@ public:
                  <<"\"render_loop\":\""
                  <<qEnvironmentVariable("QSG_RENDER_LOOP").toStdString()<<"\","
                  <<"\"size_px\":["<<m_width<<","<<m_height<<"],"
-                 <<"\"source_stages\":"<<kStages<<","
+                 <<"\"source_stages\":"<<m_expected<<","
                  <<"\"readbacks_enqueued\":"<<m_queued<<","
                  <<"\"readbacks_retired\":"<<m_retired<<","
                  <<"\"verified_full_frames\":"<<m_completed.load()<<","
@@ -365,7 +365,7 @@ private:
         m_cleaned=true;
     }
 
-    const int m_width,m_height;
+    const int m_width,m_height,m_expected;
     const size_t m_bytes;
     std::array<GLuint,kSlots> m_ids{};
     std::array<Slot,kSlots> m_slots{};
@@ -392,18 +392,26 @@ int main(int argc,char** argv)
 {
     QGuiApplication app(argc,argv);
     int width=640,height=360;
+    int intervalMs=100;
+    QString mode=QStringLiteral("dynamic");
     for(int i=1;i<argc;i++) {
         const QString arg=QString::fromLocal8Bit(argv[i]);
         if(arg.startsWith("--width="))
             width=arg.mid(8).toInt();
         else if(arg.startsWith("--height="))
             height=arg.mid(9).toInt();
+        else if(arg.startsWith("--interval-ms="))
+            intervalMs=arg.mid(14).toInt();
+        else if(arg.startsWith("--mode="))
+            mode=arg.mid(7);
         else {
             std::cerr<<"R3_VERDICT=BLOCKED_ARG"<<std::endl;
             return 10;
         }
     }
     if(width<32 || height<32 || width>3840 || height>2160 ||
+       intervalMs<16 || intervalMs>1000 ||
+       (mode!=QLatin1String("dynamic") && mode!=QLatin1String("static-cold")) ||
        qEnvironmentVariable("QSG_RHI_BACKEND")!=QStringLiteral("opengl")) {
         std::cerr<<"R3_VERDICT=BLOCKED_UNSUPPORTED_BACKEND_OR_DIMENSIONS"<<std::endl;
         return 11;
@@ -418,7 +426,8 @@ int main(int argc,char** argv)
     QuadrantItem item(synchronized,window.contentItem());
     item.setSize(QSizeF(width,height));
 
-    PboFrameTap tap(width,height);
+    const int required=mode==QLatin1String("static-cold")?1:kStages;
+    PboFrameTap tap(width,height,required);
     const auto connected=QObject::connect(&window,&QQuickWindow::afterFrameEnd,
         &window,[&] {
             tap.onFrame(window,synchronized.load(std::memory_order_acquire));
@@ -430,21 +439,26 @@ int main(int argc,char** argv)
     QTimer stageTicker;
     stageTicker.setInterval(100);
     QObject::connect(&stageTicker,&QTimer::timeout,&app,[&] {
-        if(generated<kStages) {
+        if(generated<required) {
             item.next(generated++);
         } else {
             stageTicker.stop();
-            // Final normal source update advances the GPU and allows the
-            // last PBO fence to be harvested, with no new readback.
-            item.next(kStages);
-            // A PBO must be retired on the render thread with a current
-            // context. If the final fence is not ready at this frame,
-            // arrange ONE additional legitimate source change; no infinite
-            // update/getPixel feedback loop is allowed.
-            QTimer::singleShot(200,&app,[&] {
-                if(!done && tap.verified()!=kStages)
-                    item.next(kStages+1);
-            });
+            if(mode==QLatin1String("static-cold")) {
+                // A STATIC scene has no next normal paint. A single bounded
+                // call to update() provides a render-context retirement
+                // opportunity without changing source content or making a
+                // new readback request. The callback must not request more
+                // updates on its own (self-trigger loop forbidden).
+                window.update();
+            } else {
+                // Normal dynamic source update provides a later render frame
+                // for retiring the final PBO. Never queue another readback.
+                item.next(required);
+                QTimer::singleShot(200,&app,[&] {
+                    if(!done && tap.verified()!=required)
+                        item.next(required+1);
+                });
+            }
         }
     });
 
@@ -452,10 +466,10 @@ int main(int argc,char** argv)
     monitor.setInterval(20);
     QObject::connect(&monitor,&QTimer::timeout,&app,[&] {
         if(done) return;
-        if(tap.verified()==kStages && !zeroViewerIssued) {
+        if(tap.verified()==required && !zeroViewerIssued) {
             zeroViewerIssued=true;
             tap.disableDemand();
-            item.next(kStages+1); // real local paint with zero Viewer demand
+            item.next(required+2); // real local paint with zero Viewer demand
         }
         if(zeroViewerIssued && tap.noDemandRenders()>=1 && tap.cleaned()) {
             done=true;
@@ -463,8 +477,8 @@ int main(int argc,char** argv)
             monitor.stop();
             QObject::disconnect(connected);
             tap.report(clock.elapsed());
-            const bool ok=tap.verified()==kStages && tap.queued()==kStages
-                          && tap.retired()==kStages && tap.errors()==0
+            const bool ok=tap.verified()==required && tap.queued()==required
+                          && tap.retired()==required && tap.errors()==0
                           && tap.noDemandRenders()>=1 && tap.cleaned();
             std::cout<<"R3_VERDICT="
                      <<(ok?"PASS_QT68_OPENGL_PBO_ASYNC_SCOPED"
@@ -489,7 +503,7 @@ int main(int argc,char** argv)
 
     window.show();
     clock.start();
-    stageTicker.start(100);
+    stageTicker.start(intervalMs);
     timeout.start(20000);
     monitor.start();
     return app.exec();
