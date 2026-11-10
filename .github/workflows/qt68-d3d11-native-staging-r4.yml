@@ -36,9 +36,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check aqtinstall ninja
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
-            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt6.8.3 Kit not ready' }
