@@ -32,16 +32,17 @@ jobs:
         shell: bash
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-          QSG_RENDER_LOOP: "basic"
           QT_OPENGL: "desktop"
         run: |
           set -euo pipefail
           mkdir -p tmp/r1
-          for geometry in '640 360' '1920 1080'; do
-            read -r width height <<< "$geometry"
-            for mode in render-baseline render-tap public-grab; do
-              echo "R1_START size=${width}x${height} mode=${mode}"
-              timeout 90s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' ./build-r1-qt5-gl/hyremote-qt5-gl-existing-frame-r1 --mode="$mode" --width="$width" --height="$height" | tee "tmp/r1/${mode}-${width}x${height}.log"
+          for loop in basic threaded; do
+            for geometry in '640 360' '1920 1080'; do
+              read -r width height <<< "$geometry"
+              for mode in render-baseline render-tap public-grab; do
+                echo "R1_START loop=$loop size=${width}x${height} mode=${mode}"
+                QSG_RENDER_LOOP="$loop" timeout 90s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' ./build-r1-qt5-gl/hyremote-qt5-gl-existing-frame-r1 --mode="$mode" --width="$width" --height="$height" | tee "tmp/r1/${mode}-${width}x${height}-${loop}.log"
+              done
             done
           done
       - name: Fail closed on wrong pixels and incomplete measurements
@@ -52,7 +53,7 @@ jobs:
           import json
           from pathlib import Path
           logs = sorted(Path("tmp/r1").glob("*.log"))
-          assert len(logs) == 6, logs
+          assert len(logs) == 12, logs
           for path in logs:
               txt = path.read_text()
               assert ("R1_VERDICT=PASS_QT5_OPENGL_NO_READBACK_CONTROL" in txt if "render-baseline" in path.name else "R1_VERDICT=PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT" in txt), path
@@ -63,6 +64,9 @@ jobs:
               assert j["gl_errors"] == j["missing_gl_context"] == 0, j
               assert j["wall_ms"] > 0 and j["process_cpu_ms"] >= 0, j
               assert j["qualified_for_product"] is False, j
+              assert j["render_loop"] in ("basic", "threaded"), j
+              if j["render_loop"] == "threaded":
+                  assert j["render_thread_distinct_from_gui"] is True, j
               if j["mode"] == "render-baseline":
                   assert j["stages_correct_pixels"] == 0 and j["pixel_truth_verified"] is False, j
                   assert j["render_tap_readbacks"] == 0, j
