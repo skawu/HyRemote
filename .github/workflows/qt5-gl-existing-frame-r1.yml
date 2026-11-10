@@ -1,0 +1,81 @@
+name: Qt5.15 OpenGL existing render frame R1 qualification (NON-PRODUCT)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt5-gl-existing-frame-r1.yml
+      - tools/perf/tests/qt5_gl_render_frame_r1/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qt5-opengl-on-screen:
+    name: Qt5.15.3 Xvfb/Mesa scenegraph readback vs public grab
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install public Qt5.15 Quick/OpenGL and Xvfb
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq qtbase5-dev qtdeclarative5-dev libqt5opengl5-dev libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 mesa-utils xvfb ninja-build
+          qmake -query QT_VERSION | grep '^5\.15\.'
+      - name: Build real Qt5 Quick and OpenGL render/readback code
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/perf/tests/qt5_gl_render_frame_r1 -B build-r1-qt5-gl -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-r1-qt5-gl --parallel 2
+      - name: Run real Qt scenegraph at 640x360 and 1920x1080
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          QSG_RENDER_LOOP: "basic"
+          QT_OPENGL: "desktop"
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r1
+          for geometry in '640 360' '1920 1080'; do
+            read -r width height <<< "$geometry"
+            for mode in render-tap public-grab; do
+              echo "R1_START size=${width}x${height} mode=${mode}"
+              timeout 90s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' ./build-r1-qt5-gl/hyremote-qt5-gl-existing-frame-r1 --mode="$mode" --width="$width" --height="$height" | tee "tmp/r1/${mode}-${width}x${height}.log"
+            done
+          done
+      - name: Fail closed on wrong pixels and incomplete measurements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          logs = sorted(Path("tmp/r1").glob("*.log"))
+          assert len(logs) == 4, logs
+          for path in logs:
+              txt = path.read_text()
+              assert "R1_VERDICT=PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT" in txt, path
+              lines = [x for x in txt.splitlines() if x.startswith("R1_RESULT_JSON=")]
+              assert len(lines) == 1, (path, lines)
+              j = json.loads(lines[0][len("R1_RESULT_JSON="):])
+              assert j["stages_correct_pixels"] == j["stages_expected"] == 12, j
+              assert j["gl_errors"] == j["missing_gl_context"] == 0, j
+              assert j["wall_ms"] > 0 and j["process_cpu_ms"] >= 0, j
+              assert j["qualified_for_product"] is False, j
+              if j["mode"] == "render-tap":
+                  assert j["render_tap_readbacks"] >= 12, j
+                  assert j["readback_p95_ms"] >= 0, j
+              else:
+                  assert j["public_grab_p95_ms"] >= 0, j
+              print("R1_PIXEL_TRUTH=PASS", path, "readback_p95_ms", j["readback_p95_ms"], "grab_p95_ms", j["public_grab_p95_ms"], "cpu_ms", j["process_cpu_ms"])
+          print("R1_VALIDATION=PASS_QT5_SOFTWARE_GL_ONLY_NOT_PRODUCT")
+          PY
+      - name: Keep small text-only CPU/readback evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt5-gl-existing-frame-r1-evidence
+          path: tmp/r1/*.log
+          if-no-files-found: warn
+          retention-days: 10
