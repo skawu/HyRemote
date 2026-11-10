@@ -269,14 +269,12 @@ int main(int argc, char **argv)
     source.setSize(QSizeF(width, height));
     window.show();
 
-    const auto component = HyRemote::detail::createTargetComponents(&window, false);
-    REQUIRE(component.supported && component.capture);
-    if (!component.capture)
-        return 10;
-
     // The real production transport is used, including its RFB exact update
     // protocol and canonical RGBA storage mapping. No mocked encoder.
     auto components = HyRemote::detail::createTargetComponents(&window, false);
+    REQUIRE(components.supported && components.capture);
+    if (!components.capture)
+        return 10;
     hyremote::Session session;
     REQUIRE(session.setCaptureSource(std::move(components.capture)));
     const quint16 port = freeLocalPort();
