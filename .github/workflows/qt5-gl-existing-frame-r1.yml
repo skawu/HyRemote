@@ -39,7 +39,7 @@ jobs:
           mkdir -p tmp/r1
           for geometry in '640 360' '1920 1080'; do
             read -r width height <<< "$geometry"
-            for mode in render-tap public-grab; do
+            for mode in render-baseline render-tap public-grab; do
               echo "R1_START size=${width}x${height} mode=${mode}"
               timeout 90s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' ./build-r1-qt5-gl/hyremote-qt5-gl-existing-frame-r1 --mode="$mode" --width="$width" --height="$height" | tee "tmp/r1/${mode}-${width}x${height}.log"
             done
@@ -52,22 +52,27 @@ jobs:
           import json
           from pathlib import Path
           logs = sorted(Path("tmp/r1").glob("*.log"))
-          assert len(logs) == 4, logs
+          assert len(logs) == 6, logs
           for path in logs:
               txt = path.read_text()
-              assert "R1_VERDICT=PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT" in txt, path
+              assert ("R1_VERDICT=PASS_QT5_OPENGL_NO_READBACK_CONTROL" in txt if "render-baseline" in path.name else "R1_VERDICT=PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT" in txt), path
               lines = [x for x in txt.splitlines() if x.startswith("R1_RESULT_JSON=")]
               assert len(lines) == 1, (path, lines)
               j = json.loads(lines[0][len("R1_RESULT_JSON="):])
-              assert j["stages_correct_pixels"] == j["stages_expected"] == 12, j
+              assert j["stages_completed"] == j["stages_expected"] == 30, j
               assert j["gl_errors"] == j["missing_gl_context"] == 0, j
               assert j["wall_ms"] > 0 and j["process_cpu_ms"] >= 0, j
               assert j["qualified_for_product"] is False, j
-              if j["mode"] == "render-tap":
-                  assert j["render_tap_readbacks"] >= 12, j
+              if j["mode"] == "render-baseline":
+                  assert j["stages_correct_pixels"] == 0 and j["pixel_truth_verified"] is False, j
+                  assert j["render_tap_readbacks"] == 0, j
+              elif j["mode"] == "render-tap":
+                  assert j["stages_correct_pixels"] == 30 and j["pixel_truth_verified"] is True, j
+                  assert j["render_tap_readbacks"] >= 30, j
                   assert j["no_demand_render_frames_no_readback"] >= 1, j
                   assert j["readback_p95_ms"] >= 0, j
               else:
+                  assert j["stages_correct_pixels"] == 30 and j["pixel_truth_verified"] is True, j
                   assert j["public_grab_p95_ms"] >= 0, j
               print("R1_PIXEL_TRUTH=PASS", path, "readback_p95_ms", j["readback_p95_ms"], "grab_p95_ms", j["public_grab_p95_ms"], "cpu_ms", j["process_cpu_ms"])
           print("R1_VALIDATION=PASS_QT5_SOFTWARE_GL_ONLY_NOT_PRODUCT")
