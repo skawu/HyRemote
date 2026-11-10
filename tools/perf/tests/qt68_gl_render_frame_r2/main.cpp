@@ -152,6 +152,11 @@ void printResult(const std::string &mode, int width, int height,
               << "\"mode\":\"" << mode << "\","
               << "\"qt\":\"" << QT_VERSION_STR << "\","
               << "\"backend\":\"Qt6_RHI_OpenGL\","
+#if defined(HYREMOTE_GL_RHI_CAPTURE_AFTER_FRAME_END)
+              << "\"tap_signal\":\"afterFrameEnd\","
+#else
+              << "\"tap_signal\":\"afterRendering\","
+#endif
               << "\"render_loop\":\""
               << qEnvironmentVariable("QSG_RENDER_LOOP").toStdString() << "\","
               << "\"render_thread_distinct_from_gui\":"
@@ -240,7 +245,17 @@ int main(int argc, char **argv)
     int lastStaticFrames = -1;
     bool done = false;
 
-    QObject::connect(&window, &QQuickWindow::afterRendering,
+#if defined(HYREMOTE_GL_RHI_CAPTURE_AFTER_FRAME_END)
+    // This is a separate R2 qualification: Qt6 has submitted the frame
+    // here, but the current OpenGL context / readable backbuffer is NOT
+    // guaranteed. Fail closed if context or pixel provenance is lost.
+    const auto frameStageSignal = &QQuickWindow::afterFrameEnd;
+#else
+    // The previous Qt6 afterRendering experiment captured stale pixels:
+    // glReadPixels after command recording, but before GPU submission.
+    const auto frameStageSignal = &QQuickWindow::afterRendering;
+#endif
+    QObject::connect(&window, frameStageSignal,
                      &window, [&window, &stats, &lastSynchronizedQsgPhase, width, height, mode] {
         stats.renderCallbacks.fetch_add(1, std::memory_order_relaxed);
         if (QThread::currentThread() != QCoreApplication::instance()->thread())
