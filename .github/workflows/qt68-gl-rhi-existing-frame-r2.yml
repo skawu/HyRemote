@@ -149,7 +149,7 @@ jobs:
               echo "R3_STATIC_PBO_START loop=$loop size=$width x $height"
               QSG_RENDER_LOOP="$loop" timeout 30s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
                 ./build-r3-qt68-pbo/hyremote-qt68-gl-pbo-async-r3 \
-                --mode=static-cold "--width=$width" "--height=$height" \
+                --mode=static-cold --interval-ms=25 "--width=$width" "--height=$height" \
                 | tee "tmp/r3-pbo-static/$loop-$width-x$height.jsonl"
             done
           done
@@ -168,7 +168,7 @@ jobs:
               records=[json.loads(x.partition("=")[2]) for x in rows if x.startswith("R3_PBO_RESULT_JSON=")]
               assert len(records)==1,(f,rows)
               d=records[0]
-              assert d["mode"]=="static-cold" and d["source_stages"]==1,d
+              assert d["mode"]=="static-cold" and d["source_stages"]==1 and d["source_interval_ms"]==25,d
               assert d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==1,d
               assert d["zero_viewer_skipped_render_frames"]>=1 and d["resource_cleanup_on_render_thread"],d
               for key in ("gl_errors","pixel_errors","source_phase_order_errors","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
