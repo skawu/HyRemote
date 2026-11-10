@@ -48,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & cmake -S tools/perf/tests/qt68_rhi_public_eligibility -B build-r2-qt68 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          & cmake -S tools/perf/tests/qt68_rhi_public_eligibility -B build-r2-qt68 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release -DHYREMOTE_R2_BUILD_PRIVATE_METADATA_AUDIT=ON
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & cmake --build build-r2-qt68 --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -68,6 +68,34 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "R2 blocked: $mode $width x $height exit=$LASTEXITCODE" }
             }
           }
+      - name: Read ONLY original Qt6.8.3 RHI swapchain flags (separate private experimental binary)
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\build-r2-qt68\hyremote-qt68-rhi-private-metadata-audit.exe | Tee-Object -FilePath tmp/r2/readonly-qrhi-private-metadata.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          import json
+          from pathlib import Path
+          data = Path("tmp/r2/readonly-qrhi-private-metadata.log").read_text(encoding="utf-8-sig")
+          assert "R2_PRIVATE_METADATA_VERDICT=PASS_READ_ONLY_METADATA" in data, data
+          match = [x for x in data.splitlines() if x.startswith("R2_PRIVATE_METADATA_JSON=")]
+          assert len(match) == 1, match
+          p = json.loads(match[0].partition("=")[2])
+          assert p["qt"] == "6.8.3" and p["graphics_api"] == 4, p
+          assert p["borrowed_swapchain_observed"] is True and p["render_callbacks"] > 0, p
+          assert p["rhi_backend_enum"] == 3, p
+          assert p["no_gpu_readback_performed"] and p["no_swapchain_mutation"], p
+          assert p["does_not_grant_product_qualification"] is True, p
+          assert p["device_lost"] is False and p["metadata_inconsistent"] is False, p
+          print("R2_SWAPCHAIN_READBACK_ELIGIBILITY_METADATA=" +
+                ("FLAG_PRESENT_BUT_UNQUALIFIED" if p["used_as_transfer_source"]
+                 else "TRANSFER_SOURCE_NOT_ENABLED"), p)
+          '@ | Set-Content -Path tmp/r2/check-private-metadata.py -Encoding UTF8
+          python tmp/r2/check-private-metadata.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Audit actual backend, phase pixels and no private readback
         shell: pwsh
         run: |
@@ -148,6 +176,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: r2-qt68-public-rhi-capture-evidence
-          path: tmp/r2/*.jsonl
+          path: |
+            tmp/r2/*.jsonl
+            tmp/r2/readonly-qrhi-private-metadata.log
           if-no-files-found: warn
           retention-days: 10
