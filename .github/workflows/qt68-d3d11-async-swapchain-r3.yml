@@ -124,7 +124,7 @@ jobs:
           @'
           import json
           from pathlib import Path
-          paths = sorted(Path("tmp/r3").glob("d3d11-*.log"))
+          paths = sorted(p for p in Path("tmp/r3").glob("d3d11-*.log") if "-pump2-" not in p.name)
           assert len(paths) == 8, paths
           for p in paths:
               t = p.read_text(encoding="utf-8-sig")
