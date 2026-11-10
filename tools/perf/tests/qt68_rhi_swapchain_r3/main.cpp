@@ -100,6 +100,9 @@ private:
 struct State
 {
     std::atomic<int> outstandingStage{-1};
+    // A callback may complete before GUI processes that stage. No second
+    // readback for the SAME epoch, even if RHI renders another frame.
+    std::atomic<int> lastSubmittedStage{-1};
     std::atomic<int> responseStage{-1};
     std::atomic<int> responseStatus{0}; // 0 waiting, 1 good, 2 wrong, 3 empty
     std::atomic<int> submitted{0};
@@ -162,7 +165,8 @@ int main(int argc, char **argv)
             return;
         }
         const int stage = state->outstandingStage.load();
-        if (stage<0 || state->submitted.load()>state->completed.load())
+        if (stage<0 || state->lastSubmittedStage.load()==stage
+            || state->submitted.load()>state->completed.load())
             return;
         auto *ri = window.rendererInterface();
         if (!ri || ri->graphicsApi()!=QSGRendererInterface::Direct3D11) {
@@ -219,6 +223,7 @@ int main(int argc, char **argv)
             state->completed.fetch_add(1);
             delete result;
         };
+        state->lastSubmittedStage.store(stage);
         auto *batch = rhi->nextResourceUpdateBatch();
         QRhiReadbackDescription desc; // null texture means current transfer-source swapchain
         batch->readBackTexture(desc, result);
