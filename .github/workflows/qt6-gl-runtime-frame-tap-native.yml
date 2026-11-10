@@ -1,0 +1,104 @@
+name: Qt6 OpenGL RHI request-scoped Runtime pilot compile (TEST ONLY)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt6-gl-runtime-frame-tap-native.yml
+      - src/runtime/CMakeLists.txt
+      - src/runtime/src/quick/quick_target.cpp
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-generic:
+    name: Windows Qt6.8.3 MSVC2022 Generic - ${{ matrix.arm }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Verify exact Qt6.8.3 Quick toolkit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Required exact Qt6.8.3 toolkit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual Generic/Runtime binary and assert source feature gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arm = '${{ matrix.arm }}'
+          $build = 'build-quick-tap-' + $arm.ToLowerInvariant()
+          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP=$arm"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cache = Join-Path $build 'CMakeCache.txt'
+          if (!(Test-Path $cache)) { throw 'CMakeCache missing' }
+          $actual = @(Get-Content $cache | Where-Object { $_ -match '^HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP:BOOL=' })
+          if ($actual.Count -ne 1 -or $actual[0] -ne "HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP:BOOL=$arm") {
+            throw "Feature switch was not compiled as required $arm; actual=$($actual -join ';')"
+          }
+          $dll = Get-ChildItem -Path $build -Recurse -File -Filter 'HyRemoteRemoteAccess.dll' | Select-Object -First 1
+          if (!$dll) { throw 'Runtime DLL not built' }
+          Write-Host "QT6_GL_TAP_WINDOWS_COMPILE=PASS ARM=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }} CONFIG=$($actual[0])"
+  linux-qt68-gl:
+    name: Linux Qt6.8.3 Generic/Runtime - OpenGL tap ON
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt6-6.8.3-linux-gcc64-openGL-rhi-eligibility-v1
+      - name: Exact Qt6.8.3 Linux kit and XCB dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-xinput0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1 libxkbcommon0
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          prefix="$${{ runner.temp }}/Qt/6.8.3/gcc_64"
+          if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$${{ runner.temp }}/Qt"
+          fi
+          test -f "$prefix/lib/libQt6Quick.so"
+          printf 'QT_PREFIX=%s\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'LD_LIBRARY_PATH=%s/lib\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'QT_QPA_PLATFORM_PLUGIN_PATH=%s/plugins/platforms\n' "$prefix" >> "$GITHUB_ENV"
+      - name: Compile actual Qt6 OpenGL-capable Runtime and Generic integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release --build-dir=build-quick-tap-linux --no-tests --clean -j4 --cmake=HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP=ON
+          grep -Fx 'HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP:BOOL=ON' build-quick-tap-linux/CMakeCache.txt
+          find build-quick-tap-linux -name '*HyRemoteRemoteAccess*' -type f | head -15
+          find build-quick-tap-linux -name '*HyRemoteRemoteAccess*' -type f | grep -q .
+          echo "QT6_GL_TAP_LINUX_COMPILE=PASS SHA=${{ github.event.pull_request.head.sha || github.sha }} CONFIG=ON"
