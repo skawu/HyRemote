@@ -1,0 +1,197 @@
+name: Qt6.8.3 real async D3D11 swapchain QRhi readback R3 (NON-PRODUCT)
+on:
+  pull_request:
+    branches: [feature/609-qt68-public-rhi-eligibility-and-window-grab-r2-20261110, develop]
+    paths:
+      - .github/workflows/qt68-d3d11-async-swapchain-r3.yml
+      - tools/perf/tests/qt68_rhi_swapchain_r3/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-qrhi-readback:
+    name: Windows2022 Qt6.8.3 D3D11 swapchain GPU async readback pixel qualification
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Confirm exact Qt6.8.3 Kit with private headers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Exact QtQuick Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual QRhi async readback independent research executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_rhi_swapchain_r3 -B build-r3 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build build-r3 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run actual async QRhi D3D11 swapchain readback of 4 quadrants
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path tmp/r3 -Force | Out-Null
+          foreach ($loop in @('basic', 'threaded')) {
+            $env:QSG_RENDER_LOOP = $loop
+            foreach ($width in @(640, 1920)) {
+              $height = if ($width -eq 640) { 360 } else { 1080 }
+              $out = "tmp/r3/d3d11-$width" + "x$height-$loop.log"
+              & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "R3 was not qualified for $loop $width x $height" }
+            }
+          }
+          foreach ($loop in @('basic', 'threaded')) {
+            $env:QSG_RENDER_LOOP = $loop
+            foreach ($width in @(640, 1920)) {
+              $height = if ($width -eq 640) { 360 } else { 1080 }
+              $resizeWidth = if ($width -eq 640) { 800 } else { 1280 }
+              $resizeHeight = if ($width -eq 640) { 450 } else { 720 }
+              $out = "tmp/r3/d3d11-$width" + "x$height-$loop-resize.log"
+              & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" "--resize-width=$resizeWidth" "--resize-height=$resizeHeight" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "R3 resize was not qualified $loop $width x $height -> $resizeWidth x $resizeHeight" }
+            }
+          }
+      - name: Bound artificial completion-frame pumping (research only)
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($loop in @('basic', 'threaded')) {
+            $env:QSG_RENDER_LOOP = $loop
+            foreach ($width in @(640, 1920)) {
+              $height = if ($width -eq 640) { 360 } else { 1080 }
+              $out = "tmp/r3/d3d11-pump2-$width" + "x$height-$loop.log"
+              & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" "--pump-budget=2" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "Bounded pump budget 2 not qualified: loop=$loop size=$width x $height" }
+            }
+          }
+      - name: Test whether GPU callback finishes without ANY self-triggered new frame
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+          QSG_RENDER_LOOP: threaded
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = "tmp/r3/no-pump-1920x1080-threaded.log"
+          & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=1920" "--height=1080" "--pump-budget=0" | Tee-Object -FilePath $out
+          $resultCode = $LASTEXITCODE
+          if ($resultCode -ne 0 -and $resultCode -ne 20) { throw "Unrecognized no-pump probe result=$resultCode" }
+          $env:R3_NO_PUMP_EXIT = "$resultCode"
+          @'
+          import json, pathlib, os
+          t = pathlib.Path("tmp/r3/no-pump-1920x1080-threaded.log").read_text(encoding="utf-8-sig")
+          lines = t.splitlines()
+          row = [json.loads(s.partition("=")[2]) for s in lines if s.startswith("R3_RESULT_JSON=")]
+          assert len(row)==1, lines[-10:]
+          d=row[0]
+          assert d["completion_pump_budget_per_stage"] == 0, d
+          assert d["completion_pump_requests"] == 0, d
+          assert d["qt_private_research_only"] and not d["qualified_for_product"], d
+          code = int(os.environ["R3_NO_PUMP_EXIT"])
+          if code == 0:
+              assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in lines, d
+              assert d["async_readbacks_completed"] == d["async_readbacks_submitted"] == 12, d
+              print("R3_NO_EXTRA_FRAME_REQUIRED=PASS_SCOPED_FOR_THIS_KIT")
+          else:
+              assert "R3_VERDICT=BLOCKED_COMPLETION_REQUIRES_MORE_GPU_FRAMES" in lines, d
+              assert d["async_readbacks_completed"] < d["async_readbacks_submitted"], d
+              assert d["completion_pump_budget_exceeded"] >= 1, d
+              print("R3_NO_EXTRA_FRAME_REQUIRED=BLOCKED; QRhi completion requires more scene frames in this Kit")
+          '@ | Set-Content -Path tmp/r3/no-pump-audit.py -Encoding utf8
+          python tmp/r3/no-pump-audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify at most 2 artificial frames per captured stage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          paths = sorted(Path("tmp/r3").glob("d3d11-pump2-*.log"))
+          assert len(paths) == 4, paths
+          for path in paths:
+              text = path.read_text(encoding="utf-8-sig")
+              assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in text, path
+              payload = [s.partition("=")[2] for s in text.splitlines() if s.startswith("R3_RESULT_JSON=")]
+              assert len(payload) == 1, path
+              x = json.loads(payload[0])
+              assert x["completion_pump_budget_per_stage"] == 2, x
+              assert x["completion_pump_requests"] <= 24, x
+              assert x["completion_pump_budget_exceeded"] == 0, x
+              assert x["max_async_readback_frames"] > 0, x
+              assert x["async_readbacks_submitted"] == x["async_readbacks_completed"] == 12, x
+              assert x["stages_verified"] == 12 and not x["qualified_for_product"], x
+              print("R3_BOUNDED_COMPLETION=PASS_SCOPED", path,
+                    "pump_requests", x["completion_pump_requests"],
+                    "QRhiMaxAsyncReadbackFrames", x["max_async_readback_frames"],
+                    "callback_p95_ms", x["callback_latency_p95_ms"])
+          '@ | Set-Content -Path tmp/r3/audit-pump.py -Encoding utf8
+          python tmp/r3/audit-pump.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Fail-closed assert REAL async callback, full pixels, no Viewer demand
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          paths = sorted(p for p in Path("tmp/r3").glob("d3d11-*.log") if "-pump2-" not in p.name)
+          assert len(paths) == 8, paths
+          for p in paths:
+              t = p.read_text(encoding="utf-8-sig")
+              assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in t, (p,t[-2500:])
+              lines=[x.partition("=")[2] for x in t.splitlines() if x.startswith("R3_RESULT_JSON=")]
+              assert len(lines)==1, (p,lines)
+              x=json.loads(lines[0])
+              assert x["qt"]=="6.8.3" and x["backend"]=="d3d11", x
+              assert x["stages_verified"]==x["stages_expected"]==12, x
+              assert x["async_readbacks_submitted"]==x["async_readbacks_completed"]==12, x
+              assert x["callback_bytes"]==x["final_expected_size"][0]*x["final_expected_size"][1]*4, x
+              if "resize" in p.name:
+                  assert x["resized_during_test"] is True and x["resize_recreate_count"]==1, x
+                  assert x["size"]!=x["final_expected_size"], x
+              else:
+                  assert x["resized_during_test"] is False and x["resize_recreate_count"]==0, x
+              assert x["callback_samples"]==12 and x["callback_latency_p95_ms"]>=0, x
+              assert x["render_loop"] in ("basic","threaded"), x
+              if x["render_loop"]=="threaded":
+                  assert x["render_thread_distinct_from_gui"] is True, x
+              assert x["no_viewer_render_callbacks"]>=1, x
+              assert x["missing_resource"]==x["missing_transfer_flag"]==0, x
+              assert x["qt_private_research_only"] and not x["qualified_for_product"], x
+              print("R3_REAL_D3D11_ASYNC_READBACK=PASS_SCOPED", p, x)
+          '@ | Set-Content -Path tmp/r3/check.py -Encoding utf8
+          python tmp/r3/check.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish text-only R3 evidence, not product install packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-qt68-d3d11-research-evidence
+          path: tmp/r3/*.log
+          if-no-files-found: warn
+          retention-days: 10
