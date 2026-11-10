@@ -108,7 +108,9 @@ jobs:
                   assert d["quadrants_verified_per_frame"] == 4, d
                   assert d["bad_pixel_frames"] == 0, d
               if d["mode"] == "render-tap":
-                  assert d["render_tap_readbacks"] >= 30 and d["no_demand_render_frames_no_readback"] >= 1, d
+                  assert d["request_scoped_readback"] is True, d
+                  assert d["render_tap_readbacks"] == 30, d
+                  assert d["no_demand_render_frames_no_readback"] >= 1, d
                   assert d["readback_p95_ms"] > 0, d
               print("R2_QT68_GL_RHI_SCOPED=PASS", f, "cpu_ms", d["process_cpu_ms"], "readback_p95", d["readback_p95_ms"])
           print("R2_GL_RHI_PIXEL_TRUTH=PASS_SCOPED_NO_PRODUCT_ADMISSION")
