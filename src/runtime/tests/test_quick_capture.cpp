@@ -1394,10 +1394,88 @@ void runPublicQuickProfile()
 
 }  // namespace
 
+// Opt-in product-path R3 proof, intentionally separate from the existing
+// software/Qt public-grab conformance suite. The real Runtime CaptureSource
+// must publish immutable Core pixels for a normal Qt6 OpenGL SceneGraph frame,
+// then fall back when that scene remains static. No real RFB Viewer is claimed.
+void testExperimentalGlNormalFrameSourceAndStaticFallback()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(320, 180);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(320);
+    content.setHeight(180);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+    content.setStage(0);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 0; }));
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.supported && components.capture);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> frames;
+    int backendEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &) { ++backendEvents; }));
+
+    // Force a new, naturally produced scenegraph frame only AFTER
+    // requestFrame() has queued its GUI subscription.
+    CHECK(components.capture->requestFrame({9001, hyremote::Clock::now()}));
+    QTimer::singleShot(12, &window, [&] { content.setStage(2); });
+    CHECK(pumpUntil([&] { return frames.size() == 1U; }));
+    CHECK(painted.load(std::memory_order_acquire) == 2);
+    if (frames.size() == 1U) {
+        CHECK(frames[0].requestId && *frames[0].requestId == 9001);
+        CHECK(frames[0].geometry.size.width == 320);
+        CHECK(frames[0].geometry.size.height == 180);
+        CHECK(frames[0].geometry.alphaMode == hyremote::AlphaMode::Premultiplied);
+        CHECK(frames[0].damage.kind == hyremote::DamageKind::FullFrame);
+        const auto plane = frames[0].storage
+            ? frames[0].storage->mapRead(0) : std::nullopt;
+        CHECK(plane && plane->data);
+        if (plane && plane->data) {
+            const auto *pixel =
+                reinterpret_cast<const unsigned char *>(plane->data)
+                + (frames[0].geometry.size.height / 2U) * plane->stride
+                + (frames[0].geometry.size.width / 4U) * 4U;
+            CHECK(pixel[0] == 225U && pixel[1] == 30U && pixel[2] == 40U);
+        }
+    }
+
+    // With no business-scene changes there is no normal afterFrameEnd.
+    // A new Core request must finish via the public Qt image grab fallback,
+    // not wait forever or invent a new content/render timestamp.
+    QEventLoop settle;
+    QTimer::singleShot(180, &settle, &QEventLoop::quit);
+    settle.exec();
+    CHECK(components.capture->requestFrame({9002, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return frames.size() == 2U; }));
+    if (frames.size() == 2U) {
+        CHECK(frames[1].requestId && *frames[1].requestId == 9002);
+        CHECK(frames[1].storage != frames[0].storage);
+        CHECK(frames[1].timing.ptsSource == hyremote::PtsSource::Completion);
+    }
+    CHECK(backendEvents == 0);
+    components.capture->stop();
+    CHECK(!components.capture->requestFrame({9003, hyremote::Clock::now()}));
+    std::cout << "QUICK_GL_PRODUCT_PATH_TEST=PASS_IF_LOG_HAS_TAP_AND_FALLBACK\n";
+}
+
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     testQuickProfileClockDoesNotMeasureSleepAsCpu();
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_NORMAL_FRAME_TAP")) {
+        testExperimentalGlNormalFrameSourceAndStaticFallback();
+        HyRemote::detail::resetFactories();
+        return failures == 0 ? 0 : 1;
+    }
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();
         HyRemote::detail::resetFactories();
