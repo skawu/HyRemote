@@ -65,6 +65,7 @@ jobs:
               assert j["qualified_for_product"] is False, j
               if j["mode"] == "render-tap":
                   assert j["render_tap_readbacks"] >= 12, j
+                  assert j["no_demand_render_frames_no_readback"] >= 1, j
                   assert j["readback_p95_ms"] >= 0, j
               else:
                   assert j["public_grab_p95_ms"] >= 0, j
