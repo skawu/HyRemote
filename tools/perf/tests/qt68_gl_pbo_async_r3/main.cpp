@@ -233,7 +233,8 @@ public:
                 }
                 m_endToEndMs.push_back(millis(slot.queuedAt,Clock::now()));
             }
-            gl->glDeleteSync(slot.fence);
+            if(slot.fence)
+                gl->glDeleteSync(slot.fence);
             slot.fence=nullptr;
             slot.busy=false;
             ++m_retired;
@@ -269,8 +270,12 @@ public:
             gl->glFlush();
             const auto enqEnd=Clock::now();
             m_enqueueMs.push_back(millis(enqStart,enqEnd));
-            if(!fence || gl->glGetError()!=GL_NO_ERROR)
+            if(!fence || gl->glGetError()!=GL_NO_ERROR) {
                 m_glErrors.fetch_add(1);
+                if(fence) gl->glDeleteSync(fence);
+                restore();
+                return;
+            }
             it->pbo=m_ids[slotNo];
             it->phase=phase;
             it->queuedAt=enqStart;
@@ -287,13 +292,13 @@ public:
     void disableDemand() {m_demand.store(false,std::memory_order_release);}
 
     int verified() const {return m_completed.load(std::memory_order_acquire);}
-    int queued() const {return m_queued;}
-    int retired() const {return m_retired;}
+    int queued() const {return m_queued.load(std::memory_order_acquire);}
+    int retired() const {return m_retired.load(std::memory_order_acquire);}
     int errors() const {return m_glErrors.load()+m_missingContext.load()
        +m_missingGlPbo.load()+m_badPixelFrames.load()+m_outOfOrder.load()
        +m_fullRing.load()+m_droppedStage.load();}
-    int noDemandRenders() const {return m_noDemandRenderFrames;}
-    bool cleaned() const {return m_cleaned;}
+    int noDemandRenders() const {return m_noDemandRenderFrames.load(std::memory_order_acquire);}
+    bool cleaned() const {return m_cleaned.load(std::memory_order_acquire);}
     bool isThreaded() const {return m_threaded.load();}
     int renderCalls() const {return m_renderCallbacks.load();}
 
@@ -365,13 +370,13 @@ private:
     std::array<GLuint,kSlots> m_ids{};
     std::array<Slot,kSlots> m_slots{};
     bool m_initialized=false;
-    bool m_cleaned=false;
+    std::atomic<bool> m_cleaned{false};
     int m_lastQueued=-1;
     int m_expectedVerified=0;
-    int m_queued=0;
-    int m_retired=0;
+    std::atomic<int> m_queued{0};
+    std::atomic<int> m_retired{0};
     int m_flushRenderFrames=0;
-    int m_noDemandRenderFrames=0;
+    std::atomic<int> m_noDemandRenderFrames{0};
     std::atomic<bool> m_demand{true};
     std::atomic<int> m_completed{0},m_glErrors{0},m_missingContext{0};
     std::atomic<int> m_missingGlPbo{0},m_badPixelFrames{0};
@@ -432,6 +437,14 @@ int main(int argc,char** argv)
             // Final normal source update advances the GPU and allows the
             // last PBO fence to be harvested, with no new readback.
             item.next(kStages);
+            // A PBO must be retired on the render thread with a current
+            // context. If the final fence is not ready at this frame,
+            // arrange ONE additional legitimate source change; no infinite
+            // update/getPixel feedback loop is allowed.
+            QTimer::singleShot(200,&app,[&] {
+                if(!done && tap.verified()!=kStages)
+                    item.next(kStages+1);
+            });
         }
     });
 
