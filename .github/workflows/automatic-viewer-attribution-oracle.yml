@@ -1,0 +1,36 @@
+name: Windows Viewer stage attribution observer deterministic oracle (TEST ONLY)
+
+on:
+  pull_request:
+    branches: [feature/609-surface-scoped-semantic-registry-20261110, develop]
+    paths:
+      - .github/workflows/automatic-viewer-attribution-oracle.yml
+      - tools/perf/observe_windows_viewer_pixels.py
+      - tools/perf/audit_automatic_surface_evidence.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-oracles:
+    name: Observer log/read race and fail-closed evidence audit / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile and run deterministic tests (no GUI needed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/perf/observe_windows_viewer_pixels.py
+          python -m py_compile tools/perf/audit_automatic_surface_evidence.py
+          python tools/perf/observe_windows_viewer_pixels.py --self-test
+          python tools/perf/audit_automatic_surface_evidence.py --self-test
