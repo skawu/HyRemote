@@ -21,6 +21,7 @@
 #include <QSGRendererInterface>
 #include <QTimer>
 #include <QSharedPointer>
+#include <QThread>
 
 #include <algorithm>
 #include <atomic>
@@ -121,6 +122,7 @@ struct ProbeStats
     std::atomic<int> observedEpoch{-1};
     std::atomic<bool> active{true};
     std::atomic<bool> simulatedViewerDemand{true};
+    std::atomic<bool> renderCallbackDifferentFromGuiThread{false};
     std::atomic<int> skippedNoDemandRenderFrames{0};
 };
 
@@ -150,6 +152,10 @@ void printResult(const std::string &mode, int width, int height,
               << "\"mode\":\"" << mode << "\","
               << "\"qt\":\"" << QT_VERSION_STR << "\","
               << "\"backend\":\"Qt5_Legacy_OpenGL\","
+              << "\"render_loop\":\""
+              << qEnvironmentVariable("QSG_RENDER_LOOP").toStdString() << "\","
+              << "\"render_thread_distinct_from_gui\":"
+              << (stat.renderCallbackDifferentFromGuiThread.load() ? "true" : "false") << ","
               << "\"size_px\":[" << width << "," << height << "],"
               << "\"stages_expected\":" << kStages << ","
               << "\"stages_completed\":" << completedStages << ","
@@ -229,6 +235,8 @@ int main(int argc, char **argv)
     QObject::connect(&window, &QQuickWindow::afterRendering,
                      &window, [&window, &stats, &lastSynchronizedQsgPhase, width, height, mode] {
         stats.renderCallbacks.fetch_add(1, std::memory_order_relaxed);
+        if (QThread::currentThread() != QCoreApplication::instance()->thread())
+            stats.renderCallbackDifferentFromGuiThread.store(true, std::memory_order_release);
         if (mode == "render-baseline") {
             // Baseline is scene-graph completion, NOT pixel truth. This control
             // never accesses GPU storage; the tap and public-grab arms do.
