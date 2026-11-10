@@ -171,6 +171,7 @@ private:
         std::atomic<int> status{0};
         QMetaObject::Connection submissionConnection;
         QPointer<QTimer> deadline;
+        QPointer<QTimer> readbackDeadline;
     };
 #endif
 
@@ -551,6 +552,11 @@ private:
                                 tap->deadline->deleteLater();
                                 tap->deadline.clear();
                             }
+                            if (tap->readbackDeadline) {
+                                tap->readbackDeadline->stop();
+                                tap->readbackDeadline->deleteLater();
+                                tap->readbackDeadline.clear();
+                            }
                             if (!isActive(state, batch->generation))
                                 return;
                             if (!valid || image.isNull()) {
@@ -602,16 +608,27 @@ private:
             // request bounded and report a terminal unavailable result
             // after the existing retry budget.
             if (waiting == 1) {
-                QTimer::singleShot(2000, QCoreApplication::instance(),
-                    [state, batch, tap] {
-                        int reading = 1;
-                        if (tap->status.compare_exchange_strong(
-                                reading, 3, std::memory_order_acq_rel)) {
-                            QObject::disconnect(tap->submissionConnection);
-                            if (isActive(state, batch->generation))
-                                completeUnavailable(state, batch);
-                        }
-                    });
+                // A cancelable deadline, never an untracked singleShot that
+                // retains full capture state for two seconds after success.
+                auto *readTimer = new QTimer(QCoreApplication::instance());
+                readTimer->setSingleShot(true);
+                tap->readbackDeadline = readTimer;
+                QObject::connect(readTimer, &QTimer::timeout,
+                                 QCoreApplication::instance(),
+                                 [state, batch, tap] {
+                    if (tap->readbackDeadline) {
+                        tap->readbackDeadline->deleteLater();
+                        tap->readbackDeadline.clear();
+                    }
+                    int reading = 1;
+                    if (tap->status.compare_exchange_strong(
+                            reading, 3, std::memory_order_acq_rel)) {
+                        QObject::disconnect(tap->submissionConnection);
+                        if (isActive(state, batch->generation))
+                            completeUnavailable(state, batch);
+                    }
+                });
+                readTimer->start(2000);
             }
         });
         // 45ms gives normal Qt60Hz rendering up to ~2 frame opportunities
