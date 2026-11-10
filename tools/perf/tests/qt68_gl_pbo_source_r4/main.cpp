@@ -1,0 +1,249 @@
+// R4: ACTUAL Qt6.8.3 public OpenGL-RHI CaptureSource runtime test.
+// Deliberately does not use QtGuiPrivate, a Viewer, network or QML business hints.
+// It checks the real Core request→frame callback contract, immutable CPU storage,
+// four-quadrant pixel truth, request time/ID, and stop/restart on a visible window.
+#include "quick/quick_gl_pbo_capture_source.hpp"
+#include "hyremote/core/frame.hpp"
+#include "hyremote/core/storage.hpp"
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QGuiApplication>
+#include <QQuickItem>
+#include <QQuickWindow>
+#include <QSGFlatColorMaterial>
+#include <QSGGeometryNode>
+#include <QSGRendererInterface>
+#include <QTimer>
+#include <QThread>
+#include <QtGlobal>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <iostream>
+#include <memory>
+#include <set>
+#include <vector>
+
+namespace {
+constexpr int kW = 640, kH = 360, kPhases = 12;
+
+QColor colorFor(int phase)
+{
+    switch (phase % 3) {
+    case 0: return QColor(215, 36, 57);
+    case 1: return QColor(37, 212, 66);
+    default: return QColor(42, 69, 225);
+    }
+}
+
+class RealScene final : public QQuickItem {
+public:
+    explicit RealScene(QQuickItem *parent): QQuickItem(parent) {
+        setFlag(ItemHasContents, true);
+        setWidth(kW);
+        setHeight(kH);
+    }
+    void setPhase(int phase) {
+        m_phase = phase;
+        update();
+    }
+protected:
+    QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override {
+        QSGNode *root = old;
+        if (!root) {
+            root = new QSGNode;
+            for (int q = 0; q < 4; ++q) {
+                auto *rect = new QSGGeometryNode;
+                auto *geo = new QSGGeometry(QSGGeometry::defaultAttributes_Point2D(), 4);
+                geo->setDrawingMode(QSGGeometry::DrawTriangleStrip);
+                rect->setGeometry(geo);
+                rect->setFlag(QSGNode::OwnsGeometry);
+                auto *mat = new QSGFlatColorMaterial;
+                rect->setMaterial(mat);
+                rect->setFlag(QSGNode::OwnsMaterial);
+                root->appendChildNode(rect);
+            }
+        }
+        auto *rect = root->firstChild();
+        for (int q = 0; q < 4; ++q) {
+            const double x = (q % 2) * kW / 2.0;
+            const double y = (q / 2) * kH / 2.0;
+            auto *r = static_cast<QSGGeometryNode *>(rect);
+            QSGGeometry::updateRectGeometry(r->geometry(), QRectF(x, y, kW / 2.0, kH / 2.0));
+            r->geometry()->markVertexDataDirty();
+            r->markDirty(QSGNode::DirtyGeometry);
+            auto *material = static_cast<QSGFlatColorMaterial *>(r->material());
+            material->setColor(colorFor(m_phase + q));
+            r->markDirty(QSGNode::DirtyMaterial);
+            rect = rect->nextSibling();
+        }
+        return root;
+    }
+private:
+    int m_phase = 0;
+};
+
+bool validateFrame(const hyremote::RemoteFrame &frame, int phase)
+{
+    if (!hyremote::validateFrame(frame).ok || !frame.storage
+        || frame.geometry.size.width != kW
+        || frame.geometry.size.height != kH
+        || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
+        || frame.geometry.planeCount != 1 || !frame.requestId
+        || !frame.timing.requestTime || !frame.timing.completionTime
+        || *frame.timing.completionTime < *frame.timing.requestTime)
+        return false;
+    auto pixels = frame.storage->mapRead(0);
+    if (!pixels || !pixels->data || pixels->stride < kW * 4
+        || pixels->bytes < pixels->stride * kH)
+        return false;
+    for (int q = 0; q < 4; ++q) {
+        const int x = (q % 2) ? kW * 3 / 4 : kW / 4;
+        const int y = (q / 2) ? kH * 3 / 4 : kH / 4;
+        const auto *p = reinterpret_cast<const unsigned char *>(
+            pixels->data + std::size_t(y) * pixels->stride + std::size_t(x * 4));
+        const QColor expected = colorFor(phase + q);
+        if (std::abs(int(p[0]) - expected.red()) > 15
+            || std::abs(int(p[1]) - expected.green()) > 15
+            || std::abs(int(p[2]) - expected.blue()) > 15)
+            return false;
+    }
+    return true;
+}
+
+} // namespace
+
+int main(int argc, char **argv)
+{
+    QGuiApplication app(argc, argv);
+    if (qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("opengl")) {
+        std::cerr << "R4=BLOCKED_NOT_OPENGL_RHI\n";
+        return 10;
+    }
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+    QQuickWindow window;
+    window.resize(kW, kH);
+    window.setColor(Qt::black);
+    RealScene scene(window.contentItem());
+    scene.setPhase(0);
+    window.show();
+
+    auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
+    if (!source || !source->capabilities().cpuReadable) {
+        std::cerr << "R4=FAIL_INVALID_CAPABILITY\n";
+        return 11;
+    }
+
+    int desired = 0;
+    int completed = 0;
+    int errors = 0;
+    int staleCallbacks = 0;
+    int restarts = 0;
+    bool intentionallyStopped = false;
+    bool fullyStopped = false;
+    std::set<std::uint64_t> seenRequestIds;
+
+    std::function<void()> dispatchNext;
+    const auto onFrame = [&](hyremote::RemoteFrame frame) {
+        if (fullyStopped || intentionallyStopped) {
+            ++staleCallbacks;
+            return;
+        }
+        if (!validateFrame(frame, desired)) {
+            ++errors;
+            std::cerr << "R4=FAIL_WRONG_OWNED_PIXELS_OR_FRAME_METADATA phase="
+                      << desired << '\n';
+            app.exit(21);
+            return;
+        }
+        if (!seenRequestIds.insert(*frame.requestId).second) {
+            ++errors;
+            app.exit(22);
+            return;
+        }
+        ++completed;
+        QTimer::singleShot(35, &app, dispatchNext);
+    };
+
+    const auto onEvent = [&](const hyremote::CaptureEvent &event) {
+        ++errors;
+        std::cerr << "R4=FAIL_CAPTURE_EVENT code="
+                  << static_cast<int>(event.code) << " reason="
+                  << event.message << '\n';
+        app.exit(23);
+    };
+
+    auto startSource = [&] {
+        if (!source->start(onFrame, onEvent)) {
+            ++errors;
+            std::cerr << "R4=FAIL_START\n";
+            app.exit(24);
+        }
+    };
+
+    dispatchNext = [&] {
+        if (completed >= kPhases) {
+            fullyStopped = true;
+            source->stop();
+            QTimer::singleShot(250, &app, [&] {
+                const bool valid = errors == 0 && staleCallbacks == 0
+                    && completed == kPhases && restarts == 1
+                    && seenRequestIds.size() == kPhases;
+                std::cout << "R4_RESULT_JSON={"
+                    << "\"qt\":\"" << QT_VERSION_STR << "\","
+                    << "\"backend\":\"Qt6_RHI_OpenGL\","
+                    << "\"source\":\"real_GlPboCaptureSource\","
+                    << "\"phases_expected\":" << kPhases << ","
+                    << "\"owned_frames_validated\":" << completed << ","
+                    << "\"unique_request_ids\":" << seenRequestIds.size() << ","
+                    << "\"stop_restart_cycles\":" << restarts << ","
+                    << "\"late_callbacks_after_stop\":" << staleCallbacks << ","
+                    << "\"errors\":" << errors << ","
+                    << "\"qualified_for_product\":false"
+                    << "}\nR4_VERDICT="
+                    << (valid ? "PASS_SCOPED_CAPTURE_SOURCE"
+                              : "FAIL_SOURCE_LIFECYCLE_OR_PIXELS") << '\n';
+                app.exit(valid ? 0 : 25);
+            });
+            return;
+        }
+        if (completed == 6 && restarts == 0) {
+            intentionallyStopped = true;
+            source->stop();
+            ++restarts;
+            QTimer::singleShot(70, &app, [&] {
+                intentionallyStopped = false;
+                startSource();
+                QTimer::singleShot(50, &app, dispatchNext);
+            });
+            return;
+        }
+        desired = completed;
+        scene.setPhase(desired);
+        hyremote::CaptureRequest request;
+        request.id = static_cast<hyremote::CaptureRequestId>(100 + desired);
+        request.requestTime = hyremote::Clock::now();
+        if (!source->requestFrame(request)) {
+            ++errors;
+            std::cerr << "R4=FAIL_REQUEST_REJECTED\n";
+            app.exit(26);
+        }
+    };
+
+    QTimer watchdog;
+    watchdog.setSingleShot(true);
+    QObject::connect(&watchdog, &QTimer::timeout, &app, [&] {
+        ++errors;
+        std::cerr << "R4_VERDICT=FAIL_TIMEOUT completed=" << completed << '\n';
+        app.exit(27);
+    });
+
+    QTimer::singleShot(250, &app, [&] {
+        startSource();
+        dispatchNext();
+    });
+    watchdog.start(25000);
+    return app.exec();
+}
