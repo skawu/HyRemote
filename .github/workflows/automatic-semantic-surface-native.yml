@@ -10,6 +10,7 @@ on:
       - src/runtime/src/automatic/automatic_access_controller.cpp
       - src/runtime/src/automatic/surface_semantic_source_registry.hpp
       - src/runtime/src/detail/viewer_capture_demand.hpp
+      - tools/perf/fixtures/windows_automatic_semantic/**
   workflow_dispatch:
 
 permissions:
@@ -26,6 +27,9 @@ jobs:
         arm: [OFF, ON]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -56,9 +60,23 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $arm = '${{ matrix.arm }}'
           $build = 'build-automatic-semantic-' + $arm.ToLowerInvariant()
-          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY=$arm"
+          $source = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $source -ne '${{ github.event.pull_request.head.sha || github.sha }}') {
+            throw "Wrong source SHA: $source"
+          }
+          $tree = Join-Path $env:RUNNER_TEMP ("quick-automatic-" + $arm)
+          git worktree add --detach $tree $source
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $cache = Join-Path $build 'CMakeCache.txt'
+          python tools/perf/fixtures/windows_automatic_semantic/apply_fixture.py --worktree $tree --fixture tools/perf/fixtures/windows_automatic_semantic/Main.qml --manifest (Join-Path $env:RUNNER_TEMP ("quick-automatic-" + $arm + "-identity.json"))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location $tree
+          try {
+            & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY=$arm"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $cache = Join-Path $tree "$build/CMakeCache.txt"
           if (!(Test-Path $cache)) { throw 'CMakeCache.txt missing: cannot certify test configuration' }
           $setting = @(Get-Content $cache | Where-Object {
             $_ -match '^HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY:BOOL='
@@ -66,6 +84,6 @@ jobs:
           if ($setting.Count -ne 1 -or $setting[0] -ne "HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY:BOOL=$arm") {
             throw "Compiled CMake feature flag mismatch expected=$arm actual=$($setting -join ', ')"
           }
-          $binary = Get-ChildItem -Path $build -Recurse -File -Filter 'HyRemoteRemoteAccess.dll' | Select-Object -First 1
+          $binary = Get-ChildItem -Path (Join-Path $tree $build) -Recurse -File -Filter 'HyRemoteRemoteAccess.dll' | Select-Object -First 1
           if (!$binary) { throw 'Actual Shared Runtime DLL absent' }
           Write-Host "GENERIC_SURFACE_NOTIFY_BUILD=PASS ARM=$arm SHA=$env:GITHUB_SHA CONFIG=$($setting[0])"
