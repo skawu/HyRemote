@@ -52,13 +52,14 @@ jobs:
           mkdir -p tmp/r3
           for loop in basic threaded; do
             for size in small 1080p; do
+              for repetition in 1 2 3; do
               echo "R3_RUNTIME_START loop=$loop size=$size"
               if [ "$size" = "1080p" ]; then size1080=1; else size1080=0; fi
               env -u QT_QUICK_BACKEND QSG_RENDER_LOOP="$loop" QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=xcb HYREMOTE_EXPECT_GL_NORMAL_FRAME_TAP=1 HYREMOTE_GL_CAPTURE_1080P="$size1080" \
                 xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
                 ./build-quick-gl-native-r3/runtime/tests/hyremote-quick-capture-test \
-                2>&1 | tee "tmp/r3/quick-gl-runtime-$loop-$size.log"
-              log="tmp/r3/quick-gl-runtime-$loop-$size.log"
+                2>&1 | tee "tmp/r3/quick-gl-runtime-$loop-$size-$repetition.log"
+              log="tmp/r3/quick-gl-runtime-$loop-$size-$repetition.log"
               grep -q 'HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PIXELS' "$log"
               grep -q 'HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PUBLIC_GRAB_FALLBACK' "$log"
               grep -q 'QUICK_GL_PRODUCT_PATH_TEST=PASS_IF_LOG_HAS_TAP_AND_FALLBACK' "$log"
@@ -67,7 +68,8 @@ jobs:
               # and one bounded static Qt grab. No improvement claimed solely
               # from these diagnostics.
               [ "$(grep -c 'HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PIXELS' "$log")" -ge 2 ]
-              echo "R3_GL_RUNTIME=PASS_SCOPED loop=$loop size=$size"
+              echo "R3_GL_RUNTIME=PASS_SCOPED loop=$loop size=$size repetition=$repetition"
+              done
             done
           done
       - name: Publish only text test evidence, never a user upgrade package
