@@ -139,6 +139,9 @@ struct State
     std::mutex latencyMutex;
     std::vector<int> asyncCallbackLatenciesMs;
     std::atomic<int> noViewerFrames{0};
+    std::atomic<int> completionPumpRequests{0};
+    std::atomic<int> maxAsyncReadbackFrames{-1};
+    std::atomic<int> completionPumpBudgetExceeded{0};
     std::atomic<bool> viewerDemand{true};
     std::atomic<bool> alive{true};
     std::atomic<int> lastCallbackMs{0};
@@ -150,6 +153,8 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     int width = 640, height = 360;
     int resizeWidth = 0, resizeHeight = 0;
+    // -1 retains legacy behavior; >=0 caps artificial frames per source.
+    int pumpBudget = -1;
 #ifdef _WIN32
     QString backend = QStringLiteral("d3d11");
 #else
@@ -167,6 +172,8 @@ int main(int argc, char **argv)
             resizeWidth = arg.mid(15).toInt();
         else if (arg.startsWith("--resize-height="))
             resizeHeight = arg.mid(16).toInt();
+        else if (arg.startsWith("--pump-budget="))
+            pumpBudget = arg.mid(14).toInt();
         else {
             std::cerr << "R3_VERDICT=BLOCKED_UNKNOWN_ARG\n";
             return 11;
@@ -178,7 +185,8 @@ int main(int argc, char **argv)
         || ((resizeWidth == 0) != (resizeHeight == 0))
         || resizeWidth < 0 || resizeHeight < 0
         || resizeWidth > 3840 || resizeHeight > 2160
-        || (resizeWidth != 0 && (resizeWidth < 128 || resizeHeight < 128)))
+        || (resizeWidth != 0 && (resizeWidth < 128 || resizeHeight < 128))
+        || pumpBudget < -1 || pumpBudget > 8)
         return 12;
     // Each backend separately qualifies with its exact Qt6 Kit.
     // Do not infer transfer-source support from OS, GPU vendor or RHI name.
@@ -209,6 +217,8 @@ int main(int argc, char **argv)
     std::chrono::steady_clock::time_point requestStart{};
     int nextStage = 0;
     int framesWaited = 0;
+    int completionPumpCallsThisStage = 0;
+    qint64 stageStartedUtcMs = -1;
     qint64 startEpochMs = QDateTime::currentMSecsSinceEpoch();
     auto renderThread = &app; // for logging; actual callback is on QRhi thread
 
@@ -246,6 +256,9 @@ int main(int argc, char **argv)
         auto *rhi = static_cast<QRhi *>(
             ri->getResource(&window, QSGRendererInterface::RhiResource));
         auto *sc = window.swapChain();
+        if (rhi && state->maxAsyncReadbackFrames.load() < 0)
+            state->maxAsyncReadbackFrames.store(
+                rhi->resourceLimit(QRhi::MaxAsyncReadbackFrames));
         if (!rhi || !sc) {
             state->missingResource.fetch_add(1);
             return;
@@ -354,6 +367,10 @@ int main(int argc, char **argv)
                  <<"\"stages_verified\":"<<verified<<","
                  <<"\"async_readbacks_submitted\":"<<state->submitted.load()<<","
                  <<"\"async_readbacks_completed\":"<<state->completed.load()<<","
+                 <<"\"completion_pump_budget_per_stage\":"<<pumpBudget<<","
+                 <<"\"completion_pump_requests\":"<<state->completionPumpRequests.load()<<","
+                 <<"\"max_async_readback_frames\":"<<state->maxAsyncReadbackFrames.load()<<","
+                 <<"\"completion_pump_budget_exceeded\":"<<state->completionPumpBudgetExceeded.load()<<","
                  <<"\"last_callback_latency_ms\":"<<state->lastCallbackMs.load()<<","
                  <<"\"callback_latency_p95_ms\":"<<latencyP95<<","
                  <<"\"render_loop\":\""
@@ -446,13 +463,24 @@ int main(int argc, char **argv)
                 // QRhi readbacks can require subsequent submitted frames;
                 // such frames are test-only completion plumbing, NOT an
                 // acceptable production static-CPU behavior.
-                if (++framesWaited%4==0)
+                if (++framesWaited%4==0
+                    && (pumpBudget<0 || completionPumpCallsThisStage<pumpBudget)) {
                     window.update();
+                    ++completionPumpCallsThisStage;
+                    state->completionPumpRequests.fetch_add(1);
+                }
+                if (pumpBudget>=0 && stageStartedUtcMs>=0
+                    && QDateTime::currentMSecsSinceEpoch()-stageStartedUtcMs>1500) {
+                    state->completionPumpBudgetExceeded.fetch_add(1);
+                    quit(false, "BLOCKED_COMPLETION_REQUIRES_MORE_GPU_FRAMES");
+                }
             }
             return;
         }
         requested=nextStage;
         framesWaited=0;
+        completionPumpCallsThisStage=0;
+        stageStartedUtcMs=QDateTime::currentMSecsSinceEpoch();
         state->outstandingStage.store(requested);
         scene.setStage(requested);
     });
@@ -462,6 +490,8 @@ int main(int argc, char **argv)
     QTimer::singleShot(200,&app,[&] {
         if(requested<0 && !finished) {
             requested=nextStage;
+            completionPumpCallsThisStage=0;
+            stageStartedUtcMs=QDateTime::currentMSecsSinceEpoch();
             state->outstandingStage.store(requested);
             scene.setStage(requested);
         }
