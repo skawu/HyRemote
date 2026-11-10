@@ -116,6 +116,8 @@ struct ProbeStats
     std::atomic<int> desiredEpoch{0};
     std::atomic<int> observedEpoch{-1};
     std::atomic<bool> active{true};
+    std::atomic<bool> simulatedViewerDemand{true};
+    std::atomic<int> skippedNoDemandRenderFrames{0};
 };
 
 double percentile95(std::vector<double> xs)
@@ -154,6 +156,8 @@ void printResult(const std::string &mode, int width, int height,
               << "\"public_grab_p95_ms\":" << percentile95(stat.publicGrabMs) << ","
               << "\"public_grab_mean_ms\":" << mean(stat.publicGrabMs) << ","
               << "\"static_tail_render_callbacks\":" << staticTailFrames << ","
+              << "\"no_demand_render_frames_no_readback\":"
+              << stat.skippedNoDemandRenderFrames.load() << ","
               << "\"gl_errors\":" << stat.glErrors << ","
               << "\"missing_gl_context\":" << stat.missingGlContexts << ","
               << "\"framebuffer_binding\":" << stat.observedFramebufferBinding << ","
@@ -216,8 +220,13 @@ int main(int argc, char **argv)
         stats.renderCallbacks.fetch_add(1, std::memory_order_relaxed);
         if (mode != "render-tap" || !stats.active.load(std::memory_order_acquire))
             return;
+        if (!stats.simulatedViewerDemand.load(std::memory_order_acquire)) {
+            stats.skippedNoDemandRenderFrames.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
         std::lock_guard<std::mutex> lock(stats.mutex);
-        if (!stats.active.load(std::memory_order_acquire))
+        if (!stats.active.load(std::memory_order_acquire)
+            || !stats.simulatedViewerDemand.load(std::memory_order_acquire))
             return;
         auto *context = QOpenGLContext::currentContext();
         if (!context) {
@@ -298,10 +307,18 @@ int main(int argc, char **argv)
     nextStage = [&] {
         if (completed >= kStages) {
             lastStaticFrames = stats.renderCallbacks.load(std::memory_order_acquire);
-            QTimer::singleShot(400, &app, [&] {
+            if (mode == "render-tap") {
+                // The SOURCE continues to render, but simulated 0 Viewer
+                // demands zero new GPU->CPU readback operations.
+                stats.simulatedViewerDemand.store(false, std::memory_order_release);
+                item.setPhase(kStages); // force a real new on-screen render
+            }
+            QTimer::singleShot(500, &app, [&] {
                 reportAndExit(stats.glErrors == 0
-                             && stats.missingGlContexts == 0,
-                             "FAIL_GL_CONTEXT_OR_READBACK");
+                             && stats.missingGlContexts == 0
+                             && (mode != "render-tap"
+                                 || stats.skippedNoDemandRenderFrames.load() >= 1),
+                             "FAIL_GL_CONTEXT_READBACK_OR_ZERO_VIEWER_GATE");
             });
             return;
         }
