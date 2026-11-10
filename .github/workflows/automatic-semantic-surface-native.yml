@@ -86,4 +86,4 @@ jobs:
           }
           $binary = Get-ChildItem -Path (Join-Path $tree $build) -Recurse -File -Filter 'HyRemoteRemoteAccess.dll' | Select-Object -First 1
           if (!$binary) { throw 'Actual Shared Runtime DLL absent' }
-          Write-Host "GENERIC_SURFACE_NOTIFY_BUILD=PASS ARM=$arm SHA=$env:GITHUB_SHA CONFIG=$($setting[0])"
+          Write-Host "GENERIC_SURFACE_NOTIFY_BUILD=PASS ARM=$arm SOURCE_SHA=$source CONFIG=$($setting[0])"
