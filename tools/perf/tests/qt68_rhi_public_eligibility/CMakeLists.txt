@@ -13,3 +13,15 @@ if(MSVC)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(hyremote-qt68-public-rhi-eligibility PRIVATE -Wall -Wextra)
 endif()
+
+# Research only: *read* the existing QQuickWindow swapchain capabilities
+# through the exact Qt6.8.3 GuiPrivate Kit, and NEVER issue GPU operations
+# or modify swapchain flags. This does not add QtPrivate to HyRemote products.
+option(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY "Research: inspect existing RHI swapchain flags (NON-PRODUCT)" OFF)
+if(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
+    find_package(Qt6 6.8.3 REQUIRED COMPONENTS GuiPrivate)
+    target_link_libraries(hyremote-qt68-public-rhi-eligibility PRIVATE Qt6::GuiPrivate)
+    target_compile_definitions(hyremote-qt68-public-rhi-eligibility
+        PRIVATE HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY=1)
+    message(WARNING "RESEARCH ONLY: EXACT Qt6.8.3 GuiPrivate inspection; do not ship")
+endif()
