@@ -25,6 +25,9 @@
 #include <QThread>
 #include <QTimer>
 #include <QtGlobal>
+#if defined(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
+#  include <rhi/qrhi.h> // exact 6.8.3 private Kit; research ONLY
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -155,6 +158,8 @@ struct Stats
     std::atomic<bool> renderThreadDistinct{false};
     std::atomic<bool> rhiResourceObserved{false};
     std::atomic<bool> swapchainResourceObserved{false};
+    std::atomic<int> swapchainReadbackFlag{-1};
+    std::atomic<int> swapchainFlags{-1};
     std::atomic<bool> commandListObserved{false};
     std::atomic<bool> redirectTargetObserved{false};
     std::atomic<bool> abortedBySceneGraphLoss{false};
@@ -235,8 +240,21 @@ int main(int argc, char **argv)
                                     std::memory_order_release);
             if (ri->getResource(&window, QSGRendererInterface::RhiResource))
                 stats.rhiResourceObserved.store(true, std::memory_order_release);
-            if (ri->getResource(&window, QSGRendererInterface::RhiSwapchainResource))
+            if (void *sw = ri->getResource(
+                    &window, QSGRendererInterface::RhiSwapchainResource)) {
                 stats.swapchainResourceObserved.store(true, std::memory_order_release);
+#if defined(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
+                // This pointer is only borrowed during the render callback.
+                // NEVER retain it, mutate flags, or submit a GPU readback.
+                // The API contract identifies this as a QRhiSwapChain.
+                auto *chain = static_cast<QRhiSwapChain *>(sw);
+                const auto flags = chain->flags();
+                stats.swapchainFlags.store(flags.toInt(), std::memory_order_release);
+                stats.swapchainReadbackFlag.store(
+                    flags.testFlag(QRhiSwapChain::UsedAsTransferSource) ? 1 : 0,
+                    std::memory_order_release);
+#endif
+            }
             if (ri->getResource(&window, QSGRendererInterface::CommandListResource))
                 stats.commandListObserved.store(true, std::memory_order_release);
             if (ri->getResource(&window, QSGRendererInterface::RhiRedirectRenderTarget))
@@ -294,12 +312,26 @@ int main(int argc, char **argv)
                   << (stats.rhiResourceObserved.load() ? "true" : "false") << ","
                   << "\"swapchain_resource_observed\":"
                   << (stats.swapchainResourceObserved.load() ? "true" : "false") << ","
+                  << "\"swapchain_transfer_source_flag\":"
+                  << stats.swapchainReadbackFlag.load() << ","
+                  << "\"swapchain_flags\":" << stats.swapchainFlags.load() << ","
+                  << "\"private_inspection_only\":"
+#if defined(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
+                  << "true,"
+#else
+                  << "false,"
+#endif
                   << "\"command_list_observed\":"
                   << (stats.commandListObserved.load() ? "true" : "false") << ","
                   << "\"redirect_target_observed\":"
                   << (stats.redirectTargetObserved.load() ? "true" : "false") << ","
                   << "\"public_rhi_gpu_readback_qualified\":false,"
-                  << "\"qtgui_private_used\":false,"
+                  << "\"qtgui_private_used\":"
+#if defined(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
+                  << "true,"
+#else
+                  << "false,"
+#endif
                   << "\"readback_operations\":0,"
                   << "\"capture_wall_p95_ms\":" << p95(stats.captureWallMs) << ","
                   << "\"capture_wall_mean_ms\":" << mean(stats.captureWallMs) << ","
