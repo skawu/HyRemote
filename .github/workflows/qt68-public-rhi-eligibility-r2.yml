@@ -86,6 +86,8 @@ jobs:
               assert d["qt"] == "6.8.3" and d["graphics_api_enum"] == 4, d
               assert d["stages_completed"] == d["stages_expected"] == 15, d
               assert d["after_frame_end"] >= 15 and d["scene_graph_loss"] is False, d
+              assert d["source_to_submitted_p95_ms"] > 0, d
+              assert d["source_to_accepted_p95_ms"] >= d["source_to_submitted_p95_ms"], d
               assert d["qtgui_private_used"] is False and d["public_rhi_gpu_readback_qualified"] is False, d
               assert d["readback_operations"] == 0 and d["qualified_for_product"] is False, d
               if d["mode"] in ("window-grab", "item-grab"):
@@ -96,6 +98,8 @@ jobs:
                   assert d["stages_verified_pixels"] == 0, d
               print("R2_QT68_PUBLIC=PASS", f, "cpu_ms=", d["process_cpu_ms"],
                     "p95=", d["capture_wall_p95_ms"],
+                    "stage_to_submitted_p95=", d["source_to_submitted_p95_ms"],
+                    "stage_to_accepted_p95=", d["source_to_accepted_p95_ms"],
                     "rhi_resource=", d["rhi_resource_observed"],
                     "swapchain_seen=", d["swapchain_resource_observed"])
           print("R2_CI_PASS_PUBLIC_CAPABILITIES_ONLY_NO_RHI_READBACK")
