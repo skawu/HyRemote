@@ -2,10 +2,11 @@ name: Qt6.8.3 OpenGL RHI framebuffer eligibility R2 (NON-PRODUCT)
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, feature/609-qt68-public-rhi-eligibility-and-window-grab-r2-20261110]
     paths:
       - .github/workflows/qt68-gl-rhi-existing-frame-r2.yml
       - tools/perf/tests/qt68_gl_render_frame_r2/**
+      - tools/perf/tests/qt68_gl_pbo_async_r3/**
   workflow_dispatch:
 
 permissions:
@@ -59,6 +60,8 @@ jobs:
           set -euo pipefail
           cmake -S tools/perf/tests/qt68_gl_render_frame_r2 -B build-r2-qt68-gl -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX" -DHYREMOTE_GL_RHI_CAPTURE_AFTER_FRAME_END=ON
           cmake --build build-r2-qt68-gl --parallel 2
+          cmake -S tools/perf/tests/qt68_gl_pbo_async_r3 -B build-r3-qt68-pbo -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX"
+          cmake --build build-r3-qt68-pbo --parallel 2
       - name: Run actual Qt6 OpenGL RHI 640x360 and 1920x1080 pixels
         shell: bash
         env:
@@ -115,11 +118,108 @@ jobs:
               print("R2_QT68_GL_RHI_SCOPED=PASS", f, "cpu_ms", d["process_cpu_ms"], "readback_p95", d["readback_p95_ms"])
           print("R2_GL_RHI_PIXEL_TRUTH=PASS_SCOPED_NO_PRODUCT_ADMISSION")
           PY
+      - name: Exercise nonblocking PBO/fence full-frame readback and strict source phase order
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          QSG_RHI_BACKEND: opengl
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r3-pbo
+          for loop in basic threaded; do
+            for geometry in '640 360' '1920 1080'; do
+              read -r width height <<< "$geometry"
+              echo "R3_PBO_START loop=$loop size=$width x $height"
+              QSG_RENDER_LOOP="$loop" timeout 45s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
+                ./build-r3-qt68-pbo/hyremote-qt68-gl-pbo-async-r3 \
+                "--width=$width" "--height=$height" | tee "tmp/r3-pbo/$loop-$width-x$height.jsonl"
+            done
+          done
+      - name: Verify a single static source frame completes using one bounded retirement render
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          QSG_RHI_BACKEND: opengl
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r3-pbo-static
+          for loop in basic threaded; do
+            for geometry in '640 360' '1920 1080'; do
+              read -r width height <<< "$geometry"
+              echo "R3_STATIC_PBO_START loop=$loop size=$width x $height"
+              QSG_RENDER_LOOP="$loop" timeout 30s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
+                ./build-r3-qt68-pbo/hyremote-qt68-gl-pbo-async-r3 \
+                --mode=static-cold --interval-ms=25 "--width=$width" "--height=$height" \
+                | tee "tmp/r3-pbo-static/$loop-$width-x$height.jsonl"
+            done
+          done
+      - name: Fail closed if static first frame cannot retire without periodic source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files=sorted(Path("tmp/r3-pbo-static").glob("*.jsonl"))
+          assert len(files)==4,files
+          for f in files:
+              rows=f.read_text().splitlines()
+              assert "R3_VERDICT=PASS_QT68_OPENGL_PBO_ASYNC_SCOPED" in rows,(f,rows)
+              records=[json.loads(x.partition("=")[2]) for x in rows if x.startswith("R3_PBO_RESULT_JSON=")]
+              assert len(records)==1,(f,rows)
+              d=records[0]
+              assert d["mode"]=="static-cold" and d["source_stages"]==1 and d["source_interval_ms"]==25,d
+              assert d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==1,d
+              assert d["core_validated_owned_frames"]==1 and d["core_frame_errors"]==0,d
+              assert d["first_frame_storage_retained_after_pbo_reuse"] is True,d
+              assert d["zero_viewer_skipped_render_frames"]>=1 and d["resource_cleanup_on_render_thread"],d
+              for key in ("gl_errors","pixel_errors","source_phase_order_errors","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
+                  assert d[key]==0,(key,d)
+              if d["render_loop"]=="threaded":
+                  assert d["render_thread_distinct_from_gui"],d
+              assert d["qualified_for_product"] is False,d
+              print("R3_STATIC_COLD=PASS",f,"lag_p95",d["completion_lag_p95_ms"],"readback",d["enqueue_p95_ms"])
+          print("R3_STATIC_COLD_BOUNDED_RETIREMENT=PASS_SCOPED_NOT_PRODUCT")
+          PY
+      - name: Validate real CPU pixel ownership, order and zero-viewer gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files=sorted(Path("tmp/r3-pbo").glob("*.jsonl"))
+          assert len(files)==4,files
+          for f in files:
+              lines=f.read_text().splitlines()
+              assert "R3_VERDICT=PASS_QT68_OPENGL_PBO_ASYNC_SCOPED" in lines,(f,lines)
+              rows=[json.loads(x.removeprefix("R3_PBO_RESULT_JSON=")) for x in lines if x.startswith("R3_PBO_RESULT_JSON=")]
+              assert len(rows)==1,(f,lines)
+              d=rows[0]
+              assert d["qt"]=="6.8.3" and d["backend"]=="Qt6_RHI_OpenGL",d
+              assert d["mode"]=="dynamic" and d["source_interval_ms"]==100,d
+              assert d["source_stages"]==d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==30,d
+              assert d["core_validated_owned_frames"]==30 and d["core_frame_errors"]==0,d
+              assert d["first_frame_storage_retained_after_pbo_reuse"] is True,d
+              for key in ("source_phase_order_errors","pixel_errors","gl_errors","missing_context","unsupported_pbo_context","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
+                  assert d[key]==0,(key,d)
+              assert d["zero_viewer_skipped_render_frames"]>=1,d
+              assert d["resource_cleanup_on_render_thread"] is True,d
+              assert d["enqueue_p95_ms"]>=0 and d["map_copy_p95_ms"]>=0 and d["completion_lag_p95_ms"]>0,d
+              assert d["qualified_for_product"] is False and d["qtgui_private_used"] is False,d
+              if d["render_loop"]=="threaded":
+                  assert d["render_thread_distinct_from_gui"] is True,d
+              print("R3_PUBLIC_OPENGL_PBO_PROBE=PASS",f,"enqueue_p95",d["enqueue_p95_ms"],"copy_p95",d["map_copy_p95_ms"],"completion_lag_p95",d["completion_lag_p95_ms"])
+          print("R3_PBO_PIXEL_TRUTH_PASS_SCOPED_WITHOUT_PRODUCT_ADMISSION")
+          PY
       - name: Keep small independent scenegraph cost evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: r2-qt68-gl-rhi-framebuffer-evidence
-          path: tmp/r2-gl/*.jsonl
+          path: |
+            tmp/r2-gl/*.jsonl
+            tmp/r3-pbo/*.jsonl
+            tmp/r3-pbo-static/*.jsonl
           if-no-files-found: warn
           retention-days: 10
