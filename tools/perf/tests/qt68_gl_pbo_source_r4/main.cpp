@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <functional>
 #include <memory>
 #include <set>
 #include <vector>
