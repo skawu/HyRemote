@@ -190,6 +190,18 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
             src/quick/quick_target.cpp
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
+        # R5 scientific evidence: Qt6.8 OpenGL RHI frames can be read from
+        # normal on-screen rendering with beginExternalCommands() and GL.
+        # This experiment must remain OFF in every released/qualified build.
+        # It does not apply to D3D11, Vulkan, Metal, software, or every EGLFS
+        # plugin/driver merely because the platform is called "eglfs".
+        option(HYREMOTE_EXPERIMENTAL_QUICK_OPENGL_RENDER_TAP
+            "TEST ONLY: use Qt6 OpenGL RHI existing-render-frame grab with public APIs" OFF)
+        if(HYREMOTE_EXPERIMENTAL_QUICK_OPENGL_RENDER_TAP)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_OPENGL_RENDER_TAP=1)
+            message(WARNING "TEST ONLY Quick OpenGL RHI render tap enabled: no product qualification")
+        endif()
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
