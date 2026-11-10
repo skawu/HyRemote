@@ -7,6 +7,7 @@
 // The Qt6 signal fires before command-buffer submission; swapchain resources
 // may not be accessible for readback. No QtPrivate, QPA or GPU vendor API.
 #include <QCoreApplication>
+#include <QColor>
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QImage>
@@ -26,6 +27,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <ctime>
 #include <iostream>
 #include <memory>
@@ -79,7 +81,7 @@ protected:
             node = new QSGGeometryNode;
             auto *geometry = new QSGGeometry(
                 QSGGeometry::defaultAttributes_Point2D(), 4);
-            geometry->setDrawingMode(GL_TRIANGLE_STRIP);
+            geometry->setDrawingMode(QSGGeometry::DrawTriangleStrip);
             node->setGeometry(geometry);
             node->setFlag(QSGNode::OwnsGeometry);
             auto *material = new QSGFlatColorMaterial;
@@ -108,7 +110,7 @@ struct ProbeStats
     int badPixels = 0;
     int glErrors = 0;
     int actualTapFrames = 0;
-    int renderCallbacks = 0;
+    std::atomic<int> renderCallbacks{0};
     int missingGlContexts = 0;
     int observedFramebufferBinding = -1;
     std::atomic<int> desiredEpoch{0};
@@ -210,9 +212,12 @@ int main(int argc, char **argv)
     bool done = false;
 
     QObject::connect(&window, &QQuickWindow::afterRendering,
-                     &window, [&stats, width, height, mode] {
-        stats.renderCallbacks++;
+                     &window, [&window, &stats, width, height, mode] {
+        stats.renderCallbacks.fetch_add(1, std::memory_order_relaxed);
         if (mode != "render-tap" || !stats.active.load(std::memory_order_acquire))
+            return;
+        std::lock_guard<std::mutex> lock(stats.mutex);
+        if (!stats.active.load(std::memory_order_acquire))
             return;
         auto *context = QOpenGLContext::currentContext();
         if (!context) {
@@ -270,8 +275,12 @@ int main(int argc, char **argv)
         const double cpuMs = 1000.0 *
             static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
         const double wallMs = static_cast<double>(timer.elapsed());
-        printResult(mode, width, height, stats, completed, wallMs, cpuMs,
-                    stats.renderCallbacks - lastStaticFrames);
+        {
+            std::lock_guard<std::mutex> lock(stats.mutex);
+            printResult(mode, width, height, stats, completed, wallMs, cpuMs,
+                        stats.renderCallbacks.load(std::memory_order_acquire)
+                            - lastStaticFrames);
+        }
         std::cout << "R1_VERDICT=" << (success ? "PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT"
                                            : reason) << std::endl;
         app.exit(success ? 0 : 20);
@@ -288,7 +297,7 @@ int main(int argc, char **argv)
     std::function<void()> nextStage;
     nextStage = [&] {
         if (completed >= kStages) {
-            lastStaticFrames = stats.renderCallbacks;
+            lastStaticFrames = stats.renderCallbacks.load(std::memory_order_acquire);
             QTimer::singleShot(400, &app, [&] {
                 reportAndExit(stats.glErrors == 0
                              && stats.missingGlContexts == 0,
@@ -319,7 +328,7 @@ int main(int argc, char **argv)
                         reportAndExit(false, "FAIL_PUBLIC_GRAB_WRONG_PIXEL");
                         return;
                     }
-                    pendingGrab.clear();
+                    QTimer::singleShot(0, &app, [&] { pendingGrab.clear(); });
                     ++completed;
                     QTimer::singleShot(35, &app, nextStage);
                 });
