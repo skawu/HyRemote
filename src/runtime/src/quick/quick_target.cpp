@@ -35,6 +35,10 @@
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_backend.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+#  include "quick/quick_gl_pbo_capture_source.hpp"
+#  include <QDebug>
+#endif
 #include "quick/quick_capture_single_flight.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
@@ -896,7 +900,18 @@ TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEn
         return result;
 
     result.supported = true;
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+    const auto *ri = window->rendererInterface();
+    if (ri && ri->graphicsApi() == QSGRendererInterface::OpenGL) {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
+        result.capture = createExperimentalQuickGlPboCaptureSource(window);
+    } else {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_FALLBACK_NO_GL_RHI";
+        result.capture = std::make_unique<QuickCaptureSource>(window);
+    }
+#else
     result.capture = std::make_unique<QuickCaptureSource>(window);
+#endif
     if (remoteInputEnabled)
         result.input = std::make_shared<QuickInputSink>(window);
     return result;
