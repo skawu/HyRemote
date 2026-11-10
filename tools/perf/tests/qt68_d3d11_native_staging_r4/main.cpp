@@ -19,6 +19,7 @@
 #include <QGuiApplication>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QSGFlatColorMaterial>
 #include <QSGGeometry>
 #include <QSGGeometryNode>
@@ -156,6 +157,9 @@ struct State
     std::atomic<int> sourceRtvSnapshots{0}, noDemandSkipped{0};
     std::atomic<int> framePumps{0}, mapStillDrawing{0}, rejected{0};
     std::atomic<int> lastHresult{0};
+    std::atomic<int> rejectionReason{0};
+    std::atomic<unsigned> sourceTextureWidth{0}, sourceTextureHeight{0};
+    std::atomic<unsigned> sourceMipLevels{0}, sourceArraySize{0}, sourceSampleCount{0};
     std::atomic<bool> demand{true}, renderThreadDistinct{false}, sceneInvalidated{false};
     std::atomic<bool> deviceResourceObserved{false}, contextResourceObserved{false};
 
@@ -234,6 +238,13 @@ int main(int argc, char **argv)
         // The borrowed render target is a real Qt-owned D3D11 texture;
         // ComPtr AddRef keeps it alive until a corresponding copy, but never
         // implies ownership over Qt swapchain retirement.
+        D3D11_TEXTURE2D_DESC readDesc{};
+        texture->GetDesc(&readDesc);
+        state.sourceTextureWidth.store(readDesc.Width);
+        state.sourceTextureHeight.store(readDesc.Height);
+        state.sourceMipLevels.store(readDesc.MipLevels);
+        state.sourceArraySize.store(readDesc.ArraySize);
+        state.sourceSampleCount.store(readDesc.SampleDesc.Count);
         state.capturedRenderTexture = texture;
         state.capturedEpoch = phase;
         state.sourceRtvSnapshots.fetch_add(1, std::memory_order_acq_rel);
@@ -264,6 +275,7 @@ int main(int argc, char **argv)
                 return;
             }
             if (FAILED(hr)) {
+                state.rejectionReason.store(3); // Map failure
                 state.lastHresult.store(static_cast<int>(hr));
                 state.rejected.fetch_add(1);
                 return;
@@ -294,6 +306,7 @@ int main(int argc, char **argv)
         if (desc.Width < unsigned(width) || desc.Height < unsigned(height)
             || desc.ArraySize != 1 || desc.MipLevels != 1
             || desc.SampleDesc.Count != 1) {
+            state.rejectionReason.store(1); // source size/shape mismatch
             state.rejected.fetch_add(1);
             return;
         }
@@ -306,6 +319,7 @@ int main(int argc, char **argv)
         const HRESULT created = device->CreateTexture2D(
             &desc, nullptr, staging.GetAddressOf());
         if (FAILED(created) || !staging) {
+            state.rejectionReason.store(2); // D3D staging texture creation
             state.lastHresult.store(static_cast<int>(created));
             state.rejected.fetch_add(1);
             return;
@@ -351,6 +365,16 @@ int main(int argc, char **argv)
                   << "\"map_still_drawing\":" << state.mapStillDrawing.load() << ","
                   << "\"rejected_readback_attempts\":" << state.rejected.load() << ","
                   << "\"last_hresult\":" << state.lastHresult.load() << ","
+                  << "\"rejection_reason\":" << state.rejectionReason.load() << ","
+                  << "\"window_logical_size\":[" << window.width() << "," << window.height() << "],"
+                  << "\"window_dpr\":" << window.devicePixelRatio() << ","
+                  << "\"screen_size\":[" << (window.screen() ? window.screen()->size().width() : 0)
+                  << "," << (window.screen() ? window.screen()->size().height() : 0) << "],"
+                  << "\"source_texture_size\":[" << state.sourceTextureWidth.load()
+                  << "," << state.sourceTextureHeight.load() << "],"
+                  << "\"source_texture_mips\":" << state.sourceMipLevels.load() << ","
+                  << "\"source_texture_array_size\":" << state.sourceArraySize.load() << ","
+                  << "\"source_texture_sample_count\":" << state.sourceSampleCount.load() << ","
                   << "\"source_rtv_snapshots\":" << state.sourceRtvSnapshots.load() << ","
                   << "\"native_format_enum\":" << state.lastFormat.load() << ","
                   << "\"render_callbacks\":" << state.renderCallbacks.load() << ","
