@@ -262,6 +262,17 @@ int main(int argc, char **argv)
         }
         if (window.rendererInterface()->graphicsApi() != QSGRendererInterface::OpenGL)
             return;
+        // Qt6 RHI records OpenGL commands. Per official Qt6 Quick
+        // custom-rendering contract, flush/transition the Scene Graph
+        // command buffer into native GL before an external read and
+        // restore its cached state on leaving the callback.
+        struct ScopedExternal {
+            QQuickWindow &window;
+            explicit ScopedExternal(QQuickWindow &w) : window(w) {
+                window.beginExternalCommands();
+            }
+            ~ScopedExternal() { window.endExternalCommands(); }
+        } scope(window);
         QOpenGLFunctions *gl = context->functions();
         GLint previousPack = 4;
         GLint framebuffer = 0;
