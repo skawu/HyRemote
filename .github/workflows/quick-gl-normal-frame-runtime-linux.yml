@@ -72,6 +72,20 @@ jobs:
               done
             done
           done
+      - name: Verify actual SceneGraph -> Core Session -> RFB Raw wire pixels, without external Viewer
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable=./build-quick-gl-native-r3/runtime/tests/hyremote-quick-gl-rfb-loopback-test
+          test -x "$executable"
+          for loop in basic threaded; do
+            echo "R3_RFB_START loop=$loop"
+            env -u QT_QUICK_BACKEND QSG_RENDER_LOOP="$loop" QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=xcb \
+              timeout 65s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' "$executable" \
+              2>&1 | tee "tmp/r3/quick-gl-rfb-loopback-$loop.log"
+            grep -q '^R3_RFB_LOOPBACK=PASS_SCOPED' "tmp/r3/quick-gl-rfb-loopback-$loop.log"
+            echo "R3_RFB_WIRE=PASS_SCOPED loop=$loop"
+          done
       - name: Publish only text test evidence, never a user upgrade package
         if: always()
         uses: actions/upload-artifact@v4
