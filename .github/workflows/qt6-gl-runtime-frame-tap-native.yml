@@ -6,6 +6,7 @@ on:
       - .github/workflows/qt6-gl-runtime-frame-tap-native.yml
       - src/runtime/CMakeLists.txt
       - src/runtime/src/quick/quick_target.cpp
+      - tools/perf/tests/qt6_gl_runtime_tap/**
   workflow_dispatch:
 permissions:
   contents: read
@@ -93,12 +94,44 @@ jobs:
           printf 'QT_PREFIX=%s\n' "$prefix" >> "$GITHUB_ENV"
           printf 'LD_LIBRARY_PATH=%s/lib\n' "$prefix" >> "$GITHUB_ENV"
           printf 'QT_QPA_PLATFORM_PLUGIN_PATH=%s/plugins/platforms\n' "$prefix" >> "$GITHUB_ENV"
-      - name: Compile actual Qt6 OpenGL-capable Runtime and Generic integration
+      - name: Apply exact Qt-only dynamic fixture with source identity
         shell: bash
         run: |
           set -euo pipefail
-          sh ./build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release --build-dir=build-quick-tap-linux --no-tests --clean -j4 --cmake=HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP=ON
-          grep -Fx 'HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP:BOOL=ON' build-quick-tap-linux/CMakeCache.txt
-          find build-quick-tap-linux -name '*HyRemoteRemoteAccess*' -type f | head -15
-          find build-quick-tap-linux -name '*HyRemoteRemoteAccess*' -type f | grep -q .
-          echo "QT6_GL_TAP_LINUX_COMPILE=PASS SHA=${{ github.event.pull_request.head.sha || github.sha }} CONFIG=ON"
+          python tools/perf/tests/qt6_gl_runtime_tap/apply_fixture.py --worktree . --manifest tmp/rfb/source-identity.json
+          python -m py_compile tools/perf/tests/qt6_gl_runtime_tap/rfb_smoke.py
+      - name: Compile+install actual Qt6 OpenGL Runtime and Generic ON/OFF
+        shell: bash
+        run: |
+          set -euo pipefail
+          for arm in ON OFF; do
+            dir="build-quick-tap-linux-${arm}"
+            sh ./build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release "--build-dir=$dir" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP=$arm"
+            grep -Fx "HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP:BOOL=$arm" "$dir/CMakeCache.txt"
+            test -x "$dir/install/bin/hyremote-learning-03-quick"
+            echo "QT6_GL_TAP_LINUX_INSTALL=PASS ARM=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
+          done
+      - name: Execute real Generic/QQuickWindow/RFB Raw pixel smoke in Mesa OpenGL RHI
+        shell: bash
+        env:
+          QSG_RHI_BACKEND: opengl
+          QSG_RENDER_LOOP: threaded
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          set -euo pipefail
+          for arm in OFF ON; do
+            app="$PWD/build-quick-tap-linux-$arm/install/bin/hyremote-learning-03-quick"
+            export QT_PLUGIN_PATH="$PWD/build-quick-tap-linux-$arm/install/plugins:$QT_PREFIX/plugins"
+            export LD_LIBRARY_PATH="$PWD/build-quick-tap-linux-$arm/install/lib:$QT_PREFIX/lib"
+            xvfb-run -a -s '-screen 0 1280x800x24 +extension GLX' python tools/perf/tests/qt6_gl_runtime_tap/rfb_smoke.py --app "$app" --mode "$arm" --out tmp/rfb
+          done
+      - name: Retain compact source and actual RFB pixel evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt68-gl-runtime-real-rfb-smoke
+          path: |
+            tmp/rfb/*.json
+            tmp/rfb/*.log
+          if-no-files-found: warn
+          retention-days: 10
