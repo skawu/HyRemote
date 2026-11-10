@@ -1394,25 +1394,104 @@ void runPublicQuickProfile()
 
 }  // namespace
 
-// Opt-in product-path R3 proof, intentionally separate from the existing
-// software/Qt public-grab conformance suite. The real Runtime CaptureSource
-// must publish immutable Core pixels for a normal Qt6 OpenGL SceneGraph frame,
-// then fall back when that scene remains static. No real RFB Viewer is claimed.
+// R3: actual Runtime CaptureSource, not a standalone glReadPixels benchmark.
+// Four independent colored quadrants prove orientation, physical dimensions,
+// source epoch and immutable storage; test normal-render tap, static fallback,
+// coalesced Core request IDs, subsequent fresh frame and stop/restart.
+class GlQuadrantProbeItem final : public QQuickPaintedItem
+{
+public:
+    explicit GlQuadrantProbeItem(QQuickItem *parent) : QQuickPaintedItem(parent)
+    {
+        setAntialiasing(false);
+    }
+
+    void setPhase(int phase)
+    {
+        m_requested.store(phase, std::memory_order_release);
+        update();
+    }
+
+    static QColor expected(int phase, int quadrant)
+    {
+        const QColor colors[] = {
+            QColor(224, 34, 45), QColor(30, 198, 64),
+            QColor(36, 67, 218), QColor(236, 205, 24)
+        };
+        return colors[(quadrant + phase) % 4];
+    }
+
+    int paintedPhase() const { return m_painted.load(std::memory_order_acquire); }
+
+    void paint(QPainter *painter) override
+    {
+        const int phase = m_requested.load(std::memory_order_acquire);
+        const qreal halfW = width() / 2.0;
+        const qreal halfH = height() / 2.0;
+        for (int q = 0; q < 4; ++q) {
+            const qreal x = (q & 1) ? halfW : 0.0;
+            const qreal y = (q & 2) ? halfH : 0.0;
+            painter->fillRect(QRectF(x, y, halfW, halfH),
+                              expected(phase, q));
+        }
+        m_painted.store(phase, std::memory_order_release);
+    }
+
+private:
+    std::atomic<int> m_requested{0};
+    std::atomic<int> m_painted{-1};
+};
+
+static void checkGlQuadrantFrame(const hyremote::RemoteFrame &frame,
+                                 std::uint64_t requestId, int phase,
+                                 int width, int height)
+{
+    CHECK(frame.requestId && *frame.requestId == requestId);
+    CHECK(frame.geometry.size.width == static_cast<std::uint32_t>(width));
+    CHECK(frame.geometry.size.height == static_cast<std::uint32_t>(height));
+    CHECK(frame.geometry.pixelFormat == hyremote::PixelFormat::Rgba8888);
+    CHECK(frame.geometry.alphaMode == hyremote::AlphaMode::Premultiplied);
+    CHECK(frame.damage.kind == hyremote::DamageKind::FullFrame);
+    CHECK(frame.timing.ptsSource == hyremote::PtsSource::Completion);
+    const auto plane = frame.storage ? frame.storage->mapRead(0) : std::nullopt;
+    CHECK(plane && plane->data);
+    if (!plane || !plane->data)
+        return;
+    CHECK(plane->stride >= static_cast<std::size_t>(width) * 4U);
+    for (int q = 0; q < 4; ++q) {
+        const int x = (q & 1) ? 3 * width / 4 : width / 4;
+        const int y = (q & 2) ? 3 * height / 4 : height / 4;
+        const std::size_t offset = static_cast<std::size_t>(y) * plane->stride
+                                   + static_cast<std::size_t>(x) * 4U;
+        CHECK(offset + 3 < plane->bytes);
+        if (offset + 3 >= plane->bytes)
+            continue;
+        const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data + offset);
+        const QColor expected = GlQuadrantProbeItem::expected(phase, q);
+        CHECK(std::abs(int(pixel[0]) - expected.red()) <= 12);
+        CHECK(std::abs(int(pixel[1]) - expected.green()) <= 12);
+        CHECK(std::abs(int(pixel[2]) - expected.blue()) <= 12);
+    }
+}
+
 void testExperimentalGlNormalFrameSourceAndStaticFallback()
 {
     HyRemote::detail::resetFactories();
+    const int width = qEnvironmentVariable("HYREMOTE_GL_CAPTURE_1080P") == QLatin1String("1")
+                          ? 1920 : 320;
+    const int height = width == 1920 ? 1080 : 180;
     QQuickWindow window;
-    window.resize(320, 180);
-    StagedQuickProbeItem content(window.contentItem());
-    content.setWidth(320);
-    content.setHeight(180);
-    std::atomic<int> painted{-1};
+    window.resize(width, height);
+    GlQuadrantProbeItem content(window.contentItem());
+    content.setWidth(width);
+    content.setHeight(height);
+    std::atomic<int> rendered{-1};
     QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
-        painted.store(content.paintedStage(), std::memory_order_release);
+        rendered.store(content.paintedPhase(), std::memory_order_release);
     }, Qt::DirectConnection);
     window.show();
-    content.setStage(0);
-    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 0; }));
+    content.setPhase(0);
+    CHECK(pumpUntil([&] { return rendered.load(std::memory_order_acquire) == 0; }));
 
     auto components = HyRemote::detail::createTargetComponents(&window, false);
     CHECK(components.supported && components.capture);
@@ -1424,47 +1503,60 @@ void testExperimentalGlNormalFrameSourceAndStaticFallback()
         [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
         [&](const hyremote::CaptureEvent &) { ++backendEvents; }));
 
-    // Force a new, naturally produced scenegraph frame only AFTER
-    // requestFrame() has queued its GUI subscription.
+    // Two accepted Core IDs in one GUI batch must be fulfilled from exactly
+    // one *actual* normal render frame and share the same storage anchor.
     CHECK(components.capture->requestFrame({9001, hyremote::Clock::now()}));
-    QTimer::singleShot(12, &window, [&] { content.setStage(2); });
-    CHECK(pumpUntil([&] { return frames.size() == 1U; }));
-    CHECK(painted.load(std::memory_order_acquire) == 2);
-    if (frames.size() == 1U) {
-        CHECK(frames[0].requestId && *frames[0].requestId == 9001);
-        CHECK(frames[0].geometry.size.width == 320);
-        CHECK(frames[0].geometry.size.height == 180);
-        CHECK(frames[0].geometry.alphaMode == hyremote::AlphaMode::Premultiplied);
-        CHECK(frames[0].damage.kind == hyremote::DamageKind::FullFrame);
-        const auto plane = frames[0].storage
-            ? frames[0].storage->mapRead(0) : std::nullopt;
-        CHECK(plane && plane->data);
-        if (plane && plane->data) {
-            const auto *pixel =
-                reinterpret_cast<const unsigned char *>(plane->data)
-                + (frames[0].geometry.size.height / 2U) * plane->stride
-                + (frames[0].geometry.size.width / 4U) * 4U;
-            CHECK(pixel[0] == 225U && pixel[1] == 30U && pixel[2] == 40U);
-        }
+    CHECK(components.capture->requestFrame({9002, hyremote::Clock::now()}));
+    QTimer::singleShot(12, &window, [&] { content.setPhase(1); });
+    CHECK(pumpUntil([&] { return frames.size() == 2U; }));
+    CHECK(rendered.load(std::memory_order_acquire) == 1);
+    if (frames.size() >= 2U) {
+        CHECK(frames[0].storage && frames[0].storage == frames[1].storage);
+        checkGlQuadrantFrame(frames[0], 9001, 1, width, height);
+        checkGlQuadrantFrame(frames[1], 9002, 1, width, height);
     }
 
-    // With no business-scene changes there is no normal afterFrameEnd.
-    // A new Core request must finish via the public Qt image grab fallback,
-    // not wait forever or invent a new content/render timestamp.
+    // Static: no new afterFrameEnd. Accepted request must complete through
+    // bounded public grab without inventing a new Render content timestamp.
     QEventLoop settle;
     QTimer::singleShot(180, &settle, &QEventLoop::quit);
     settle.exec();
-    CHECK(components.capture->requestFrame({9002, hyremote::Clock::now()}));
-    CHECK(pumpUntil([&] { return frames.size() == 2U; }));
-    if (frames.size() == 2U) {
-        CHECK(frames[1].requestId && *frames[1].requestId == 9002);
-        CHECK(frames[1].storage != frames[0].storage);
-        CHECK(frames[1].timing.ptsSource == hyremote::PtsSource::Completion);
+    CHECK(components.capture->requestFrame({9003, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return frames.size() == 3U; }));
+    if (frames.size() >= 3U) {
+        CHECK(frames[2].storage != frames[0].storage);
+        checkGlQuadrantFrame(frames[2], 9003, 1, width, height);
+    }
+
+    // A fresh source phase on a later request must never reuse previous
+    // pixels, even if the Core changes its request ID.
+    CHECK(components.capture->requestFrame({9004, hyremote::Clock::now()}));
+    QTimer::singleShot(12, &window, [&] { content.setPhase(2); });
+    CHECK(pumpUntil([&] { return frames.size() == 4U; }));
+    if (frames.size() >= 4U) {
+        CHECK(frames[3].storage != frames[2].storage);
+        checkGlQuadrantFrame(frames[3], 9004, 2, width, height);
     }
     CHECK(backendEvents == 0);
+
     components.capture->stop();
-    CHECK(!components.capture->requestFrame({9003, hyremote::Clock::now()}));
-    std::cout << "QUICK_GL_PRODUCT_PATH_TEST=PASS_IF_LOG_HAS_TAP_AND_FALLBACK\n";
+    CHECK(!components.capture->requestFrame({9005, hyremote::Clock::now()}));
+    frames.clear();
+    // Start a fresh generation on the SAME source. No callback or request
+    // identity from the prior generation may be published.
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &) { ++backendEvents; }));
+    CHECK(components.capture->requestFrame({9006, hyremote::Clock::now()}));
+    QTimer::singleShot(12, &window, [&] { content.setPhase(3); });
+    CHECK(pumpUntil([&] { return frames.size() == 1U; }));
+    if (frames.size() == 1U)
+        checkGlQuadrantFrame(frames[0], 9006, 3, width, height);
+    CHECK(backendEvents == 0);
+    components.capture->stop();
+    std::cout << "QUICK_GL_PRODUCT_PATH_TEST=PASS_IF_LOG_HAS_TAP_AND_FALLBACK"
+              << " SIZE=" << width << "x" << height
+              << " STAGES=4 ORIENTATION=4_QUADRANTS\n";
 }
 
 int main(int argc, char **argv)
