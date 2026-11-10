@@ -19,7 +19,12 @@ endif()
 # or modify swapchain flags. This does not add QtPrivate to HyRemote products.
 option(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY "Research: inspect existing RHI swapchain flags (NON-PRODUCT)" OFF)
 if(HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY)
-    find_package(Qt6 6.8.3 REQUIRED COMPONENTS GuiPrivate)
+    # Qt's official Kit can export Qt6::GuiPrivate as an internal target of
+    # Qt6GuiConfig; find_package COMPONENTS GuiPrivate is not necessarily a
+    # separately published CMake package (as shown by hosted Qt 6.8.3).
+    if(NOT TARGET Qt6::GuiPrivate)
+        message(FATAL_ERROR "Exact Qt6.8.3 Kit exports no Qt6::GuiPrivate: inspection BLOCKED")
+    endif()
     target_link_libraries(hyremote-qt68-public-rhi-eligibility PRIVATE Qt6::GuiPrivate)
     target_compile_definitions(hyremote-qt68-public-rhi-eligibility
         PRIVATE HYREMOTE_RHI_PRIVATE_INSPECTION_ONLY=1)
