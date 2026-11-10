@@ -1468,9 +1468,20 @@ static void checkGlQuadrantFrame(const hyremote::RemoteFrame &frame,
             continue;
         const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data + offset);
         const QColor expected = GlQuadrantProbeItem::expected(phase, q);
-        CHECK(std::abs(int(pixel[0]) - expected.red()) <= 12);
-        CHECK(std::abs(int(pixel[1]) - expected.green()) <= 12);
-        CHECK(std::abs(int(pixel[2]) - expected.blue()) <= 12);
+        const bool match =
+            std::abs(int(pixel[0]) - expected.red()) <= 12
+            && std::abs(int(pixel[1]) - expected.green()) <= 12
+            && std::abs(int(pixel[2]) - expected.blue()) <= 12;
+        if (!match) {
+            std::cerr << "R3_FRAME_PIXEL_MISMATCH request=" << requestId
+                      << " expected_phase=" << phase << " quadrant=" << q
+                      << " actual_rgb=(" << int(pixel[0]) << ","
+                      << int(pixel[1]) << "," << int(pixel[2]) << ")"
+                      << " expected_rgb=(" << expected.red() << ","
+                      << expected.green() << "," << expected.blue() << ")"
+                      << " size=" << width << "x" << height << '\n';
+        }
+        CHECK(match);
     }
 }
 
