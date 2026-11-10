@@ -135,6 +135,50 @@ jobs:
                 "--width=$width" "--height=$height" | tee "tmp/r3-pbo/$loop-$width-x$height.jsonl"
             done
           done
+      - name: Verify a single static source frame completes using one bounded retirement render
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          QSG_RHI_BACKEND: opengl
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r3-pbo-static
+          for loop in basic threaded; do
+            for geometry in '640 360' '1920 1080'; do
+              read -r width height <<< "$geometry"
+              echo "R3_STATIC_PBO_START loop=$loop size=$width x $height"
+              QSG_RENDER_LOOP="$loop" timeout 30s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
+                ./build-r3-qt68-pbo/hyremote-qt68-gl-pbo-async-r3 \
+                --mode=static-cold "--width=$width" "--height=$height" \
+                | tee "tmp/r3-pbo-static/$loop-$width-x$height.jsonl"
+            done
+          done
+      - name: Fail closed if static first frame cannot retire without periodic source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files=sorted(Path("tmp/r3-pbo-static").glob("*.jsonl"))
+          assert len(files)==4,files
+          for f in files:
+              rows=f.read_text().splitlines()
+              assert "R3_VERDICT=PASS_QT68_OPENGL_PBO_ASYNC_SCOPED" in rows,(f,rows)
+              records=[json.loads(x.partition("=")[2]) for x in rows if x.startswith("R3_PBO_RESULT_JSON=")]
+              assert len(records)==1,(f,rows)
+              d=records[0]
+              assert d["mode"]=="static-cold" and d["source_stages"]==1,d
+              assert d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==1,d
+              assert d["zero_viewer_skipped_render_frames"]>=1 and d["resource_cleanup_on_render_thread"],d
+              for key in ("gl_errors","pixel_errors","source_phase_order_errors","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
+                  assert d[key]==0,(key,d)
+              if d["render_loop"]=="threaded":
+                  assert d["render_thread_distinct_from_gui"],d
+              assert d["qualified_for_product"] is False,d
+              print("R3_STATIC_COLD=PASS",f,"lag_p95",d["completion_lag_p95_ms"],"readback",d["enqueue_p95_ms"])
+          print("R3_STATIC_COLD_BOUNDED_RETIREMENT=PASS_SCOPED_NOT_PRODUCT")
+          PY
       - name: Validate real CPU pixel ownership, order and zero-viewer gate
         shell: bash
         run: |
@@ -151,6 +195,7 @@ jobs:
               assert len(rows)==1,(f,lines)
               d=rows[0]
               assert d["qt"]=="6.8.3" and d["backend"]=="Qt6_RHI_OpenGL",d
+              assert d["mode"]=="dynamic" and d["source_interval_ms"]==100,d
               assert d["source_stages"]==d["readbacks_enqueued"]==d["readbacks_retired"]==d["verified_full_frames"]==30,d
               for key in ("source_phase_order_errors","pixel_errors","gl_errors","missing_context","unsupported_pbo_context","ring_overflows","source_stages_dropped","blocking_fence_wait_calls"):
                   assert d[key]==0,(key,d)
@@ -171,5 +216,6 @@ jobs:
           path: |
             tmp/r2-gl/*.jsonl
             tmp/r3-pbo/*.jsonl
+            tmp/r3-pbo-static/*.jsonl
           if-no-files-found: warn
           retention-days: 10
