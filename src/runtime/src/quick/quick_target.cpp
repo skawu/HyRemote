@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QImage>
 #if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+#include <QDebug>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #endif
@@ -586,6 +587,11 @@ private:
                         // OpenGL's row 0 is bottom-up. Only transform after
                         // leaving Qt's render thread; the QImage owns pixels.
                         const QImage topDown = pixels.mirrored(false, true);
+                        if (topDown.isNull()) {
+                            attemptGrabOnGuiThread(state, batch, 1U);
+                            return;
+                        }
+                        qInfo().noquote() << "HYREMOTE_TEST_QT6_GL_TAP_READBACK=OK";
                         publishImage(state, batch, 1U, topDown);
                     }, Qt::QueuedConnection);
             }, Qt::DirectConnection);
@@ -649,8 +655,10 @@ private:
                 if (state->tap == tap)
                     state->tap.reset();
             }
-            if (isActive(state, batch->generation))
+            if (isActive(state, batch->generation)) {
+                qInfo().noquote() << "HYREMOTE_TEST_QT6_GL_TAP_FALLBACK=NO_NATURAL_FRAME";
                 attemptGrabOnGuiThread(state, batch, 1U);
+            }
         });
         deadline->start(45);
         return true;
