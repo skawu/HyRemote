@@ -74,6 +74,49 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "R3 resize was not qualified $loop $width x $height -> $resizeWidth x $resizeHeight" }
             }
           }
+      - name: Bound artificial completion-frame pumping (research only)
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($loop in @('basic', 'threaded')) {
+            $env:QSG_RENDER_LOOP = $loop
+            foreach ($width in @(640, 1920)) {
+              $height = if ($width -eq 640) { 360 } else { 1080 }
+              $out = "tmp/r3/d3d11-pump2-$width" + "x$height-$loop.log"
+              & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" "--pump-budget=2" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "Bounded pump budget 2 not qualified: loop=$loop size=$width x $height" }
+            }
+          }
+      - name: Verify at most 2 artificial frames per captured stage
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          paths = sorted(Path("tmp/r3").glob("d3d11-pump2-*.log"))
+          assert len(paths) == 4, paths
+          for path in paths:
+              text = path.read_text(encoding="utf-8-sig")
+              assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in text, path
+              payload = [s.partition("=")[2] for s in text.splitlines() if s.startswith("R3_RESULT_JSON=")]
+              assert len(payload) == 1, path
+              x = json.loads(payload[0])
+              assert x["completion_pump_budget_per_stage"] == 2, x
+              assert x["completion_pump_requests"] <= 24, x
+              assert x["completion_pump_budget_exceeded"] == 0, x
+              assert x["max_async_readback_frames"] > 0, x
+              assert x["async_readbacks_submitted"] == x["async_readbacks_completed"] == 12, x
+              assert x["stages_verified"] == 12 and not x["qualified_for_product"], x
+              print("R3_BOUNDED_COMPLETION=PASS_SCOPED", path,
+                    "pump_requests", x["completion_pump_requests"],
+                    "QRhiMaxAsyncReadbackFrames", x["max_async_readback_frames"],
+                    "callback_p95_ms", x["callback_latency_p95_ms"])
+          '@ | Set-Content -Path tmp/r3/audit-pump.py -Encoding utf8
+          python tmp/r3/audit-pump.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Fail-closed assert REAL async callback, full pixels, no Viewer demand
         shell: pwsh
         run: |
