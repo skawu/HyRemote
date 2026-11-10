@@ -198,8 +198,17 @@ int main(int argc, char **argv)
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
     State state;
     QQuickWindow window;
+    // Windows CI's virtual screen may be only 1024x768. A decorated
+    // 1920x1080 top-level window was silently clamped by the window manager
+    // to 1028x749, which our exact source-texture gate correctly rejected.
+    // A frameless, minimum-constrained top-level window can have a larger
+    // client area than the visible desktop; we still verify the real GPU
+    // swapchain texture is exactly the requested pixel geometry.
+    window.setFlags(Qt::Window | Qt::FramelessWindowHint);
+    window.setMinimumSize(QSize(width, height));
     window.setColor(Qt::black);
     window.resize(width, height);
+    window.setPosition(0, 0);
     SourceItem item(&state.synced, window.contentItem());
     item.setSize(QSizeF(width,height));
 
