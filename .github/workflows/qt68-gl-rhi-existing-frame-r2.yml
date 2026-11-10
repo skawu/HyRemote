@@ -2,7 +2,7 @@ name: Qt6.8.3 OpenGL RHI framebuffer eligibility R2 (NON-PRODUCT)
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, feature/609-qt68-public-rhi-eligibility-and-window-grab-r2-20261110]
     paths:
       - .github/workflows/qt68-gl-rhi-existing-frame-r2.yml
       - tools/perf/tests/qt68_gl_render_frame_r2/**
