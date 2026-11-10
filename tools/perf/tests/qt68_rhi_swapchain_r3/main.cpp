@@ -9,6 +9,7 @@
 // this experiment can report success. Zero-viewer and 1-request controls.
 #include <QColor>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QGuiApplication>
 #include <QImage>
 #include <QQuickItem>
@@ -149,7 +150,7 @@ int main(int argc, char **argv)
     int nextStage = 0;
     int framesWaited = 0;
     qint64 startEpochMs = QDateTime::currentMSecsSinceEpoch();
-    auto renderThread = &app;
+    auto renderThread = &app; // for logging; actual callback is on QRhi thread
 
     QObject::connect(&window, &QQuickWindow::afterRendering, &window,
        [&, state] {
