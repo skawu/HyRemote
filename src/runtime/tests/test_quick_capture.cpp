@@ -1514,11 +1514,14 @@ void testExperimentalGlNormalFrameSourceAndStaticFallback()
         [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
         [&](const hyremote::CaptureEvent &) { ++backendEvents; }));
 
-    // Two accepted Core IDs in one GUI batch must be fulfilled from exactly
-    // one *actual* normal render frame and share the same storage anchor.
+    // Source state must already have changed BEFORE requesting a fresh
+    // frame. A Core capture request cannot be asked to predict a future
+    // source mutation. An unrelated, older Qt frame completing after that
+    // request must never be passed off as the newly synchronized content.
+    // Two Core IDs in one GUI batch share one *actual* normal frame.
+    content.setPhase(1);
     CHECK(components.capture->requestFrame({9001, hyremote::Clock::now()}));
     CHECK(components.capture->requestFrame({9002, hyremote::Clock::now()}));
-    QTimer::singleShot(12, &window, [&] { content.setPhase(1); });
     CHECK(pumpUntil([&] { return frames.size() == 2U; }));
     CHECK(rendered.load(std::memory_order_acquire) == 1);
     if (frames.size() >= 2U) {
@@ -1541,8 +1544,8 @@ void testExperimentalGlNormalFrameSourceAndStaticFallback()
 
     // A fresh source phase on a later request must never reuse previous
     // pixels, even if the Core changes its request ID.
+    content.setPhase(2);
     CHECK(components.capture->requestFrame({9004, hyremote::Clock::now()}));
-    QTimer::singleShot(12, &window, [&] { content.setPhase(2); });
     CHECK(pumpUntil([&] { return frames.size() == 4U; }));
     if (frames.size() >= 4U) {
         CHECK(frames[3].storage != frames[2].storage);
@@ -1558,8 +1561,8 @@ void testExperimentalGlNormalFrameSourceAndStaticFallback()
     CHECK(components.capture->start(
         [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
         [&](const hyremote::CaptureEvent &) { ++backendEvents; }));
+    content.setPhase(3);
     CHECK(components.capture->requestFrame({9006, hyremote::Clock::now()}));
-    QTimer::singleShot(12, &window, [&] { content.setPhase(3); });
     CHECK(pumpUntil([&] { return frames.size() == 1U; }));
     if (frames.size() == 1U)
         checkGlQuadrantFrame(frames[0], 9006, 3, width, height);
