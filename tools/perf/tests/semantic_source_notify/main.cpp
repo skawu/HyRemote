@@ -125,11 +125,46 @@ int main(int argc, char **argv)
     if (!check(wakes == 3, "wake after stopped source registration"))
         return 27;
 
+    // Integration-scoped semantics: two surface-owned observers must never
+    // steal or cross-deliver another surface's notification. This is the
+    // minimum foundation for Automatic composite's multi-Surface identity;
+    // it does NOT automatically discover arbitrary QML scene changes.
+    QObject surfaceA;
+    QObject surfaceB;
+    SemanticSourcePropertyObserver observerA;
+    SemanticSourcePropertyObserver observerB;
+    int surfaceAWakes = 0;
+    int surfaceBWakes = 0;
+    if (!check(observerA.attach(&surfaceA, {QStringLiteral("objectName")},
+                                [&] { ++surfaceAWakes; })
+               && observerB.attach(&surfaceB, {QStringLiteral("objectName")},
+                                   [&] { ++surfaceBWakes; }),
+               "two independent surface subscriptions failed"))
+        return 28;
+    surfaceA.setObjectName(QStringLiteral("A-content"));
+    drain();
+    if (!check(surfaceAWakes == 1 && surfaceBWakes == 0,
+               "surface-A event improperly woke surface B"))
+        return 29;
+    surfaceB.setObjectName(QStringLiteral("B-content"));
+    drain();
+    if (!check(surfaceAWakes == 1 && surfaceBWakes == 1,
+               "surface-B event improperly woke surface A"))
+        return 30;
+    observerA.detach();
+    surfaceA.setObjectName(QStringLiteral("A-removed"));
+    surfaceB.setObjectName(QStringLiteral("B-updated"));
+    drain();
+    if (!check(surfaceAWakes == 1 && surfaceBWakes == 2,
+               "removing one surface disrupted or reused its notifications"))
+        return 31;
+    observerB.detach();
+
     std::cout
         << "PASS public QtCore source-property NOTIFY contract:"
         << " coalescing, no phantom source changes, missing property,"
         << " duplicate refusal, detach, source destruction, reattach,"
-        << " reentrant teardown, no stale callbacks\n";
+        << " reentrant teardown, no stale callbacks, multi-surface isolation\n";
     std::cout << "QT_VERSION=" << QT_VERSION_STR << '\n';
     return 0;
 }
