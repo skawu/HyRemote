@@ -3,6 +3,9 @@
 #include <QCoreApplication>
 #include <QImage>
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP)
+#  include <QDebug>
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP)
 #  include <QOpenGLContext>
 #  include <QOpenGLFunctions>
 #  include <QGuiApplication>
@@ -559,6 +562,10 @@ private:
                             // GUI, not on the live Scene Graph render thread.
                             QImage upright = image.mirrored(false, true);
                             upright.setDevicePixelRatio(dpr);
+                            qInfo().noquote()
+                                << "HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PIXELS"
+                                << "REQUESTS=" << batch->requests.size()
+                                << "SIZE=" << upright.size();
                             publishImage(state, batch, grabAttempt, upright);
                         }, Qt::QueuedConnection);
                 }
@@ -583,8 +590,11 @@ private:
                 // Do not call QQuickWindow::update() to manufacture one;
                 // request a bounded, independent public grab instead.
                 QObject::disconnect(tap->submissionConnection);
-                if (isActive(state, batch->generation))
+                if (isActive(state, batch->generation)) {
+                    qInfo().noquote()
+                        << "HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PUBLIC_GRAB_FALLBACK";
                     attemptGrabOnGuiThread(state, batch, grabAttempt, true);
+                }
                 return;
             }
             // A synchronous GPU readback started but has not returned.
