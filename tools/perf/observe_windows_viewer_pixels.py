@@ -283,6 +283,7 @@ def main():
     # application was supposed to draw. It is retained solely as colors/times
     # to diagnose large missing-stage counts without screenshots or pixels.
     visible_transitions = []
+    last_viewport_read_utc_ms = None
     try:
         while time.monotonic() - started < args.seconds:
             sample_start_ns = time.perf_counter_ns()
@@ -301,6 +302,7 @@ def main():
             # Time after observing the actual screen pixels; never stamp
             # before the expensive four-point DWM/GDI read.
             now_ms = time.time_ns() // 1_000_000
+            last_viewport_read_utc_ms = now_ms
             samples += 1
             if mixed:
                 mixed_samples += 1
@@ -347,10 +349,7 @@ def main():
     # Flush final Host stdout before scoring; no second-screen read is
     # invented. Filter any new source events after the final viewport read.
     final_events = read_stage_events()
-    if visible_transitions:
-        latest_view_utc_ms = visible_transitions[-1]["visible_utc_ms"]
-    else:
-        latest_view_utc_ms = time.time_ns() // 1_000_000
+    latest_view_utc_ms = last_viewport_read_utc_ms
     require(len(final_events) >= prior_events,
             "Qt stage log shrank after final visible observation")
     for event in final_events[prior_events:]:
