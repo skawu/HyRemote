@@ -150,9 +150,16 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     int width = 640, height = 360;
     int resizeWidth = 0, resizeHeight = 0;
+#ifdef _WIN32
+    QString backend = QStringLiteral("d3d11");
+#else
+    QString backend = QStringLiteral("opengl");
+#endif
     for (int i=1; i<argc; ++i) {
         const QString arg=QString::fromLocal8Bit(argv[i]);
-        if (arg.startsWith("--width="))
+        if (arg.startsWith("--backend="))
+            backend = arg.mid(10);
+        else if (arg.startsWith("--width="))
             width = arg.mid(8).toInt();
         else if (arg.startsWith("--height="))
             height = arg.mid(9).toInt();
@@ -165,15 +172,19 @@ int main(int argc, char **argv)
             return 11;
         }
     }
+    if (backend != QLatin1String("d3d11") && backend != QLatin1String("opengl"))
+        return 13;
     if (width<128 || height<128 || width>3840 || height>2160
         || ((resizeWidth == 0) != (resizeHeight == 0))
         || resizeWidth < 0 || resizeHeight < 0
         || resizeWidth > 3840 || resizeHeight > 2160
         || (resizeWidth != 0 && (resizeWidth < 128 || resizeHeight < 128)))
         return 12;
-    // The first stage is D3D11 ONLY. Other QRhi backends must qualify on
-    // their own Kit and render loop, without assuming transfer-source flags.
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
+    // Each backend separately qualifies with its exact Qt6 Kit.
+    // Do not infer transfer-source support from OS, GPU vendor or RHI name.
+    const auto graphicsApi = backend == QLatin1String("d3d11")
+        ? QSGRendererInterface::Direct3D11 : QSGRendererInterface::OpenGL;
+    QQuickWindow::setGraphicsApi(graphicsApi);
     QQuickWindow window;
     // Hosted Windows virtual desktop is only 1024x768. A decorated Win32
     // window requested at 1920x1080 was resized by the OS to 1028x749.
@@ -228,7 +239,7 @@ int main(int argc, char **argv)
             return;
         }
         auto *ri = window.rendererInterface();
-        if (!ri || ri->graphicsApi()!=QSGRendererInterface::Direct3D11) {
+        if (!ri || ri->graphicsApi()!=graphicsApi) {
             state->missingResource.fetch_add(1);
             return;
         }
@@ -326,7 +337,7 @@ int main(int argc, char **argv)
             static_cast<std::size_t>(std::ceil(latencies.size()*0.95)-1)];
         std::cout<<"R3_RESULT_JSON={"
                  <<"\"qt\":\""<<QT_VERSION_STR<<"\","
-                 <<"\"backend\":\"d3d11\","
+                 <<"\"backend\":\""<<backend.toStdString()<<"\","
                  <<"\"size\":["<<width<<","<<height<<"],"
                  <<"\"final_expected_size\":["
                  <<state->intendedWidth.load()<<","
