@@ -162,6 +162,10 @@ struct Stats
     int correctPixels = 0;
     int readFailures = 0;
     std::vector<double> captureWallMs;
+    // These GUI-clock samples include waiting for the ACTUAL afterFrameEnd
+    // acknowledgement, unlike capture_wall_* (which measures only the API).
+    std::vector<double> sourceToSubmittedMs;
+    std::vector<double> sourceToAcceptedMs;
 };
 
 } // namespace
@@ -215,6 +219,7 @@ int main(int argc, char **argv)
     bool awaitingCapture = false;
     int completed = 0;
     int requested = -1;
+    std::chrono::steady_clock::time_point stageStart;
     const auto startingCpu = processCpuMs();
     QElapsedTimer elapsed;
     QSharedPointer<QQuickItemGrabResult> outstanding;
@@ -298,6 +303,10 @@ int main(int argc, char **argv)
                   << "\"readback_operations\":0,"
                   << "\"capture_wall_p95_ms\":" << p95(stats.captureWallMs) << ","
                   << "\"capture_wall_mean_ms\":" << mean(stats.captureWallMs) << ","
+                  << "\"source_to_submitted_p95_ms\":" << p95(stats.sourceToSubmittedMs) << ","
+                  << "\"source_to_submitted_mean_ms\":" << mean(stats.sourceToSubmittedMs) << ","
+                  << "\"source_to_accepted_p95_ms\":" << p95(stats.sourceToAcceptedMs) << ","
+                  << "\"source_to_accepted_mean_ms\":" << mean(stats.sourceToAcceptedMs) << ","
                   << "\"capture_failures\":" << stats.readFailures << ","
                   << "\"scene_graph_loss\":"
                   << (stats.abortedBySceneGraphLoss.load() ? "true" : "false") << ","
@@ -330,6 +339,7 @@ int main(int argc, char **argv)
             return;
         }
         requested = completed;
+        stageStart = std::chrono::steady_clock::now();
         solid.setPhase(requested);
     };
 
@@ -342,9 +352,15 @@ int main(int argc, char **argv)
             return;
         const int expected = requested;
         requested = -1;
+        stats.sourceToSubmittedMs.push_back(
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - stageStart).count());
         if (mode == QLatin1String("scene-only")
             || mode == QLatin1String("rhi-resource-audit")) {
             ++completed;
+            stats.sourceToAcceptedMs.push_back(
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - stageStart).count());
             QTimer::singleShot(35, &app, requestNext);
             return;
         }
@@ -363,6 +379,9 @@ int main(int argc, char **argv)
             }
             ++stats.correctPixels;
             ++completed;
+            stats.sourceToAcceptedMs.push_back(
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - stageStart).count());
             awaitingCapture = false;
             QTimer::singleShot(35, &app, requestNext);
             return;
@@ -388,6 +407,9 @@ int main(int argc, char **argv)
             }
             ++stats.correctPixels;
             ++completed;
+            stats.sourceToAcceptedMs.push_back(
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - stageStart).count());
             awaitingCapture = false;
             // The finished grab handle may deliver its signal during its own
             // method: release in a later turn, not from within ready().
