@@ -111,6 +111,9 @@ def main() -> None:
     palette = [(226, 38, 52), (39, 207, 64), (44, 68, 232),
                (238, 196, 30)]
     results = []
+    reconnect_results = []
+    initial_zero_viewer_tap_count = 0
+    disconnected_tap_delta = -1
     pid = None
 
     with logfile.open("wb") as stdout:
@@ -119,6 +122,12 @@ def main() -> None:
             stdout=stdout, stderr=subprocess.STDOUT, env=env)
         pid = host.pid
         try:
+            # Host QtQuick must keep locally rendering without an RFB Viewer.
+            # No actual CaptureSource request should be admitted in 0V.
+            time.sleep(0.8)
+            initial_zero_viewer_tap_count = logfile.read_text(
+                encoding="utf-8", errors="replace").count(
+                    "HYREMOTE_TEST_QT6_GL_TAP_READBACK=OK")
             conn = None
             for _ in range(100):
                 if host.poll() is not None:
@@ -138,6 +147,25 @@ def main() -> None:
                 for _ in range(18):
                     results.append(next_frame(conn, width, height))
                     time.sleep(0.12)
+
+            # A full disconnect and re-connect must not inherit stale tap
+            # callbacks or stale Core/Session request identities. After a
+            # settle period, no more GPU readbacks may occur at 0 Viewer.
+            time.sleep(0.9)
+            before_idle = logfile.read_text(encoding="utf-8", errors="replace").count(
+                "HYREMOTE_TEST_QT6_GL_TAP_READBACK=OK")
+            time.sleep(0.75)
+            after_idle = logfile.read_text(encoding="utf-8", errors="replace").count(
+                "HYREMOTE_TEST_QT6_GL_TAP_READBACK=OK")
+            disconnected_tap_delta = after_idle - before_idle
+            with socket.create_connection(("127.0.0.1", args.port), timeout=5) as second:
+                second.settimeout(10)
+                second_width, second_height = rfb_handshake(second)
+                if (second_width, second_height) != (width, height):
+                    raise RuntimeError("Reconnected Viewer received inconsistent framebuffer geometry")
+                for _ in range(8):
+                    reconnect_results.append(next_frame(second, width, height))
+                    time.sleep(0.12)
         finally:
             host.terminate()
             try:
@@ -147,8 +175,9 @@ def main() -> None:
                 host.wait(timeout=3)
 
     contents = logfile.read_text(encoding="utf-8", errors="replace")
+    all_frames = results + reconnect_results
     observed_phases = []
-    for image in results:
+    for image in all_frames:
         found = None
         for phase in range(3):
             if all(within(image[q], palette[(phase + q) % 4])
@@ -168,10 +197,14 @@ def main() -> None:
         "rhi": "opengl",
         "render_loop": "threaded",
         "real_rfb_handshake": True,
-        "rfb_full_frame_requests": 18,
-        "rfb_raw_pixel_centers": len(results),
+        "rfb_full_frame_requests": 26,
+        "rfb_raw_pixel_centers": len(all_frames),
+        "rfb_disconnect_reconnect_tested": True,
+        "reconnected_full_frame_requests": len(reconnect_results),
+        "initial_zero_viewer_render_tap_readbacks": initial_zero_viewer_tap_count,
+        "new_readbacks_after_disconnect_quiescence": disconnected_tap_delta,
         "complete_four_quadrant_source_frames": len(valid_phases),
-        "source_epoch_mixed_or_wrong_quadrant_frames": len(results) - len(valid_phases),
+        "source_epoch_mixed_or_wrong_quadrant_frames": len(all_frames) - len(valid_phases),
         "different_valid_scene_phases": len(distinct),
         "quadrants_per_frame": 4,
         "test_only_render_tap_success": tap_count,
@@ -188,10 +221,15 @@ def main() -> None:
         raise RuntimeError("Qt-only Host failed to print APP_READY")
     if not contents.count("PLATFORM_NAME=xcb"):
         raise RuntimeError("Generic plugin silently changed the native Qt QPA")
-    if len(results) < 6 or len(distinct) < 2 or len(valid_phases) != len(results):
+    if len(all_frames) != 26 or len(distinct) < 2 or len(valid_phases) != len(all_frames):
         raise RuntimeError(
             "Real RFB delivery had stale/mixed/wrong-orientation four-quadrant frames: "
-            f"phases={observed_phases}; samples={results[:3]}")
+            f"phases={observed_phases}; samples={all_frames[:3]}")
+    if initial_zero_viewer_tap_count != 0 or disconnected_tap_delta != 0:
+        raise RuntimeError(
+            "Qt6 GL tap read back pixels with zero Viewer demand: "
+            f"before-connect={initial_zero_viewer_tap_count}, "
+            f"post-disconnect={disconnected_tap_delta}")
     if args.mode == "ON" and tap_count < 1:
         raise RuntimeError("Experimental Qt6 OpenGL frame tap never executed on any real Generic RFB request")
     if args.mode == "OFF" and (tap_count or fallback_count):
