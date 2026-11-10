@@ -140,6 +140,9 @@ struct ProbeStats
     std::atomic<int> observedEpoch{-1};
     std::atomic<bool> active{true};
     std::atomic<bool> simulatedViewerDemand{true};
+    // One GPU readback per outstanding Core-style capture request.
+    std::atomic<bool> requestOutstanding{false};
+    std::atomic<int> skippedNoRequestRenderFrames{0};
     std::atomic<bool> renderCallbackDifferentFromGuiThread{false};
     std::atomic<int> skippedNoDemandRenderFrames{0};
 };
@@ -190,6 +193,9 @@ void printResult(const std::string &mode, int width, int height,
               << (mode == "render-baseline" ? "false" : "true") << ","
               << "\"render_callbacks\":" << stat.renderCallbacks << ","
               << "\"render_tap_readbacks\":" << stat.actualTapFrames << ","
+              << "\"request_scoped_readback\":true,"
+              << "\"skipped_no_request_render_frames\":"
+              << stat.skippedNoRequestRenderFrames.load() << ","
               << "\"readback_p95_ms\":" << percentile95(stat.readbackMs) << ","
               << "\"readback_mean_ms\":" << mean(stat.readbackMs) << ","
               << "\"public_grab_p95_ms\":" << percentile95(stat.publicGrabMs) << ","
@@ -295,9 +301,14 @@ int main(int argc, char **argv)
             stats.skippedNoDemandRenderFrames.fetch_add(1, std::memory_order_relaxed);
             return;
         }
+        if (!stats.requestOutstanding.load(std::memory_order_acquire)) {
+            stats.skippedNoRequestRenderFrames.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
         std::lock_guard<std::mutex> lock(stats.mutex);
         if (!stats.active.load(std::memory_order_acquire)
-            || !stats.simulatedViewerDemand.load(std::memory_order_acquire))
+            || !stats.simulatedViewerDemand.load(std::memory_order_acquire)
+            || !stats.requestOutstanding.load(std::memory_order_acquire))
             return;
         auto *context = QOpenGLContext::currentContext();
         if (!context) {
@@ -346,10 +357,12 @@ int main(int argc, char **argv)
                 break;
             }
         }
-        if (wholeFrameMatches)
+        if (wholeFrameMatches) {
+            stats.requestOutstanding.store(false, std::memory_order_release);
             stats.observedEpoch.store(epoch, std::memory_order_release);
-        else
+        } else {
             stats.badPixels++;
+        }
     }, Qt::DirectConnection);
 
     QObject::connect(&window, &QQuickWindow::sceneGraphInvalidated,
@@ -392,6 +405,7 @@ int main(int argc, char **argv)
         if (completed >= kStages) {
             lastStaticFrames = stats.renderCallbacks.load(std::memory_order_acquire);
             if (mode == "render-tap") {
+                stats.requestOutstanding.store(false, std::memory_order_release);
                 // The SOURCE continues to render, but simulated 0 Viewer
                 // demands zero new GPU->CPU readback operations.
                 stats.simulatedViewerDemand.store(false, std::memory_order_release);
@@ -407,6 +421,8 @@ int main(int argc, char **argv)
             return;
         }
         stats.desiredEpoch.store(completed, std::memory_order_release);
+        if (mode == "render-tap")
+            stats.requestOutstanding.store(true, std::memory_order_release);
         item.setPhase(completed);
         if (mode == "public-grab") {
             const int wanted = completed;
