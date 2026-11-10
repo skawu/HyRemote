@@ -11,6 +11,8 @@
 // completion: production would need a bounded fallback/retirement policy.
 //
 // This is NOT EGLFS hardware qualification or a general D3D/Vulkan path.
+#include "hyremote/core/frame.hpp"
+#include "hyremote/core/storage.hpp"
 #include <QColor>
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -30,12 +32,14 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <mutex>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -202,34 +206,65 @@ public:
             if(!mapped) {
                 m_glErrors.fetch_add(1);
             } else {
-                // RFB ultimately requires CPU storage. Deliberately copy the
-                // ENTIRE frame, never claim this is GPU zero-copy.
-                std::vector<std::uint8_t> pixels(m_bytes);
-                std::memcpy(pixels.data(),mapped,m_bytes);
+                // Produce ACTUAL HyRemote Core CpuFrameStorage (not a mock
+                // or a borrowed GL pointer). Flip OpenGL bottom-up rows once
+                // while writing immutable CPU-owned packed RGBA pixels.
+                const std::size_t stride=std::size_t(m_width)*4;
+                auto owned=hyremote::CpuFrameStorage::createSinglePlane(
+                    stride,std::size_t(m_height));
+                auto* destination=owned ? owned->mutablePlane(0):nullptr;
+                if(!destination) {
+                    m_coreErrors.fetch_add(1);
+                } else {
+                    const auto* source=static_cast<const std::byte*>(mapped);
+                    for(int y=0;y<m_height;y++)
+                        std::memcpy(destination+std::size_t(y)*stride,
+                                    source+std::size_t(m_height-1-y)*stride,
+                                    stride);
+                }
                 if(gl->glUnmapBuffer(kPackBuffer)!=GL_TRUE)
                     m_glErrors.fetch_add(1);
                 m_mapAndCopyMs.push_back(millis(mapStart,Clock::now()));
-                bool allCorners=true;
-                for(int q=0;q<4;q++) {
-                    const int x=q%2 ? m_width*3/4:m_width/4;
-                    const int yTop=q/2 ? m_height*3/4:m_height/4;
-                    const int yBottom=m_height-1-yTop;
-                    const size_t index=(size_t(yBottom)*m_width+x)*4;
-                    if(!matches(pixels[index],pixels[index+1],
-                                pixels[index+2],slot.phase+q)) {
-                        allCorners=false;break;
+                if(destination) {
+                    const auto view=owned->mapRead(0);
+                    if(!view || !cornersMatch(*view,slot.phase)) {
+                        m_badPixelFrames.fetch_add(1);
+                    } else {
+                        hyremote::RemoteFrame frame;
+                        frame.geometry.size = {
+                            static_cast<std::uint32_t>(m_width),
+                            static_cast<std::uint32_t>(m_height)};
+                        frame.geometry.pixelFormat=hyremote::PixelFormat::Rgba8888;
+                        // This fixture uses opaque rectangles. Real QML
+                        // transparency is a distinct, UNQUALIFIED test.
+                        frame.geometry.alphaMode=hyremote::AlphaMode::Opaque;
+                        frame.geometry.planeCount=1;
+                        frame.geometry.devicePixelRatio=1.0f;
+                        frame.storage=std::move(owned);
+                        frame.damage=hyremote::Damage::fullFrame();
+                        frame.requestId=static_cast<hyremote::CaptureRequestId>(
+                            slot.phase+1);
+                        frame.timing.requestTime=slot.requestTime;
+                        frame.timing.completionTime=hyremote::Clock::now();
+                        frame.timing.ptsSource=hyremote::PtsSource::Completion;
+                        std::string reason;
+                        const bool coreValid=
+                            hyremote::validateFrame(frame).ok
+                            && hyremote::normalizeFrameTiming(frame,&reason)
+                            && frame.timing.pts==*frame.timing.completionTime;
+                        if(!coreValid || !hyremote::requestToCompletionLatency(frame)) {
+                            m_coreErrors.fetch_add(1);
+                        } else {
+                            if(slot.phase==0) m_firstOwnedFrame=frame;
+                            ++m_coreFramesValidated;
+                            if(slot.phase!=m_expectedVerified)
+                                m_outOfOrder.fetch_add(1);
+                            else
+                                ++m_expectedVerified;
+                            m_completed.store(m_expectedVerified,
+                                              std::memory_order_release);
+                        }
                     }
-                }
-                if(!allCorners) {
-                    m_badPixelFrames.fetch_add(1);
-                } else {
-                    // Sequence must be source phase 0,1,...29, once each.
-                    if(slot.phase!=m_expectedVerified)
-                        m_outOfOrder.fetch_add(1);
-                    else
-                        ++m_expectedVerified;
-                    m_completed.store(m_expectedVerified,
-                                      std::memory_order_release);
                 }
                 m_endToEndMs.push_back(millis(slot.queuedAt,Clock::now()));
             }
@@ -279,6 +314,7 @@ public:
             it->pbo=m_ids[slotNo];
             it->phase=phase;
             it->queuedAt=enqStart;
+            it->requestTime=hyremote::Clock::now();
             it->fence=fence;
             it->busy=true;
             m_lastQueued=phase;
@@ -289,6 +325,16 @@ public:
         restore();
     }
 
+    bool firstFrameStorageStillCorrect() const
+    {
+        if(!m_firstOwnedFrame || !m_firstOwnedFrame->storage
+           || !m_firstOwnedFrame->requestId
+           || *m_firstOwnedFrame->requestId!=1)
+            return false;
+        const auto view=m_firstOwnedFrame->storage->mapRead(0);
+        return view && cornersMatch(*view,0);
+    }
+
     void disableDemand() {m_demand.store(false,std::memory_order_release);}
 
     int verified() const {return m_completed.load(std::memory_order_acquire);}
@@ -296,7 +342,7 @@ public:
     int retired() const {return m_retired.load(std::memory_order_acquire);}
     int errors() const {return m_glErrors.load()+m_missingContext.load()
        +m_missingGlPbo.load()+m_badPixelFrames.load()+m_outOfOrder.load()
-       +m_fullRing.load()+m_droppedStage.load();}
+       +m_fullRing.load()+m_droppedStage.load()+m_coreErrors.load();}
     int noDemandRenders() const {return m_noDemandRenderFrames.load(std::memory_order_acquire);}
     bool cleaned() const {return m_cleaned.load(std::memory_order_acquire);}
     bool isThreaded() const {return m_threaded.load();}
@@ -318,6 +364,11 @@ public:
                  <<"\"readbacks_enqueued\":"<<m_queued<<","
                  <<"\"readbacks_retired\":"<<m_retired<<","
                  <<"\"verified_full_frames\":"<<m_completed.load()<<","
+                 <<"\"core_validated_owned_frames\":"<<m_coreFramesValidated.load()<<","
+                 <<"\"core_frame_errors\":"<<m_coreErrors.load()<<","
+                 <<"\"first_frame_storage_retained_after_pbo_reuse\":"
+                 <<(firstFrameStorageStillCorrect()?"true":"false")<<","
+
                  <<"\"source_phase_order_errors\":"<<m_outOfOrder.load()<<","
                  <<"\"pixel_errors\":"<<m_badPixelFrames.load()<<","
                  <<"\"gl_errors\":"<<m_glErrors.load()<<","
@@ -345,11 +396,31 @@ public:
     }
 
 private:
+    bool cornersMatch(const hyremote::PlaneView& view,int phase) const
+    {
+        if(!view.data || view.stride<std::size_t(m_width)*4
+           || view.bytes<view.stride*std::size_t(m_height))
+            return false;
+        for(int q=0;q<4;q++) {
+            const int x=q%2 ? m_width*3/4:m_width/4;
+            const int y=q/2 ? m_height*3/4:m_height/4;
+            const std::size_t offset=std::size_t(y)*view.stride
+                                    +std::size_t(x)*4;
+            const int red=std::to_integer<std::uint8_t>(view.data[offset]);
+            const int green=std::to_integer<std::uint8_t>(view.data[offset+1]);
+            const int blue=std::to_integer<std::uint8_t>(view.data[offset+2]);
+            if(!matches(red,green,blue,phase+q))
+                return false;
+        }
+        return true;
+    }
+
     struct Slot {
         GLuint pbo=0;
         GLsync fence=nullptr;
         int phase=-1;
         Clock::time_point queuedAt;
+        hyremote::TimePoint requestTime;
         bool busy=false;
     };
 
@@ -384,6 +455,8 @@ private:
     std::atomic<int> m_missingGlPbo{0},m_badPixelFrames{0};
     std::atomic<int> m_outOfOrder{0},m_fullRing{0},m_droppedStage{0};
     std::atomic<int> m_fenceNotReady{0},m_renderCallbacks{0};
+    std::atomic<int> m_coreErrors{0},m_coreFramesValidated{0};
+    std::optional<hyremote::RemoteFrame> m_firstOwnedFrame;
     std::atomic<bool> m_threaded{false};
     std::vector<double> m_enqueueMs,m_mapAndCopyMs,m_endToEndMs;
 };
