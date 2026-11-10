@@ -102,8 +102,10 @@ jobs:
                   assert d["render_thread_distinct_from_gui"] is True, d
               if d["mode"] == "render-baseline":
                   assert d["pixel_truth_verified"] is False and d["render_tap_readbacks"] == 0, d
+                  assert d["quadrants_verified_per_frame"] == 0, d
               else:
                   assert d["pixel_truth_verified"] is True and d["stages_correct_pixels"] == 30, d
+                  assert d["quadrants_verified_per_frame"] == 4, d
                   assert d["bad_pixel_frames"] == 0, d
               if d["mode"] == "render-tap":
                   assert d["render_tap_readbacks"] >= 30 and d["no_demand_render_frames_no_readback"] >= 1, d
