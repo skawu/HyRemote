@@ -1,0 +1,104 @@
+name: Qt6.8.3 D3D11 native staging readback R4 public Qt API (NON-PRODUCT)
+
+on:
+  pull_request:
+    branches: [feature/609-qt68-public-rhi-eligibility-and-window-grab-r2-20261110, develop]
+    paths:
+      - .github/workflows/qt68-d3d11-native-staging-r4.yml
+      - tools/perf/tests/qt68_d3d11_native_staging_r4/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qt68-d3d11-visible-staging:
+    name: MSVC Qt6.8.3 D3D11 scene graph native staging CopyResource+DO_NOT_WAIT
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Find or install Qt 6.8.3 MSVC official public Kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt6.8.3 Kit not ready' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build real public Qt Quick and Windows SDK staging readback (zero Qt private)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_d3d11_native_staging_r4 -B build-r4-qt68 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build build-r4-qt68 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run native D3D11 original displayed frame staging readback at 360p and 1080p
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path tmp/r4 | Out-Null
+          foreach ($width in @(640, 1920)) {
+            $height = if ($width -eq 640) { 360 } else { 1080 }
+            & .\build-r4-qt68\hyremote-qt68-d3d11-native-staging-r4.exe "--width=$width" "--height=$height" | Tee-Object -FilePath ("tmp/r4/native-$width" + "x$height.jsonl")
+            if ($LASTEXITCODE -ne 0) { throw "R4 physical D3D11 staging readback failed $width x $height" }
+          }
+      - name: Strict actual pixel/replay/no-demand and zero-QtPrivate audit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          paths = sorted(Path("tmp/r4").glob("native-*.jsonl"))
+          assert len(paths) == 2, paths
+          for f in paths:
+              txt = f.read_text(encoding="utf-8-sig")
+              assert "R4_VERDICT=PASS_SCOPED_PUBLIC_QT68_D3D11_STAGING" in txt, f
+              lines = [x for x in txt.splitlines() if x.startswith("R4_RESULT_JSON=")]
+              assert len(lines) == 1, (f, lines)
+              j = json.loads(lines[0].partition("=")[2])
+              assert j["qt"] == "6.8.3" and j["graphics_backend"] == "d3d11", j
+              assert j["stages_expected"] == j["stages_completed"] == 15, j
+              assert j["copy_commands_queued"] == j["nonblocking_map_completions"] == 15, j
+              assert j["wrong_pixel_frames"] == j["rejected_readback_attempts"] == 0, j
+              assert j["render_thread_distinct_from_gui"], j
+              assert j["qt_device_resource_observed"] and j["qt_device_context_observed"], j
+              assert j["no_demand_render_frames_skipped"] >= 1, j
+              assert j["nonblocking_copy_complete_p95_ms"] > 0, j
+              assert not j["uses_qtgui_private"] and not j["readback_qualified_for_product"], j
+              assert not j["user_site_eglfs_qualified"] and j["native_backend_specific"], j
+              print("R4_PUBLIC_D3D11_STAGING=PASS_SCOPED",f,"completion_p95",j["nonblocking_copy_complete_p95_ms"],"extra_frames",j["extra_frames_to_progress_gpu_copy"])
+          print("R4_APPROVAL_SCOPE=RESEARCH_ONLY_NO_QT_PRIVATE_NO_PRODUCT")
+          '@ | Set-Content -Path tmp/r4/audit.py -Encoding UTF8
+          python tmp/r4/audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Archive small research logs only, never installable product packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r4-qt68-public-d3d11-native-staging-research-logs
+          path: tmp/r4/native-*.jsonl
+          if-no-files-found: warn
+          retention-days: 10
