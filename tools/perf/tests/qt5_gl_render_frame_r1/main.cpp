@@ -38,7 +38,7 @@
 
 namespace {
 
-constexpr int kStages = 12;
+constexpr int kStages = 30;
 constexpr int kDefaultWidth = 640;
 constexpr int kDefaultHeight = 360;
 
@@ -62,7 +62,9 @@ bool colorMatches(QColor color, int phase)
 class SceneItem final : public QQuickItem
 {
 public:
-    explicit SceneItem(QQuickItem *parent = nullptr) : QQuickItem(parent)
+    explicit SceneItem(std::atomic<int> *lastSynchronizedPhase,
+                       QQuickItem *parent = nullptr)
+        : QQuickItem(parent), m_lastSynchronizedPhase(lastSynchronizedPhase)
     {
         setFlag(ItemHasContents, true);
     }
@@ -95,11 +97,13 @@ protected:
         auto *material = static_cast<QSGFlatColorMaterial *>(node->material());
         material->setColor(stageColor(m_phase));
         node->markDirty(QSGNode::DirtyMaterial);
+        m_lastSynchronizedPhase->store(m_phase, std::memory_order_release);
         return node;
     }
 
 private:
     int m_phase = 0;
+    std::atomic<int> *m_lastSynchronizedPhase;
 };
 
 struct ProbeStats
@@ -148,7 +152,11 @@ void printResult(const std::string &mode, int width, int height,
               << "\"backend\":\"Qt5_Legacy_OpenGL\","
               << "\"size_px\":[" << width << "," << height << "],"
               << "\"stages_expected\":" << kStages << ","
-              << "\"stages_correct_pixels\":" << completedStages << ","
+              << "\"stages_completed\":" << completedStages << ","
+              << "\"stages_correct_pixels\":"
+              << (mode == "render-baseline" ? 0 : completedStages) << ","
+              << "\"pixel_truth_verified\":"
+              << (mode == "render-baseline" ? "false" : "true") << ","
               << "\"render_callbacks\":" << stat.renderCallbacks << ","
               << "\"render_tap_readbacks\":" << stat.actualTapFrames << ","
               << "\"readback_p95_ms\":" << percentile95(stat.readbackMs) << ","
@@ -182,6 +190,8 @@ int main(int argc, char **argv)
             mode = "public-grab";
         else if (arg == "--mode=render-tap")
             mode = "render-tap";
+        else if (arg == "--mode=render-baseline")
+            mode = "render-baseline";
         else if (arg.rfind("--width=", 0) == 0)
             width = std::stoi(arg.substr(8));
         else if (arg.rfind("--height=", 0) == 0)
@@ -204,7 +214,8 @@ int main(int argc, char **argv)
     QQuickWindow window;
     window.resize(width, height);
     window.setColor(Qt::black);
-    SceneItem item(window.contentItem());
+    std::atomic<int> lastSynchronizedQsgPhase{-1};
+    SceneItem item(&lastSynchronizedQsgPhase, window.contentItem());
     item.setSize(QSizeF(width, height));
 
     ProbeStats stats;
@@ -216,8 +227,17 @@ int main(int argc, char **argv)
     bool done = false;
 
     QObject::connect(&window, &QQuickWindow::afterRendering,
-                     &window, [&window, &stats, width, height, mode] {
+                     &window, [&window, &stats, &lastSynchronizedQsgPhase, width, height, mode] {
         stats.renderCallbacks.fetch_add(1, std::memory_order_relaxed);
+        if (mode == "render-baseline") {
+            // Baseline is scene-graph completion, NOT pixel truth. This control
+            // never accesses GPU storage; the tap and public-grab arms do.
+            const int phase = lastSynchronizedQsgPhase.load(std::memory_order_acquire);
+            const int wanted = stats.desiredEpoch.load(std::memory_order_acquire);
+            if (phase == wanted)
+                stats.observedEpoch.store(wanted, std::memory_order_release);
+            return;
+        }
         if (mode != "render-tap" || !stats.active.load(std::memory_order_acquire))
             return;
         if (!stats.simulatedViewerDemand.load(std::memory_order_acquire)) {
@@ -290,8 +310,11 @@ int main(int argc, char **argv)
                         stats.renderCallbacks.load(std::memory_order_acquire)
                             - lastStaticFrames);
         }
-        std::cout << "R1_VERDICT=" << (success ? "PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT"
-                                           : reason) << std::endl;
+        std::cout << "R1_VERDICT="
+                  << (success ? (mode == "render-baseline"
+                          ? "PASS_QT5_OPENGL_NO_READBACK_CONTROL"
+                          : "PASS_SCOPED_QT5_OPENGL_PIXEL_CORRECT")
+                              : reason) << std::endl;
         app.exit(success ? 0 : 20);
     };
 
@@ -356,7 +379,8 @@ int main(int argc, char **argv)
     QTimer poll;
     poll.setInterval(20);
     QObject::connect(&poll, &QTimer::timeout, &app, [&] {
-        if (done || mode != "render-tap" || completed >= kStages)
+        if (done || (mode != "render-tap" && mode != "render-baseline")
+            || completed >= kStages)
             return;
         if (stats.observedEpoch.load(std::memory_order_acquire) == completed) {
             ++completed;
