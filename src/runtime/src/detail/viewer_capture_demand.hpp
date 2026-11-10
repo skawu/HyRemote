@@ -125,6 +125,22 @@ public:
         m_changed.notify_all();
     }
 
+    // Experimental semantic SOURCE event: a validated Q_PROPERTY NOTIFY
+    // from the owner of an actual visible Automatic Surface. NOT a Qt
+    // afterAnimating/frameSwapped signal (those are grab-self-generated).
+    // Keep all zero-viewer and transport backpressure constraints within
+    // waitForViewer(). No special force-escape: transport must be ready.
+    void noteSourceInvalidation()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_stopped || m_viewers == 0)
+                return;
+            resetIdleLocked();
+        }
+        m_changed.notify_all();
+    }
+
     // A non-incremental RFB request explicitly asks for a full refresh.
     // Without this escape, successive full requests can be served from the
     // last cached source frame while an encoder/network-constrained viewer
