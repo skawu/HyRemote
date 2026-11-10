@@ -169,6 +169,11 @@ private:
         // Only the Qt render callback may transition 0→1; the GUI timer
         // may transition 0→2; either can end as 3 exactly once.
         std::atomic<int> status{0};
+        // Never read a frame that was already in flight when Core accepted
+        // the request: its afterFrameEnd can occur *after* admission while
+        // still containing the previous QML/SceneGraph state.
+        std::atomic<bool> synchronizedSinceRequest{false};
+        QMetaObject::Connection synchronizationConnection;
         QMetaObject::Connection submissionConnection;
         QPointer<QTimer> deadline;
         QPointer<QTimer> readbackDeadline;
@@ -506,9 +511,25 @@ private:
             return false;
 
         auto tap = std::make_shared<ExistingFrameAttempt>();
+        tap->synchronizationConnection = QObject::connect(
+            window, &QQuickWindow::afterSynchronizing, gui,
+            [tap] {
+                if (tap->status.load(std::memory_order_acquire) == 0)
+                    tap->synchronizedSinceRequest.store(true,
+                                                        std::memory_order_release);
+            }, Qt::DirectConnection);
+        if (!tap->synchronizationConnection)
+            return false;
         tap->submissionConnection = QObject::connect(
             window, &QQuickWindow::afterFrameEnd, gui,
             [state, batch, grabAttempt, tap, width, height, dpr] {
+                // Qt6 may complete an older in-flight frame after this
+                // Source has admitted a newer Core request. Require an
+                // actual SceneGraph synchronization following subscription
+                // before accepting a render-frame readback.
+                if (!tap->synchronizedSinceRequest.load(
+                        std::memory_order_acquire))
+                    return;
                 int expected = 0;
                 if (!tap->status.compare_exchange_strong(
                         expected, 1, std::memory_order_acq_rel))
@@ -547,6 +568,7 @@ private:
                                     reading, 3, std::memory_order_acq_rel))
                                 return;
                             QObject::disconnect(tap->submissionConnection);
+                            QObject::disconnect(tap->synchronizationConnection);
                             if (tap->deadline) {
                                 tap->deadline->stop();
                                 tap->deadline->deleteLater();
@@ -577,8 +599,10 @@ private:
                 }
             }, Qt::DirectConnection);
 
-        if (!tap->submissionConnection)
+        if (!tap->submissionConnection) {
+            QObject::disconnect(tap->synchronizationConnection);
             return false;
+        }
 
         auto *timer = new QTimer(gui);
         timer->setSingleShot(true);
@@ -596,6 +620,7 @@ private:
                 // Do not call QQuickWindow::update() to manufacture one;
                 // request a bounded, independent public grab instead.
                 QObject::disconnect(tap->submissionConnection);
+                QObject::disconnect(tap->synchronizationConnection);
                 if (isActive(state, batch->generation)) {
                     qInfo().noquote()
                         << "HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PUBLIC_GRAB_FALLBACK";
@@ -624,6 +649,7 @@ private:
                     if (tap->status.compare_exchange_strong(
                             reading, 3, std::memory_order_acq_rel)) {
                         QObject::disconnect(tap->submissionConnection);
+                        QObject::disconnect(tap->synchronizationConnection);
                         if (isActive(state, batch->generation))
                             completeUnavailable(state, batch);
                     }
