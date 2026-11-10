@@ -2,6 +2,10 @@
 
 #include <QCoreApplication>
 #include <QImage>
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+#include <QOpenGLContext>
+#include <QOpenGLFunctions>
+#endif
 #include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMetaObject>
@@ -17,6 +21,7 @@
 #include <QtQuick/QSGRendererInterface>
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -85,6 +90,9 @@ public:
         m_state->onFrame = std::move(onFrame);
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+        m_state->tapLiveGeneration.store(m_state->generation, std::memory_order_release);
+#endif
         return true;
     }
 
@@ -93,6 +101,17 @@ public:
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
         ++m_state->generation;
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+        m_state->tapLiveGeneration.store(0, std::memory_order_release);
+        if (m_state->tap) {
+            m_state->tap->finished.store(true, std::memory_order_release);
+            QObject::disconnect(m_state->tap->afterFrameEnd);
+            m_state->tap.reset();
+            // The timer is a GUI-owned QObject. It is never stopped from
+            // Core's worker/Session stop thread; its later GUI callback sees
+            // the cancelled token and disposes itself safely.
+        }
+#endif
         m_state->pendingRequests.clear();
         m_state->singleFlight.reset();
         m_state->onFrame = {};
@@ -138,6 +157,9 @@ public:
 
 private:
     static constexpr unsigned int kMaxGrabAttempts = 3U;
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+    struct ExperimentalTap;
+#endif
 
     struct State
     {
@@ -149,9 +171,23 @@ private:
         std::size_t callbacksInFlight = 0;
         std::vector<hyremote::CaptureRequest> pendingRequests;
         QuickCaptureSingleFlight singleFlight;
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+        std::atomic<std::uint64_t> tapLiveGeneration{0};
+        std::shared_ptr<ExperimentalTap> tap;
+#endif
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
     };
+
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+    struct ExperimentalTap {
+        std::atomic<bool> finished{false};
+        std::atomic<bool> claimed{false};
+        QMetaObject::Connection afterFrameEnd;
+        QPointer<QTimer> timeout;
+        int waitingForRenderMs = 0;
+    };
+#endif
 
     struct GrabBatch
     {
@@ -203,6 +239,10 @@ private:
         auto batch = std::make_shared<GrabBatch>();
         batch->generation = generation;
         batch->requests = std::move(requests);
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+        if (tryExistingFrameOnGuiThread(state, batch))
+            return;
+#endif
         attemptGrabOnGuiThread(state, std::move(batch), 1U);
     }
 
@@ -443,6 +483,179 @@ private:
         }
         finishGrabOnGuiThread(state, batch->generation);
     }
+
+#if defined(HYREMOTE_EXPERIMENTAL_QT6_GL_FRAME_TAP)
+    // One admitted Core capture batch can use ONE new NORMAL Qt6 OpenGL RHI
+    // frame. Never launch an additional render, keep an old frame, or convert
+    // a render-signal into another request (the self-wake hazard from #925).
+    //
+    // IMPORTANT: sync glReadPixels runs on Qt's render thread. This is a
+    // TEST-ONLY, default-OFF pilot; R2 software Mesa evidence does not prove
+    // its cost acceptable on RK3588 or a real GPU at 60Hz.
+    static bool tryExistingFrameOnGuiThread(const std::shared_ptr<State> &state,
+                                             const GrabBatchPtr &batch)
+    {
+        if (!isActive(state, batch->generation))
+            return false;
+        QQuickWindow *window = state->target.data();
+        if (!window || !window->isVisible()
+            || window->visibility() == QWindow::Minimized
+            || window->width() <= 0 || window->height() <= 0)
+            return false;
+
+        auto *ri = window->rendererInterface();
+        if (!ri || ri->graphicsApi() != QSGRendererInterface::OpenGL)
+            return false;
+
+        const qreal dpr = window->devicePixelRatio();
+        const int width = qRound(window->width() * dpr);
+        const int height = qRound(window->height() * dpr);
+        if (width <= 0 || height <= 0 || width > 3840 || height > 2160)
+            return false;
+
+        auto tap = std::make_shared<ExperimentalTap>();
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active || state->generation != batch->generation)
+                return false;
+            state->tap = tap;
+        }
+
+        // DirectConnection is essential: the current GL context and QSG
+        // framebuffer are only accessible at the *actual render* callback.
+        // Never read GL in the Core, GUI or RFB worker thread.
+        tap->afterFrameEnd = QObject::connect(
+            window, &QQuickWindow::afterFrameEnd, window,
+            [state, batch, tap, width, height, dpr] {
+                if (tap->finished.load(std::memory_order_acquire)
+                    || state->tapLiveGeneration.load(std::memory_order_acquire)
+                           != batch->generation)
+                    return;
+                bool unclaimed = false;
+                if (!tap->claimed.compare_exchange_strong(
+                        unclaimed, true, std::memory_order_acq_rel))
+                    return;
+
+                QImage pixels;
+                QOpenGLContext *context = QOpenGLContext::currentContext();
+                if (context) {
+                    QOpenGLFunctions *gl = context->functions();
+                    QImage candidate(width, height,
+                                     QImage::Format_RGBA8888_Premultiplied);
+                    if (!candidate.isNull()) {
+                        GLint priorPack = 4;
+                        gl->glGetIntegerv(GL_PACK_ALIGNMENT, &priorPack);
+                        gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                        gl->glReadPixels(0, 0, width, height, GL_RGBA,
+                                         GL_UNSIGNED_BYTE, candidate.bits());
+                        const GLenum error = gl->glGetError();
+                        gl->glPixelStorei(GL_PACK_ALIGNMENT, priorPack);
+                        if (error == GL_NO_ERROR) {
+                            candidate.setDevicePixelRatio(dpr);
+                            pixels = std::move(candidate);
+                        }
+                    }
+                }
+
+                QObject *dispatcher = QCoreApplication::instance();
+                if (!dispatcher)
+                    return;
+                QMetaObject::invokeMethod(
+                    dispatcher, [state, batch, tap, pixels = std::move(pixels)]() mutable {
+                        if (tap->finished.exchange(true, std::memory_order_acq_rel))
+                            return;
+                        QObject::disconnect(tap->afterFrameEnd);
+                        if (tap->timeout) {
+                            tap->timeout->stop();
+                            tap->timeout->deleteLater();
+                            tap->timeout.clear();
+                        }
+                        {
+                            std::lock_guard<std::mutex> lock(state->mutex);
+                            if (state->tap == tap)
+                                state->tap.reset();
+                        }
+                        if (!isActive(state, batch->generation))
+                            return;
+                        if (pixels.isNull()) {
+                            // A failed/unsupported GL read must never be
+                            // published as a new frame or synthetic fullDamage.
+                            attemptGrabOnGuiThread(state, batch, 1U);
+                            return;
+                        }
+                        // OpenGL's row 0 is bottom-up. Only transform after
+                        // leaving Qt's render thread; the QImage owns pixels.
+                        const QImage topDown = pixels.mirrored(false, true);
+                        publishImage(state, batch, 1U, topDown);
+                    }, Qt::QueuedConnection);
+            }, Qt::DirectConnection);
+        if (!tap->afterFrameEnd) {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->tap == tap)
+                state->tap.reset();
+            return false;
+        }
+
+        // When the window is static there may be no natural render frame.
+        // Bounded fallback to Qt's proven public grab is REQUIRED to avoid
+        // losing periodic probes, forced refresh and newly connected Viewer.
+        auto *deadline = new QTimer(window);
+        deadline->setSingleShot(true);
+        tap->timeout = deadline;
+        QObject::connect(deadline, &QTimer::timeout, window,
+                         [state, batch, tap] {
+            if (tap->finished.load(std::memory_order_acquire)) {
+                if (tap->timeout) {
+                    tap->timeout->deleteLater();
+                    tap->timeout.clear();
+                }
+                return;
+            }
+            if (tap->claimed.load(std::memory_order_acquire)) {
+                // A readback may have begun on the Qt render thread while
+                // the GUI deadline fired. Never start a second GPU readback
+                // concurrently. Fail closed on a stalled read.
+                tap->waitingForRenderMs += 750;
+                if (tap->waitingForRenderMs < 1500) {
+                    if (tap->timeout)
+                        tap->timeout->start(750);
+                    return;
+                }
+                if (tap->finished.exchange(true, std::memory_order_acq_rel))
+                    return;
+                QObject::disconnect(tap->afterFrameEnd);
+                if (tap->timeout) {
+                    tap->timeout->deleteLater();
+                    tap->timeout.clear();
+                }
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    if (state->tap == tap)
+                        state->tap.reset();
+                }
+                if (isActive(state, batch->generation))
+                    completeUnavailable(state, batch);
+                return;
+            }
+            if (tap->finished.exchange(true, std::memory_order_acq_rel))
+                return;
+            QObject::disconnect(tap->afterFrameEnd);
+            if (tap->timeout) {
+                tap->timeout->deleteLater();
+                tap->timeout.clear();
+            }
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (state->tap == tap)
+                    state->tap.reset();
+            }
+            if (isActive(state, batch->generation))
+                attemptGrabOnGuiThread(state, batch, 1U);
+        });
+        deadline->start(45);
+        return true;
+    }
+#endif
 
     static void attemptGrabOnGuiThread(const std::shared_ptr<State> &state,
                                        const GrabBatchPtr &batch,
