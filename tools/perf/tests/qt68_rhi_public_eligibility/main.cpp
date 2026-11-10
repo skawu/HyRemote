@@ -161,6 +161,11 @@ struct Stats
     std::atomic<int> swapchainReadbackFlag{-1};
     std::atomic<int> swapchainFlags{-1};
     std::atomic<bool> commandListObserved{false};
+    // 0=beforeRendering,1=beforeRenderPassRecording,
+    // 2=afterRenderPassRecording,3=afterRendering,4=afterFrameEnd.
+    std::atomic<int> commandListStageMask{0};
+    std::atomic<int> rhiStageMask{0};
+    std::atomic<int> swapchainStageMask{0};
     std::atomic<bool> redirectTargetObserved{false};
     std::atomic<bool> abortedBySceneGraphLoss{false};
 
@@ -230,8 +235,27 @@ int main(int argc, char **argv)
     QSharedPointer<QQuickItemGrabResult> outstanding;
 
     auto *ri = window.rendererInterface();
+    const auto recordStage = [&](int bit) {
+        if (!ri) return;
+        const int flag = 1 << bit;
+        if (ri->getResource(&window, QSGRendererInterface::CommandListResource))
+            stats.commandListStageMask.fetch_or(flag, std::memory_order_relaxed);
+        if (ri->getResource(&window, QSGRendererInterface::RhiResource))
+            stats.rhiStageMask.fetch_or(flag, std::memory_order_relaxed);
+        if (ri->getResource(&window, QSGRendererInterface::RhiSwapchainResource))
+            stats.swapchainStageMask.fetch_or(flag, std::memory_order_relaxed);
+    };
+    QObject::connect(&window, &QQuickWindow::beforeRendering,
+                     &window, [&] { recordStage(0); }, Qt::DirectConnection);
+    QObject::connect(&window, &QQuickWindow::beforeRenderPassRecording,
+                     &window, [&] { recordStage(1); }, Qt::DirectConnection);
+    QObject::connect(&window, &QQuickWindow::afterRenderPassRecording,
+                     &window, [&] { recordStage(2); }, Qt::DirectConnection);
+    QObject::connect(&window, &QQuickWindow::afterFrameEnd,
+                     &window, [&] { recordStage(4); }, Qt::DirectConnection);
     QObject::connect(&window, &QQuickWindow::afterRendering,
                      &window, [&] {
+        recordStage(3);
         stats.renderCallbacks.fetch_add(1, std::memory_order_relaxed);
         // getResource can return NULL outside QSGRenderNode::render(); we
         // record observations ONLY. Null does not establish unavailability.
@@ -323,6 +347,9 @@ int main(int argc, char **argv)
 #endif
                   << "\"command_list_observed\":"
                   << (stats.commandListObserved.load() ? "true" : "false") << ","
+                  << "\"command_list_stage_mask\":" << stats.commandListStageMask.load() << ","
+                  << "\"rhi_stage_mask\":" << stats.rhiStageMask.load() << ","
+                  << "\"swapchain_stage_mask\":" << stats.swapchainStageMask.load() << ","
                   << "\"redirect_target_observed\":"
                   << (stats.redirectTargetObserved.load() ? "true" : "false") << ","
                   << "\"public_rhi_gpu_readback_qualified\":false,"
