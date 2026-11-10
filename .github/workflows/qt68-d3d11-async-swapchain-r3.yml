@@ -54,11 +54,14 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Path tmp/r3 -Force | Out-Null
-          foreach ($width in @(640, 1920)) {
-            $height = if ($width -eq 640) { 360 } else { 1080 }
-            $out = "tmp/r3/d3d11-$width" + "x$height.log"
-            & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" | Tee-Object -FilePath $out
-            if ($LASTEXITCODE -ne 0) { throw "R3 was not qualified for $width x $height" }
+          foreach ($loop in @('basic', 'threaded')) {
+            $env:QSG_RENDER_LOOP = $loop
+            foreach ($width in @(640, 1920)) {
+              $height = if ($width -eq 640) { 360 } else { 1080 }
+              $out = "tmp/r3/d3d11-$width" + "x$height-$loop.log"
+              & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "R3 was not qualified for $loop $width x $height" }
+            }
           }
       - name: Fail-closed assert REAL async callback, full pixels, no Viewer demand
         shell: pwsh
@@ -68,7 +71,7 @@ jobs:
           import json
           from pathlib import Path
           paths = sorted(Path("tmp/r3").glob("d3d11-*.log"))
-          assert len(paths) == 2, paths
+          assert len(paths) == 4, paths
           for p in paths:
               t = p.read_text(encoding="utf-8-sig")
               assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in t, (p,t[-2500:])
@@ -79,6 +82,10 @@ jobs:
               assert x["stages_verified"]==x["stages_expected"]==12, x
               assert x["async_readbacks_submitted"]==x["async_readbacks_completed"]==12, x
               assert x["callback_bytes"]==x["size"][0]*x["size"][1]*4, x
+              assert x["callback_samples"]==12 and x["callback_latency_p95_ms"]>=0, x
+              assert x["render_loop"] in ("basic","threaded"), x
+              if x["render_loop"]=="threaded":
+                  assert x["render_thread_distinct_from_gui"] is True, x
               assert x["no_viewer_render_callbacks"]>=1, x
               assert x["missing_resource"]==x["missing_transfer_flag"]==0, x
               assert x["qt_private_research_only"] and not x["qualified_for_product"], x
