@@ -63,6 +63,17 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "R3 was not qualified for $loop $width x $height" }
             }
           }
+          foreach ($loop in @('basic', 'threaded')) {
+            $env:QSG_RENDER_LOOP = $loop
+            foreach ($width in @(640, 1920)) {
+              $height = if ($width -eq 640) { 360 } else { 1080 }
+              $resizeWidth = if ($width -eq 640) { 800 } else { 1280 }
+              $resizeHeight = if ($width -eq 640) { 450 } else { 720 }
+              $out = "tmp/r3/d3d11-$width" + "x$height-$loop-resize.log"
+              & .\build-r3\hyremote-qt68-rhi-swapchain-readback-r3.exe "--width=$width" "--height=$height" "--resize-width=$resizeWidth" "--resize-height=$resizeHeight" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "R3 resize was not qualified $loop $width x $height -> $resizeWidth x $resizeHeight" }
+            }
+          }
       - name: Fail-closed assert REAL async callback, full pixels, no Viewer demand
         shell: pwsh
         run: |
@@ -71,7 +82,7 @@ jobs:
           import json
           from pathlib import Path
           paths = sorted(Path("tmp/r3").glob("d3d11-*.log"))
-          assert len(paths) == 4, paths
+          assert len(paths) == 8, paths
           for p in paths:
               t = p.read_text(encoding="utf-8-sig")
               assert "R3_VERDICT=PASS_SCOPED_D3D11_ASYNC_GPU_READBACK" in t, (p,t[-2500:])
@@ -81,7 +92,12 @@ jobs:
               assert x["qt"]=="6.8.3" and x["backend"]=="d3d11", x
               assert x["stages_verified"]==x["stages_expected"]==12, x
               assert x["async_readbacks_submitted"]==x["async_readbacks_completed"]==12, x
-              assert x["callback_bytes"]==x["size"][0]*x["size"][1]*4, x
+              assert x["callback_bytes"]==x["final_expected_size"][0]*x["final_expected_size"][1]*4, x
+              if "resize" in p.name:
+                  assert x["resized_during_test"] is True and x["resize_recreate_count"]==1, x
+                  assert x["size"]!=x["final_expected_size"], x
+              else:
+                  assert x["resized_during_test"] is False and x["resize_recreate_count"]==0, x
               assert x["callback_samples"]==12 and x["callback_latency_p95_ms"]>=0, x
               assert x["render_loop"] in ("basic","threaded"), x
               if x["render_loop"]=="threaded":
