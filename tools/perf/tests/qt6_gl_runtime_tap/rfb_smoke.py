@@ -53,8 +53,17 @@ def rfb_handshake(sock: socket.socket) -> tuple[int, int]:
     return width, height
 
 
-def next_frame(sock: socket.socket, width: int, height: int) -> tuple[int, int, int] | None:
-    # Full update at every step ensures framebuffer semantics even after idle.
+def next_frame(sock: socket.socket, width: int, height: int):
+    # The four interior probes each live in a different QML quadrant. Unlike
+    # uniform-center tests, this detects reversed GL scanlines and mixtures
+    # of different source epochs during RFB composition.
+    points = [
+        (width // 4, height // 4),
+        (3 * width // 4, height // 4),
+        (width // 4, 3 * height // 4),
+        (3 * width // 4, 3 * height // 4),
+    ]
+    samples = [None] * len(points)
     sock.sendall(struct.pack(">BBHHHH", 3, 0, 0, 0, width, height))
     header = read_exact(sock, 4)
     if header[0] != 0:
@@ -62,8 +71,6 @@ def next_frame(sock: socket.socket, width: int, height: int) -> tuple[int, int, 
     count = struct.unpack(">H", header[2:4])[0]
     if not (0 <= count <= 512):
         raise RuntimeError(f"Unbounded RFB rectangle count {count}")
-    cx, cy = width // 2, height // 2
-    center = None
     for _ in range(count):
         x, y, w, h, encoding = struct.unpack(">HHHHi", read_exact(sock, 12))
         if encoding != 0:
@@ -71,10 +78,13 @@ def next_frame(sock: socket.socket, width: int, height: int) -> tuple[int, int, 
         if not (0 < w <= width and 0 < h <= height and x+w <= width and y+h <= height):
             raise RuntimeError("Invalid RFB pixel rectangle")
         raw = read_exact(sock, w * h * 4)
-        if x <= cx < x+w and y <= cy < y+h:
-            off = ((cy-y)*w + (cx-x))*4
-            center = tuple(raw[off:off+3])
-    return center
+        for i, (px, py) in enumerate(points):
+            if x <= px < x+w and y <= py < y+h:
+                off = ((py-y)*w + (px-x))*4
+                samples[i] = tuple(raw[off:off+3])
+    if not all(sample is not None for sample in samples):
+        raise RuntimeError(f"Raw full-frame request lacked all four quadrants: {samples}")
+    return tuple(samples)
 
 
 def within(rgb: tuple[int, int, int], expected: tuple[int, int, int]) -> bool:
@@ -98,8 +108,9 @@ def main() -> None:
     env["QSG_RHI_BACKEND"] = "opengl"
     env["QSG_RENDER_LOOP"] = "threaded"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
-    expected = [(226, 38, 52), (39, 207, 64), (44, 68, 232)]
-    results: list[tuple[int,int,int]] = []
+    palette = [(226, 38, 52), (39, 207, 64), (44, 68, 232),
+               (238, 196, 30)]
+    results = []
     pid = None
 
     with logfile.open("wb") as stdout:
@@ -125,9 +136,7 @@ def main() -> None:
                 if (width, height) != (640, 360):
                     raise RuntimeError(f"Unexpected Generic Quick surface geometry {width}x{height}")
                 for _ in range(18):
-                    center = next_frame(conn, width, height)
-                    if center is not None:
-                        results.append(center)
+                    results.append(next_frame(conn, width, height))
                     time.sleep(0.12)
         finally:
             host.terminate()
@@ -138,11 +147,17 @@ def main() -> None:
                 host.wait(timeout=3)
 
     contents = logfile.read_text(encoding="utf-8", errors="replace")
-    matched = [
-        tuple(expected[i])
-        for rgb in results for i in range(3) if within(rgb, expected[i])
-    ]
-    distinct = sorted({x for x in matched})
+    observed_phases = []
+    for image in results:
+        found = None
+        for phase in range(3):
+            if all(within(image[q], palette[(phase + q) % 4])
+                   for q in range(4)):
+                found = phase
+                break
+        observed_phases.append(found)
+    valid_phases = [phase for phase in observed_phases if phase is not None]
+    distinct = sorted(set(valid_phases))
     tap_count = contents.count("HYREMOTE_TEST_QT6_GL_TAP_READBACK=OK")
     fallback_count = contents.count("HYREMOTE_TEST_QT6_GL_TAP_FALLBACK=NO_NATURAL_FRAME")
     outcome = {
@@ -155,8 +170,10 @@ def main() -> None:
         "real_rfb_handshake": True,
         "rfb_full_frame_requests": 18,
         "rfb_raw_pixel_centers": len(results),
-        "expected_color_observations": len(matched),
-        "different_valid_scene_colors": len(distinct),
+        "complete_four_quadrant_source_frames": len(valid_phases),
+        "source_epoch_mixed_or_wrong_quadrant_frames": len(results) - len(valid_phases),
+        "different_valid_scene_phases": len(distinct),
+        "quadrants_per_frame": 4,
         "test_only_render_tap_success": tap_count,
         "test_only_natural_frame_fallback": fallback_count,
         "real_viewer_p95_qualified": False,
@@ -171,8 +188,10 @@ def main() -> None:
         raise RuntimeError("Qt-only Host failed to print APP_READY")
     if not contents.count("PLATFORM_NAME=xcb"):
         raise RuntimeError("Generic plugin silently changed the native Qt QPA")
-    if len(results) < 6 or len(distinct) < 2:
-        raise RuntimeError(f"Real RFB Raw delivery did not show >=2 new QML source colors: {results}")
+    if len(results) < 6 or len(distinct) < 2 or len(valid_phases) != len(results):
+        raise RuntimeError(
+            "Real RFB delivery had stale/mixed/wrong-orientation four-quadrant frames: "
+            f"phases={observed_phases}; samples={results[:3]}")
     if args.mode == "ON" and tap_count < 1:
         raise RuntimeError("Experimental Qt6 OpenGL frame tap never executed on any real Generic RFB request")
     if args.mode == "OFF" and (tap_count or fallback_count):
