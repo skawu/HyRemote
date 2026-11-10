@@ -127,8 +127,12 @@ protected:
             break;
 #if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
         case QEvent::DynamicPropertyChange:
-            // Test-only: explicit per-surface source metadata may be updated.
-            scheduleRefresh();
+            // Do not refresh for arbitrary business dynamic properties:
+            // only source-registration metadata owned by a real Surface
+            // can affect the experimental subscription map.
+            if (static_cast<QDynamicPropertyChangeEvent *>(event)->propertyName()
+                == QByteArrayLiteral("hyremoteSemanticSourceProperties"))
+                scheduleRefresh();
             break;
 #endif
         default:
