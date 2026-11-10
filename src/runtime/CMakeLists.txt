@@ -178,6 +178,12 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
+# Diagnostic only: true Qt6.8.3 OpenGL-RHI PBO/Fence frame capture path.
+# The public grabToImage route stays the default for all products. This flag
+# is not enabled in releases and NEVER extends QtGuiPrivate permissions.
+option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
+    "TEST ONLY: enable Qt6.8.3 public OpenGL RHI PBO CaptureSource" OFF)
+
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
 if(HYREMOTE_BUILD_QUICK_ADAPTER)
@@ -191,6 +197,18 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
+        if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+            if(NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
+                message(FATAL_ERROR
+                    "Experimental Quick GL PBO source is qualified only for exact Qt 6.8.3")
+            endif()
+            target_sources(hyremote-remoteaccess PRIVATE
+                src/quick/quick_gl_pbo_capture_source.cpp)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=1)
+            message(WARNING
+                "TEST ONLY Qt6 OpenGL PBO CaptureSource is ON; not approved for release/EGLFS")
+        endif()
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
     else()
