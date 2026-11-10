@@ -53,7 +53,7 @@ public:
             if (entry.visible != visible) {
                 entry.visible = visible;
                 if (!visible)
-                    entry.observer.detach(); // hidden: no stale fast wake
+                    unwatchSource(id); // hidden: no stale fast wake
             }
             return true;
         }
@@ -88,6 +88,9 @@ public:
             return false;
 
         Entry &entry = *it->second;
+        if (entry.observer.active() && entry.semanticSource == source
+            && entry.properties == semanticProperties)
+            return true; // no unsubscribe gap on ordinary Surface refresh
         const std::uint64_t generation = entry.generation;
         const bool attached = entry.observer.attach(
             source, semanticProperties, [this, id, generation] {
@@ -101,7 +104,25 @@ public:
                 if (m_callback)
                     m_callback(id);
             });
+        if (attached) {
+            entry.semanticSource = source;
+            entry.properties = semanticProperties;
+        } else {
+            entry.semanticSource.clear();
+            entry.properties.clear();
+        }
         return attached;
+    }
+
+    void unwatchSource(quint64 id)
+    {
+        Q_ASSERT(QThread::currentThread() == thread());
+        const auto it = m_entries.find(id);
+        if (it == m_entries.end())
+            return;
+        it->second->observer.detach();
+        it->second->semanticSource.clear();
+        it->second->properties.clear();
     }
 
     void removeSurface(quint64 id)
@@ -138,6 +159,8 @@ private:
     struct Entry
     {
         QPointer<QObject> surface;
+        QPointer<QObject> semanticSource;
+        QStringList properties;
         bool visible = false;
         std::uint64_t generation = 0;
         QMetaObject::Connection destroyedConnection;
