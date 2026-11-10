@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-xinput0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1 libxkbcommon0
           python -m pip install --disable-pip-version-check aqtinstall ninja
           prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64"
           if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
@@ -43,6 +43,16 @@ jobs:
           printf 'LD_LIBRARY_PATH=%s/lib\n' "$prefix" >> "$GITHUB_ENV"
           printf 'QT_QPA_PLATFORM_PLUGIN_PATH=%s/plugins/platforms\n' "$prefix" >> "$GITHUB_ENV"
           printf 'QT_PLUGIN_PATH=%s/plugins\n' "$prefix" >> "$GITHUB_ENV"
+      - name: Check actual Qt6 platform plugin dynamic dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          ldd "$QT_PREFIX/plugins/platforms/libqxcb.so" | tee /tmp/qt68-xcb-ldd.txt
+          if grep -q 'not found' /tmp/qt68-xcb-ldd.txt; then
+            echo 'R2_GL_RHI=BLOCKED_XCB_QT_KIT_SYSTEM_DEPENDENCY'
+            exit 3
+          fi
+          echo 'R2_GL_XCB_LOADER=PASS'
       - name: Compile actual Qt6.8.3 Scene Graph and OpenGL RHI frame readback
         shell: bash
         run: |
@@ -54,6 +64,7 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
           QSG_RHI_BACKEND: opengl
+          QT_DEBUG_PLUGINS: "1"
         run: |
           set -euo pipefail
           mkdir -p tmp/r2-gl
