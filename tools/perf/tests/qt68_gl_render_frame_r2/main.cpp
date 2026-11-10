@@ -18,6 +18,7 @@
 #include <QQuickWindow>
 #include <QSGFlatColorMaterial>
 #include <QSGGeometryNode>
+#include <QSGNode>
 #include <QSGRendererInterface>
 #include <QTimer>
 #include <QSharedPointer>
@@ -79,27 +80,44 @@ public:
 protected:
     QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override
     {
-        QSGGeometryNode *node = static_cast<QSGGeometryNode *>(old);
-        if (!node) {
-            node = new QSGGeometryNode;
-            auto *geometry = new QSGGeometry(
-                QSGGeometry::defaultAttributes_Point2D(), 4);
-            geometry->setDrawingMode(QSGGeometry::DrawTriangleStrip);
-            node->setGeometry(geometry);
-            node->setFlag(QSGNode::OwnsGeometry);
-            auto *material = new QSGFlatColorMaterial;
-            node->setMaterial(material);
-            node->setFlag(QSGNode::OwnsMaterial);
+        // Four independent scenegraph rectangles (not a flat full-window
+        // color). They prove up/down-left/right orientation on the CPU image.
+        QSGNode *root = old;
+        if (!root) {
+            root = new QSGNode;
+            for (int quadrant = 0; quadrant < 4; ++quadrant) {
+                auto *node = new QSGGeometryNode;
+                auto *geometry = new QSGGeometry(
+                    QSGGeometry::defaultAttributes_Point2D(), 4);
+                geometry->setDrawingMode(QSGGeometry::DrawTriangleStrip);
+                node->setGeometry(geometry);
+                node->setFlag(QSGNode::OwnsGeometry);
+                auto *material = new QSGFlatColorMaterial;
+                node->setMaterial(material);
+                node->setFlag(QSGNode::OwnsMaterial);
+                root->appendChildNode(node);
+            }
         }
-
-        QSGGeometry::updateRectGeometry(node->geometry(), boundingRect());
-        node->geometry()->markVertexDataDirty();
-        node->markDirty(QSGNode::DirtyGeometry);
-        auto *material = static_cast<QSGFlatColorMaterial *>(node->material());
-        material->setColor(stageColor(m_phase));
-        node->markDirty(QSGNode::DirtyMaterial);
+        auto *child = root->firstChild();
+        const qreal halfWidth = width() / 2.0;
+        const qreal halfHeight = height() / 2.0;
+        for (int quadrant = 0; quadrant < 4; ++quadrant) {
+            if (!child)
+                return root; // never publish an invented graphics frame
+            auto *node = static_cast<QSGGeometryNode *>(child);
+            const qreal x = quadrant % 2 ? halfWidth : 0.0;
+            const qreal y = quadrant / 2 ? halfHeight : 0.0;
+            QSGGeometry::updateRectGeometry(node->geometry(),
+                                            QRectF(x, y, halfWidth, halfHeight));
+            node->geometry()->markVertexDataDirty();
+            node->markDirty(QSGNode::DirtyGeometry);
+            auto *material = static_cast<QSGFlatColorMaterial *>(node->material());
+            material->setColor(stageColor(m_phase + quadrant));
+            node->markDirty(QSGNode::DirtyMaterial);
+            child = child->nextSibling();
+        }
         m_lastSynchronizedPhase->store(m_phase, std::memory_order_release);
-        return node;
+        return root;
     }
 
 private:
@@ -166,6 +184,8 @@ void printResult(const std::string &mode, int width, int height,
               << "\"stages_completed\":" << completedStages << ","
               << "\"stages_correct_pixels\":"
               << (mode == "render-baseline" ? 0 : completedStages) << ","
+              << "\"quadrants_verified_per_frame\":"
+              << (mode == "render-baseline" ? 0 : 4) << ","
               << "\"pixel_truth_verified\":"
               << (mode == "render-baseline" ? "false" : "true") << ","
               << "\"render_callbacks\":" << stat.renderCallbacks << ","
@@ -309,17 +329,27 @@ int main(int argc, char **argv)
             stats.glErrors++;
             return;
         }
-        const std::size_t offset = (
-            (static_cast<std::size_t>(height) / 2u) * width
-            + (static_cast<std::size_t>(width) / 2u)) * 4u;
-        const QColor color(pixels[offset], pixels[offset + 1],
-                           pixels[offset + 2]);
         const int epoch = stats.desiredEpoch.load(std::memory_order_acquire);
-        if (colorMatches(color, epoch)) {
-            stats.observedEpoch.store(epoch, std::memory_order_release);
-        } else {
-            stats.badPixels++;
+        bool wholeFrameMatches = true;
+        for (int quadrant = 0; quadrant < 4; ++quadrant) {
+            // glReadPixels gives bottom-up rows; QImage is top-down.
+            // Compare all four topological corners, NEVER just the center.
+            const int x = quadrant % 2 ? width * 3 / 4 : width / 4;
+            const int yTop = quadrant / 2 ? height * 3 / 4 : height / 4;
+            const int yBottom = height - 1 - yTop;
+            const std::size_t offset =
+                (static_cast<std::size_t>(yBottom) * width + x) * 4u;
+            const QColor color(pixels[offset], pixels[offset + 1],
+                               pixels[offset + 2]);
+            if (!colorMatches(color, epoch + quadrant)) {
+                wholeFrameMatches = false;
+                break;
+            }
         }
+        if (wholeFrameMatches)
+            stats.observedEpoch.store(epoch, std::memory_order_release);
+        else
+            stats.badPixels++;
     }, Qt::DirectConnection);
 
     QObject::connect(&window, &QQuickWindow::sceneGraphInvalidated,
@@ -393,9 +423,17 @@ int main(int argc, char **argv)
                     const auto stop = std::chrono::steady_clock::now();
                     stats.publicGrabMs.push_back(
                         std::chrono::duration<double, std::milli>(stop - start).count());
-                    if (image.isNull() || image.width() <= 0 || image.height() <= 0
-                        || !colorMatches(image.pixelColor(
-                            image.width() / 2, image.height() / 2), wanted)) {
+                    bool fourQuadsMatch = !image.isNull()
+                        && image.width() > 0 && image.height() > 0;
+                    for (int quadrant = 0; fourQuadsMatch && quadrant < 4; ++quadrant) {
+                        const int x = quadrant % 2 ? image.width() * 3 / 4
+                                                    : image.width() / 4;
+                        const int y = quadrant / 2 ? image.height() * 3 / 4
+                                                    : image.height() / 4;
+                        fourQuadsMatch = colorMatches(image.pixelColor(x, y),
+                                                     wanted + quadrant);
+                    }
+                    if (!fourQuadsMatch) {
                         reportAndExit(false, "FAIL_PUBLIC_GRAB_WRONG_PIXEL");
                         return;
                     }
