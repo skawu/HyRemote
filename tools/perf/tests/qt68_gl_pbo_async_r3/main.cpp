@@ -302,11 +302,13 @@ public:
     bool isThreaded() const {return m_threaded.load();}
     int renderCalls() const {return m_renderCallbacks.load();}
 
-    void report(int elapsedMs)
+    void report(int elapsedMs, const QString& mode, int intervalMs)
     {
         // Only report after the final render thread callback has finished;
         // the test disarms the window connection before reading these.
         std::cout<<"R3_PBO_RESULT_JSON={"
+                 <<"\"mode\":\""<<mode.toStdString()<<"\","
+                 <<"\"source_interval_ms\":"<<intervalMs<<","
                  <<"\"qt\":\""<<QT_VERSION_STR<<"\","
                  <<"\"backend\":\"Qt6_RHI_OpenGL\","
                  <<"\"render_loop\":\""
@@ -476,7 +478,7 @@ int main(int argc,char** argv)
             stageTicker.stop();
             monitor.stop();
             QObject::disconnect(connected);
-            tap.report(clock.elapsed());
+            tap.report(clock.elapsed(),mode,intervalMs);
             const bool ok=tap.verified()==required && tap.queued()==required
                           && tap.retired()==required && tap.errors()==0
                           && tap.noDemandRenders()>=1 && tap.cleaned();
@@ -496,7 +498,7 @@ int main(int argc,char** argv)
         stageTicker.stop();
         monitor.stop();
         QObject::disconnect(connected);
-        tap.report(clock.elapsed());
+        tap.report(clock.elapsed(),mode,intervalMs);
         std::cout<<"R3_VERDICT=FAIL_TIMEOUT_OR_FRAME_NOT_RETIRED"<<std::endl;
         app.exit(21);
     });
