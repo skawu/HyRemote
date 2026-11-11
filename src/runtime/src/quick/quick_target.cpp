@@ -902,7 +902,10 @@ TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEn
     result.supported = true;
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     const auto *ri = window->rendererInterface();
-    if (ri && ri->graphicsApi() == QSGRendererInterface::OpenGL) {
+    const auto selection = selectQuickCaptureRoute(
+        ri ? ri->graphicsApi() : QSGRendererInterface::Unknown,
+        true /* exact Qt Kit / experimental provider already gated by CMake */);
+    if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
         result.capture = createExperimentalQuickGlPboCaptureSource(window);
     } else {
