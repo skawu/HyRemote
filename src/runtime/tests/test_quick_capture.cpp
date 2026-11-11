@@ -66,6 +66,7 @@ void testQuickRendererCapabilityRouting()
     using Api = QSGRendererInterface::GraphicsApi;
     using HyRemote::detail::QuickCaptureBackend;
     using HyRemote::detail::QuickCaptureRoute;
+    using HyRemote::detail::QuickRenderingPath;
     using HyRemote::detail::selectQuickCaptureRoute;
     const struct {
         Api api;
@@ -101,9 +102,19 @@ void testQuickRendererCapabilityRouting()
         // implicit promise that every Qt version or GL driver supports it.
         const auto armed = selectQuickCaptureRoute(scenario.api, true);
         CHECK(armed.route ==
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+              QuickCaptureRoute::PublicQtGrabToImage);
+        if (scenario.api == Api::OpenGL)
+            CHECK(armed.renderingPath == QuickRenderingPath::Qt5Direct);
+        if (scenario.api == Api::OpenGLRhi)
+            CHECK(armed.renderingPath == QuickRenderingPath::Qt5EarlyRhi);
+#else
               (scenario.backend == QuickCaptureBackend::OpenGL
                ? QuickCaptureRoute::ExperimentalOpenGlPbo
                : QuickCaptureRoute::PublicQtGrabToImage));
+        if (scenario.api == Api::OpenGL)
+            CHECK(armed.renderingPath == QuickRenderingPath::Qt6Rhi);
+#endif
     }
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_QUICK_OPENGL")) {
         // The dedicated Linux Xvfb/Mesa lane must exercise a REAL OpenGL
