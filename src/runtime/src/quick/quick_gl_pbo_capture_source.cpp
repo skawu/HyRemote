@@ -603,8 +603,10 @@ private:
                                    s->inFlight.begin(), s->inFlight.end());
                 s->inFlight.clear();
                 // No GL resource operations are safe without the qualified
-                // context. Qt sceneGraphInvalidated owns their cleanup.
+                // context. Retire stale PBO/fence objects ONLY when the
+                // next valid GL context enters this render callback.
                 s->gpuPending = false;
+                s->cleanupRequested = true;
             }
             if (!unsupported.empty())
                 reportUnavailable(s, generation, std::move(unsupported),
