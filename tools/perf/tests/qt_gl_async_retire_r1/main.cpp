@@ -258,8 +258,16 @@ int main(int argc, char **argv)
     std::atomic<int> submissions{0};
     int extraWindowUpdates = 0; // this prototype makes NO update() calls
     bool nativeQualified = false;
-    std::string error;
+    std::atomic<const char *> error{"NO_NATURAL_FRAME"};
     double submissionMs = 0;
+
+    // Qt render callbacks can execute on the scenegraph's dedicated thread.
+    // QCoreApplication::exit() is NOT thread-safe; always post the exit onto
+    // its GUI thread rather than calling it from the render callback.
+    const auto failFromRender = [&app](int code) {
+        QMetaObject::invokeMethod(&app, [&app, code] { app.exit(code); },
+                                  Qt::QueuedConnection);
+    };
 
     QObject::connect(&worker, &QThread::finished, &app, [&] {
         worker.wait(); // synchronize ownership before inspecting its data
@@ -298,17 +306,17 @@ int main(int argc, char **argv)
             return;
         QOpenGLContext *render = QOpenGLContext::currentContext();
         if (!qualifiedGl(render)) {
-            error = "UNSUPPORTED_RENDER_GL_CONTEXT_OR_VERSION";
-            app.exit(11); // QGuiApplication::exit is safe across threads
+            error.store("UNSUPPORTED_RENDER_GL_CONTEXT_OR_VERSION", std::memory_order_release);
+            failFromRender(11);
             return;
         }
         auto *shared = new QOpenGLContext;
         shared->setFormat(render->format());
         shared->setShareContext(render);
         if (!shared->create() || !QOpenGLContext::areSharing(render, shared)) {
-            error = "UNSUPPORTED_GL_SHARE_GROUP";
+            error.store("UNSUPPORTED_GL_SHARE_GROUP", std::memory_order_release);
             delete shared;
-            app.exit(12);
+            failFromRender(12);
             return;
         }
 
@@ -317,8 +325,8 @@ int main(int argc, char **argv)
         const int height = qRound(window.height() * dpr);
         if (width <= 0 || height <= 0 || width > 1024 || height > 1024) {
             delete shared;
-            error = "INVALID_FRAME_GEOMETRY";
-            app.exit(13);
+            error.store("INVALID_FRAME_GEOMETRY", std::memory_order_release);
+            failFromRender(13);
             return;
         }
 
@@ -347,8 +355,8 @@ int main(int argc, char **argv)
             if (fence) gl->glDeleteSync(fence);
             if (pbo) gl->glDeleteBuffers(1, &pbo);
             delete shared;
-            error = "FAILED_GL_PBO_SUBMISSION";
-            app.exit(14);
+            error.store("FAILED_GL_PBO_SUBMISSION", std::memory_order_release);
+            failFromRender(14);
             return;
         }
         // The shared context is NEVER made current in Qt's render thread.
@@ -358,8 +366,8 @@ int main(int argc, char **argv)
             gl->glDeleteSync(fence);
             gl->glDeleteBuffers(1, &pbo);
             delete shared;
-            error = "SHARED_CONTEXT_AFFINITY_FAILURE";
-            app.exit(15);
+            error.store("SHARED_CONTEXT_AFFINITY_FAILURE", std::memory_order_release);
+            failFromRender(15);
             return;
         }
         worker.job = {shared, &surface, pbo, fence, width, height};
@@ -382,7 +390,7 @@ int main(int argc, char **argv)
 #endif
     QTimer::singleShot(6000, &app, [&] {
         if (submissions.load() == 0) {
-            std::cerr << "R953_VERDICT=BLOCKED_NO_NATURAL_OPENGL_FRAME " << error << '\n';
+            std::cerr << "R953_VERDICT=BLOCKED_NO_NATURAL_OPENGL_FRAME " << error.load(std::memory_order_acquire) << '\n';
             app.exit(16);
         }
     });
