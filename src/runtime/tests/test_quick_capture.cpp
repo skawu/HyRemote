@@ -74,12 +74,23 @@ void testQuickRendererCapabilityRouting()
         {Api::Unknown, QuickCaptureBackend::Unknown},
         {Api::Software, QuickCaptureBackend::Software},
         {Api::OpenGL, QuickCaptureBackend::OpenGL},
-        {Api::Direct3D11, QuickCaptureBackend::Direct3D11},
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         {Api::Direct3D12, QuickCaptureBackend::Direct3D12},
+        {Api::OpenGLRhi, QuickCaptureBackend::OpenGL},
+        {Api::Direct3D11Rhi, QuickCaptureBackend::Direct3D11},
+        {Api::VulkanRhi, QuickCaptureBackend::Vulkan},
+        {Api::MetalRhi, QuickCaptureBackend::Metal},
+        {Api::NullRhi, QuickCaptureBackend::Other},
+#else
+        {Api::Direct3D11, QuickCaptureBackend::Direct3D11},
+#  if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+        {Api::Direct3D12, QuickCaptureBackend::Direct3D12},
+#  endif
         {Api::Vulkan, QuickCaptureBackend::Vulkan},
         {Api::Metal, QuickCaptureBackend::Metal},
-        {Api::OpenVG, QuickCaptureBackend::Other},
         {Api::Null, QuickCaptureBackend::Other},
+#endif
+        {Api::OpenVG, QuickCaptureBackend::Other},
     };
     for (const auto &scenario : cases) {
         const auto selection = selectQuickCaptureRoute(scenario.api);
