@@ -1,0 +1,88 @@
+name: R4 Qt6.8.3 Generic/OpenGL PBO actual RFB pixels (NON-PRODUCT)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt68-gl-pbo-generic-rfb-e2e.yml
+      - tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py
+      - tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
+      - src/runtime/src/quick/quick_gl_pbo_capture_source.cpp
+      - src/runtime/src/quick/quick_target.cpp
+      - src/runtime/CMakeLists.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-generic-rfb:
+    name: Qt6.8.3 Generic installed app to real RFB / ${{ matrix.arm }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt6-6.8.3-linux-gcc64-openGL-rhi-eligibility-v1
+      - name: Restore Qt6.8.3 and Xvfb/GL/RFB viewer dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libxkbcommon-dev libxkbcommon-x11-dev ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-xinput0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1 libxkbcommon0
+          python -m pip install --disable-pip-version-check aqtinstall ninja pillow vncdotool
+          prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64"
+          if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          test -f "$prefix/lib/libQt6Quick.so"
+          echo "QT_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+          echo "QT_QPA_PLATFORM_PLUGIN_PATH=$prefix/plugins/platforms" >> "$GITHUB_ENV"
+          echo "QT_PLUGIN_PATH=$prefix/plugins" >> "$GITHUB_ENV"
+      - name: Build actual installed Generic app and Runtime directly from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          arm="${{ matrix.arm }}"
+          build="build-r4-rfb-$arm"
+          python tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
+          sh ./build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm"
+          grep -F "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=$arm" "$build/CMakeCache.txt"
+          test -x "$build/install/bin/hyremote-learning-03-quick"
+          find "$build/install" -iname '*qhyremote*' -print
+      - name: Verify actual loopback RFB handshake, server pixels and runtime mode
+        shell: bash
+        env:
+          QSG_RHI_BACKEND: opengl
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          QT_OPENGL: desktop
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r4-rfb
+          arm="${{ matrix.arm }}"
+          build="build-r4-rfb-$arm"
+          export LD_LIBRARY_PATH="$QT_PREFIX/lib:$(pwd)/$build/install/lib:$(pwd)/$build/install/bin:$LD_LIBRARY_PATH"
+          timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' \
+            python tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py \
+            --exe "$build/install/bin/hyremote-learning-03-quick" \
+            --arm "$arm" --out "tmp/r4-rfb/$arm.json"
+      - name: Publish only JSON and host logs, never installer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt68-r4-generic-rfb-${{ matrix.arm }}
+          path: tmp/r4-rfb/*
+          if-no-files-found: warn
+          retention-days: 10
