@@ -335,7 +335,7 @@ int main(int argc, char **argv)
                   << "\",\"qualified_for_product\":false}" << std::endl;
         if (correct && (!(cancelBeforeDelivery || hideAfterSubmit) || suppressed)
             && (!hideAfterSubmit || !window.isVisible())) {
-            std::cout << "R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE\n";
+            std::cout << "R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE" << std::endl;
             app.exit(0);
         } else {
             std::cerr << "R953_VERDICT=FAIL_PROTOTYPE\n";
