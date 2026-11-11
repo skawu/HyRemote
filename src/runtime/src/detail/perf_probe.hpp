@@ -195,6 +195,7 @@ struct FrameTraceRecord {
     std::uint64_t requestNs = 0;
     std::uint64_t completedNs = 0;
     std::uint64_t viewerId = 0;
+    std::uint64_t updateId = 0; // per-viewer RFB framebuffer update sequence
     std::uint8_t ptsSource = 0; // Core PtsSource: completion=0, render=1, presentation=2
     FrameStep step = FrameStep::CaptureRequest;
 };
@@ -228,13 +229,14 @@ public:
                     std::uint64_t requestId, std::uint64_t ptsNs,
                     std::uint64_t requestNs, std::uint64_t completedNs,
                     std::uint64_t viewerId = 0,
-                    std::uint8_t ptsSource = 0) noexcept
+                    std::uint8_t ptsSource = 0,
+                    std::uint64_t updateId = 0) noexcept
     {
         if (!m_traceEnabled)
             return;
         const FrameTraceRecord record{
             monotonicNs(Clock::now()), frameId, requestId,
-            ptsNs, requestNs, completedNs, viewerId, ptsSource, step};
+            ptsNs, requestNs, completedNs, viewerId, updateId, ptsSource, step};
         std::lock_guard<std::mutex> lock(m_traceMutex);
         const auto active = m_traceActive;
         if (m_traceCounts[active] == kTraceCapacity)
@@ -383,7 +385,7 @@ private:
                 "\"step\":\"%s\",\"at_ns\":%llu,\"frame_id\":%llu,"
                 "\"request_id\":%llu,\"content_pts_ns\":%llu,"
                 "\"request_ns\":%llu,\"completion_ns\":%llu,"
-                "\"viewer_id\":%llu,\"pts_source\":%u}\n",
+                "\"viewer_id\":%llu,\"update_id\":%llu,\"pts_source\":%u}\n",
                 processId(), kFrameStepNames[static_cast<std::size_t>(r.step)],
                 static_cast<unsigned long long>(r.atNs),
                 static_cast<unsigned long long>(r.frameId),
@@ -392,6 +394,7 @@ private:
                 static_cast<unsigned long long>(r.requestNs),
                 static_cast<unsigned long long>(r.completedNs),
                 static_cast<unsigned long long>(r.viewerId),
+                static_cast<unsigned long long>(r.updateId),
                 static_cast<unsigned int>(r.ptsSource));
         }
         if (dropped != 0)
@@ -512,7 +515,8 @@ inline void traceRequestFrame(FrameStep step, const Request &request) noexcept
 
 template <typename Frame>
 inline void traceAcceptedFrame(FrameStep step, const Frame &frame,
-                               std::uint64_t viewerId = 0) noexcept
+                               std::uint64_t viewerId = 0,
+                               std::uint64_t updateId = 0) noexcept
 {
     auto &recorder = Recorder::instance();
     if (!recorder.frameTraceEnabled())
@@ -522,7 +526,7 @@ inline void traceAcceptedFrame(FrameStep step, const Frame &frame,
         monotonicNs(frame.timing.pts),
         frame.timing.requestTime ? monotonicNs(*frame.timing.requestTime) : 0,
         frame.timing.completionTime ? monotonicNs(*frame.timing.completionTime) : 0,
-        viewerId, static_cast<std::uint8_t>(frame.timing.ptsSource));
+        viewerId, static_cast<std::uint8_t>(frame.timing.ptsSource), updateId);
 }
 
 inline void addCount(Stage stage) noexcept
@@ -570,6 +574,9 @@ inline void addAsyncWall(Stage stage, std::chrono::steady_clock::duration durati
 #define HYREMOTE_P1_TRACE_FRAME(stage, frame, viewer) \
     ::HyRemote::detail::p1perf::traceAcceptedFrame( \
         ::HyRemote::detail::p1perf::FrameStep::stage, frame, viewer)
+#define HYREMOTE_P1_TRACE_VIEWER_UPDATE(stage, frame, viewer, update) \
+    ::HyRemote::detail::p1perf::traceAcceptedFrame( \
+        ::HyRemote::detail::p1perf::FrameStep::stage, frame, viewer, update)
 #else
 #define HYREMOTE_P1_SCOPE(stage) ((void)0)
 #define HYREMOTE_P1_COUNT(stage) ((void)0)
@@ -578,4 +585,5 @@ inline void addAsyncWall(Stage stage, std::chrono::steady_clock::duration durati
 #define HYREMOTE_P1_TRACE_HINT(stage) ((void)0)
 #define HYREMOTE_P1_TRACE_REQUEST(stage, request) ((void)0)
 #define HYREMOTE_P1_TRACE_FRAME(stage, frame, viewer) ((void)0)
+#define HYREMOTE_P1_TRACE_VIEWER_UPDATE(stage, frame, viewer, update) ((void)0)
 #endif

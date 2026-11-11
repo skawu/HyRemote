@@ -432,6 +432,7 @@ struct ClientState
 {
     QPointer<QTcpSocket> socket;
     std::uint64_t traceViewerId = 0; // local per-listener connection identity
+    std::uint64_t traceUpdateSeq = 0; // local sequence, never transmitted
     ClientPhase phase = ClientPhase::AwaitVersion;
     QByteArray input;
     // The fresh random challenge this connection was given, kept only until its response is verified.
@@ -1953,6 +1954,9 @@ private:
             return;
         }
 
+        // A viewer can request the same Core FrameId multiple times. Trace
+        // each FBU separately; do not mispair one encode with another write.
+        const std::uint64_t traceUpdateId = client.traceUpdateSeq + 1;
         // Keep the GUI/Core capture scheduler out of an already saturated
         // single-viewer encoding interval; the worker itself is non-reentrant.
         m_encodingSocket = client.socket;
@@ -1981,7 +1985,8 @@ private:
             }
         }
         HYREMOTE_P1_BYTES(RfbEncode, update.size());
-        HYREMOTE_P1_TRACE_FRAME(RfbEncoded, *frame, client.traceViewerId);
+        HYREMOTE_P1_TRACE_VIEWER_UPDATE(
+            RfbEncoded, *frame, client.traceViewerId, traceUpdateId);
 
         qint64 queued = 0;
         {
@@ -1999,7 +2004,9 @@ private:
         }
         // socket->write only queues local Qt bytes. This is not a network
         // receipt, viewer decode or physical present timestamp.
-        HYREMOTE_P1_TRACE_FRAME(RfbSocketQueued, *frame, client.traceViewerId);
+        HYREMOTE_P1_TRACE_VIEWER_UPDATE(
+            RfbSocketQueued, *frame, client.traceViewerId, traceUpdateId);
+        client.traceUpdateSeq = traceUpdateId;
         client.delivery.commitDelivered(selected);
         client.continuousRequestArmed = false;
         // A continuously enabled viewer keeps one outstanding incremental
