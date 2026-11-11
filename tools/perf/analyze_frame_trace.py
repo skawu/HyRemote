@@ -82,16 +82,19 @@ def analyze(records):
             if not starts or not ends:
                 continue
             first = min(int(x["at_ns"]) for x in starts)
-            per_viewer = {int(x.get("viewer_id", 0)): int(x["at_ns"])
-                          for x in starts} if earlier == "rfb_encoded" else {}
+            per_viewer = {
+                (int(x.get("viewer_id", 0)), int(x.get("update_id", 0))):
+                    int(x["at_ns"]) for x in starts
+            } if earlier == "rfb_encoded" else {}
             for event in ends:
                 # One frame may be encoded independently for 2+ viewers.
                 # Do not combine one viewer's encode with another's write.
                 if earlier == "rfb_encoded":
-                    viewer = int(event.get("viewer_id", 0))
-                    if viewer not in per_viewer:
+                    key = (int(event.get("viewer_id", 0)),
+                           int(event.get("update_id", 0)))
+                    if key not in per_viewer:
                         continue
-                    earlier_ns = per_viewer[viewer]
+                    earlier_ns = per_viewer[key]
                 else:
                     earlier_ns = first
                 last = int(event["at_ns"])
@@ -144,10 +147,10 @@ def analyze(records):
 
 
 def self_test():
-    def point(step, ns, request=1, frame=8, viewer=0):
+    def point(step, ns, request=1, frame=8, viewer=0, update=0):
         return {"schema": 3, "type": "frame_step", "pid": 42,
                 "request_id": request, "frame_id": frame, "viewer_id": viewer,
-                "at_ns": ns, "step": step}
+                "update_id": update, "at_ns": ns, "step": step}
     data = [
         {"schema": 2, "stages": {}},
         point("qt_activity_hint", 1_000_000, request=0),
@@ -159,10 +162,10 @@ def self_test():
         point("core_frame_queued", 11_000_000),
         point("rfb_observed", 12_000_000),
         point("rfb_compared", 13_000_000),
-        point("rfb_encoded", 14_000_000, viewer=1),
-        point("rfb_socket_queued", 16_000_000, viewer=1),
-        point("rfb_encoded", 14_500_000, viewer=2),
-        point("rfb_socket_queued", 17_000_000, viewer=2),
+        point("rfb_encoded", 14_000_000, viewer=1, update=1),
+        point("rfb_socket_queued", 16_000_000, viewer=1, update=1),
+        point("rfb_encoded", 14_500_000, viewer=2, update=1),
+        point("rfb_socket_queued", 17_000_000, viewer=2, update=1),
         {"schema": 3, "type": "frame_trace_overflow", "pid": 42, "dropped": 3},
     ]
     result = analyze(data)
