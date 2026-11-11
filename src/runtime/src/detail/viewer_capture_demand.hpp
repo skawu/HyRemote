@@ -176,7 +176,7 @@ public:
             --m_capturesInFlight;
     }
 
-    void noteQtRenderActivity()
+    bool noteQtRenderActivity()
     {
         bool changed = false;
         {
@@ -190,6 +190,7 @@ public:
         }
         if (changed)
             m_changed.notify_all();
+        return changed;
     }
 
     bool waitForViewer()
