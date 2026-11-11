@@ -202,6 +202,22 @@ public:
                         [s] { onInvalidated(s); },
                         Qt::DirectConnection);
                 }
+                if (!target->isVisible()) {
+                    // A hidden Surface must never start another GPU capture.
+                    // Deliver a terminal recoverable unavailable result for
+                    // every admitted request instead of waiting forever for
+                    // a Qt scenegraph frame that may never occur.
+                    std::vector<hyremote::CaptureRequest> hidden;
+                    {
+                        std::lock_guard<std::mutex> lock(s->mutex);
+                        if (s->active && s->generation == generation)
+                            hidden.swap(s->queued);
+                    }
+                    if (!hidden.empty())
+                        reportUnavailable(s, generation, std::move(hidden),
+                                          "GL PBO capture target is not visible");
+                    return;
+                }
                 target->update(); // bounded source request: first render
             }, Qt::QueuedConnection)) {
             std::lock_guard<std::mutex> guard(s->mutex);
