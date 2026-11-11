@@ -30,4 +30,5 @@ tools/local-owner/guard_scratch_writes.py
 tools/local-owner/register-worker.ps1
 tools/local-owner/worker.py
 tools/perf/aggregate_cpu_probe.py
+tools/perf/analyze_frame_trace.py
 tools/perf/assess_quick_public_profile.py
