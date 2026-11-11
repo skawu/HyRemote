@@ -1408,8 +1408,16 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
         recordInitialFramebuffer(widget->size(), widget->devicePixelRatioF());
 #endif
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
-    if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
+    if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject)) {
+        // Match the actual Qt Quick scenegraph pixel grid used by both the
+        // public grabToImage adapter and native RHI readbacks. QWindow's
+        // nominal DPR can differ from QQuickWindow's effective DPR.
+#  if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        recordInitialFramebuffer(quickWindow->size(), quickWindow->effectiveDevicePixelRatio());
+#  else
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
+#  endif
+    }
 #endif
     // #790: release raw idle pixels only for a known-size Qt target with an active
     // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
