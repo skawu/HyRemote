@@ -30,9 +30,8 @@ inline std::shared_ptr<const hyremote::FrameStorage> copyReadbackFrameStorage(
     if (!source || pixelRowBytes == 0 || height == 0
         || sourceStride < pixelRowBytes
         || pixelRowBytes > std::numeric_limits<std::size_t>::max() / height
-        || (height - 1) > (sourceBytes - (sourceBytes >= pixelRowBytes
-                                            ? pixelRowBytes : sourceBytes))
-                            / sourceStride)
+        || sourceBytes < pixelRowBytes
+        || (height - 1) > (sourceBytes - pixelRowBytes) / sourceStride)
         return {};
 
     try {
