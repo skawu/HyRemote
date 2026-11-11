@@ -18,6 +18,11 @@ enum class ReadbackRowOrder {
     BottomUp   // GL readback origin
 };
 
+enum class ReadbackPixelOrder {
+    Rgba8888,  // GL and some native staging textures
+    Bgra8888   // D3D11 staging (typical DXGI_FORMAT_B8G8R8A8_UNORM)
+};
+
 // Source pitches may exceed the useful output row bytes (e.g. a D3D staging
 // texture). Call only after the GPU copy has completed and the source bytes
 // are owned for the entire conversion. A failure returns nullptr; no exception
@@ -25,10 +30,12 @@ enum class ReadbackRowOrder {
 inline std::shared_ptr<const hyremote::FrameStorage> copyReadbackFrameStorage(
     const std::byte *source, std::size_t sourceBytes,
     std::size_t sourceStride, std::size_t pixelRowBytes,
-    std::size_t height, ReadbackRowOrder order) noexcept
+    std::size_t height, ReadbackRowOrder order,
+    ReadbackPixelOrder pixels = ReadbackPixelOrder::Rgba8888) noexcept
 {
     if (!source || pixelRowBytes == 0 || height == 0
         || sourceStride < pixelRowBytes
+        || (pixels == ReadbackPixelOrder::Bgra8888 && pixelRowBytes % 4 != 0)
         || pixelRowBytes > std::numeric_limits<std::size_t>::max() / height
         || sourceBytes < pixelRowBytes
         || (height - 1) > (sourceBytes - pixelRowBytes) / sourceStride)
@@ -50,6 +57,13 @@ inline std::shared_ptr<const hyremote::FrameStorage> copyReadbackFrameStorage(
                 std::memcpy(dest + y * pixelRowBytes,
                             source + sourceRow * sourceStride,
                             pixelRowBytes);
+            }
+        }
+        if (pixels == ReadbackPixelOrder::Bgra8888) {
+            for (std::size_t pos = 0; pos < pixelRowBytes * height; pos += 4) {
+                const std::byte b = dest[pos];
+                dest[pos] = dest[pos + 2];
+                dest[pos + 2] = b;
             }
         }
         return owned;
