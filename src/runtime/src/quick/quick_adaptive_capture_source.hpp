@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -255,7 +256,6 @@ private:
             return;
         hyremote::FrameReadyHandler callback;
         bool dropPixels = false;
-        bool countFailure = false;
         const auto now = hyremote::Clock::now();
         {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -278,7 +278,7 @@ private:
                         && frame.timing.pts < state->newestContentPts));
             dropPixels = invalidEpoch || oldContent;
             const bool nativeFailure = route == Route::Native
-                && !frame.storage && !invalidEpoch;
+                && !invalidEpoch && (!frame.storage || oldContent);
             if (nativeFailure)
                 countNativeFailure(*state);
             else if (route == Route::Native && frame.storage && !dropPixels)
