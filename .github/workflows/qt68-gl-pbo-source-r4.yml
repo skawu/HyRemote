@@ -73,6 +73,52 @@ jobs:
           if (!$runtime) { throw 'Native Runtime DLL absent' }
           Write-Host "R4_RUNTIME_COMPILE=PASS ${{ matrix.arm }}=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
 
+  qt5-windows-quick-gl:
+    name: Windows MSVC Qt5.15.2 direct-GL Quick opt-in compile (NON-PRODUCT)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt5
+          key: qt5-5.15.2-windows-msvc2019-quick-direct-pbo-v1
+      - name: Prepare exact Qt5.15.2 Quick Kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt5/5.15.2/msvc2019_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt5Quick.dll'))) {
+            python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt5')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt5Quick.dll'))) { throw 'Qt5 Quick Kit missing' }
+          "QT5_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual Qt5 direct GL CaptureSource + shared Runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
+          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT5_PREFIX" --build-type=Release --build-dir=build-qt515-pbo --no-tests --clean -j4 "--cmake=HYREMOTE_QT5_ENABLE_QUICK=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=OFF"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cache = Get-Content 'build-qt515-pbo/CMakeCache.txt'
+          if (!($cache -contains 'HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=ON')) { throw 'Qt5 GL PBO flag did not bind' }
+          if (!($cache -contains 'HYREMOTE_QT5_ENABLE_QUICK:BOOL=ON')) { throw 'Qt5 Quick flag did not bind' }
+          $runtime = Get-ChildItem -Path build-qt515-pbo -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
+          if (!$runtime) { throw 'Qt5 Runtime DLL missing' }
+          Write-Host "QT5_DIRECT_GL_BACKEND_COMPILE=PASS SHA=${{ github.event.pull_request.head.sha || github.sha }}"
+
   linux-qt68-real-capture-source:
     name: Qt6.8.3 GL-RHI real CaptureSource pixels/lifetime / ${{ matrix.loop }}
     runs-on: ubuntu-22.04
