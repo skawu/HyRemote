@@ -1,0 +1,17 @@
+# Project-level agent assets (rules, skills, durable memory) ARE project
+# property and are tracked. Root AGENTS.md remains the single execution entry.
+
+# Excluded: daily per-task chronicles ONLY. Durable facts belong in
+# memory/MEMORY.md and the topic files it indexes; dated notes stay local.
+memory/20??-??-*.md
+memory/daily/
+# Raw chronicle compilations are evidence, not durable memory. Kept locally
+# for provenance, never committed. The superseded durable index in archive/
+# IS kept in git (it is an index, not a chronicle).
+memory/archive/MEMORY-2026-09-19-pre-distill.md
+memory/archive/engineering-health-chronicle.md
+
+# Excluded: machine-local runtime state and scratch.
+*.local.md
+*.tmp
+__pycache__/
