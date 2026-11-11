@@ -41,7 +41,8 @@ struct QuickCaptureSelection {
 inline QuickCaptureSelection selectQuickCaptureRoute(
     QSGRendererInterface::GraphicsApi api,
     bool qualifiedOpenGlProviderEnabled = false,
-    bool qualifiedD3d11ProviderEnabled = false) noexcept
+    bool qualifiedD3d11ProviderEnabled = false,
+    bool qualifiedQt5DirectGlEnabled = false) noexcept
 {
     QuickCaptureBackend backend = QuickCaptureBackend::Other;
     QuickRenderingPath renderingPath = QuickRenderingPath::Unknown;
@@ -122,9 +123,16 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
     }
     // The caller owns the version/Kit capability gate. The route selector
     // never consults a chipset/OS name and never grants private QRhi access.
-    // Current OpenGL PBO provider is research-only, enabled solely by the
-    // exact Qt6.8.3 experimental CMake switch. Qt5.15 remains public until
-    // its own render-phase/GL context capability is qualified.
+    // All accelerated providers remain research-only and explicitly
+    // gated by version-family, build option and actual GraphicsApi.
+    // Qt5.15 direct GL and Qt6 RHI differ in the Qt callback phase.
+    // Qt5 direct-GL shares the pixel conversion and readback contract with
+    // Qt6 but uses afterRendering, NOT the Qt6 afterFrameEnd RHI callback.
+    // Its early optional RHI modes remain on the public Qt fallback.
+    if (renderingPath == QuickRenderingPath::Qt5Direct
+        && backend == QuickCaptureBackend::OpenGL
+        && qualifiedQt5DirectGlEnabled)
+        return {backend, renderingPath, QuickCaptureRoute::ExperimentalOpenGlPbo};
     if (renderingPath == QuickRenderingPath::Qt6Rhi) {
         if (backend == QuickCaptureBackend::OpenGL
             && qualifiedOpenGlProviderEnabled)
