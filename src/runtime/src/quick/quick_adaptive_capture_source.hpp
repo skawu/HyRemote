@@ -55,9 +55,10 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
     // when the underlying provider has finished its own callback first.
     struct CallbackDrain {
         std::shared_ptr<State> state;
+        bool admitted = false;
         ~CallbackDrain() noexcept
         {
-            if (!state)
+            if (!state || !admitted)
                 return;
             std::lock_guard<std::mutex> lock(state->mutex);
             --state->callbacksInFlight;
@@ -271,6 +272,7 @@ private:
             if (!callback)
                 return;
             ++state->callbacksInFlight;
+            drain.admitted = true;
             // A recoverable GPU-resource failure is not an unrecoverable
             // product Session error when a public fallback is available.
             if (route == Route::Native && !event.recoverable
@@ -342,6 +344,7 @@ private:
             if (!callback)
                 return;
             ++state->callbacksInFlight;
+            drain.admitted = true;
         }
         if (dropPixels) {
             // One terminal outcome per admitted request. An empty completion
