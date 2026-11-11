@@ -524,8 +524,10 @@ public:
             m_quickActivityConnection = QObject::connect(
                 quick, &QQuickWindow::afterAnimating, &m_targetEventReceiver,
                 [weak] {
-                    if (auto demand = weak.lock())
-                        demand->noteQtRenderActivity();
+                    if (auto demand = weak.lock()) {
+                        if (demand->noteQtRenderActivity())
+                            HYREMOTE_P1_TRACE_HINT(QtActivityHint);
+                    }
                 }, Qt::DirectConnection);
         }
 #endif
