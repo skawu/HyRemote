@@ -244,6 +244,22 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
     endif()
 endif()
 
+# Research-only Qt6.8 OpenGL-RHI normal-frame readback. OFF for all shipped
+# integrations and for every other graphics backend. This intentionally
+# introduces no public ABI or QtGuiPrivate dependency. A real render frame
+# is tapped only for an admitted request; idle/no-render falls back to
+# the existing QQuickItem::grabToImage() source.
+option(HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP
+    "TEST ONLY: Qt6.8 OpenGL-RHI afterFrameEnd readback with public grab fallback" OFF)
+if(HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP)
+    if(NOT HYREMOTE_REMOTEACCESS_WITH_QUICK OR QT_VERSION_MAJOR LESS 6)
+        message(FATAL_ERROR "Qt6.8 OpenGL-RHI render tap requires Quick under Qt6")
+    endif()
+    target_compile_definitions(hyremote-remoteaccess PRIVATE
+        HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP=1)
+    message(WARNING "TEST ONLY Qt6.8 OpenGL-RHI render tap enabled; NO product qualification")
+endif()
+
 # #589 W2: the server-side watermark compositor paints text, so it is a real capability only where Qt Gui exists.
 # The macro is declared explicitly (never left undefined) so a build cannot silently claim a compositor it does
 # not contain; a build without Gui keeps refusing an enabled policy at start().

@@ -1,0 +1,96 @@
+name: Qt6.8.3 real Runtime GL normal-frame + static fallback R3 (TEST ONLY)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/quick-gl-normal-frame-runtime-linux.yml
+      - src/runtime/CMakeLists.txt
+      - src/runtime/src/quick/quick_target.cpp
+      - src/runtime/tests/test_quick_capture.cpp
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qt68-runtime-gl-source:
+    name: Qt6.8.3 Linux genuine Runtime/Core source capture - basic/threaded
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        id: qt-cache
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-linux-gcc64-quick-public-v1
+      - name: Prepare Qt6.8.3 Quick Kit and real Mesa/Xvfb dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          prefix="$${{ runner.temp }}/Qt/6.8.3/gcc_64"
+          if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$${{ runner.temp }}/Qt"
+          fi
+          test -f "$prefix/lib/libQt6Quick.so"
+          bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+      - name: Build real HyRemote shared Runtime and private C++ Quick CaptureSource tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh ./build.cmd test --mode=runtime "--qt-prefix=$${{ runner.temp }}/Qt/6.8.3/gcc_64" --build-type=Release --build-dir=build-quick-gl-native-r3 --tests --run-tests --no-examples --xvfb --clean -j4 "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP=ON" "--test-filter=^hyremote-(quick-capture|quick-image-storage)-test$" "--env=QT_QUICK_BACKEND=software"
+          test -x build-quick-gl-native-r3/runtime/tests/hyremote-quick-capture-test
+          grep -qx 'HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP:BOOL=ON' <(grep '^HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP:BOOL=' build-quick-gl-native-r3/CMakeCache.txt)
+      - name: Run actual product CaptureSource GL pixel + idle public fallback, both Qt render loops
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r3
+          for loop in basic threaded; do
+            for size in small 1080p; do
+              for repetition in 1 2 3; do
+              echo "R3_RUNTIME_START loop=$loop size=$size"
+              if [ "$size" = "1080p" ]; then size1080=1; else size1080=0; fi
+              env -u QT_QUICK_BACKEND QSG_RENDER_LOOP="$loop" QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=xcb HYREMOTE_EXPECT_GL_NORMAL_FRAME_TAP=1 HYREMOTE_GL_CAPTURE_1080P="$size1080" \
+                xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
+                ./build-quick-gl-native-r3/runtime/tests/hyremote-quick-capture-test \
+                2>&1 | tee "tmp/r3/quick-gl-runtime-$loop-$size-$repetition.log"
+              log="tmp/r3/quick-gl-runtime-$loop-$size-$repetition.log"
+              grep -q 'HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PIXELS' "$log"
+              grep -q 'HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PUBLIC_GRAB_FALLBACK' "$log"
+              grep -q 'QUICK_GL_PRODUCT_PATH_TEST=PASS_IF_LOG_HAS_TAP_AND_FALLBACK' "$log"
+              grep -q 'ORIENTATION=4_QUADRANTS' "$log"
+              # Fresh scene source must complete several distinct GL frames
+              # and one bounded static Qt grab. No improvement claimed solely
+              # from these diagnostics.
+              [ "$(grep -c 'HYREMOTE_TEST_GL_NORMAL_FRAME_TAP=PIXELS' "$log")" -ge 2 ]
+              echo "R3_GL_RUNTIME=PASS_SCOPED loop=$loop size=$size repetition=$repetition"
+              done
+            done
+          done
+      - name: Verify actual SceneGraph -> Core Session -> RFB Raw wire pixels, without external Viewer
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable=./build-quick-gl-native-r3/runtime/tests/hyremote-quick-gl-rfb-loopback-test
+          test -x "$executable"
+          for loop in basic threaded; do
+            echo "R3_RFB_START loop=$loop"
+            env -u QT_QUICK_BACKEND QSG_RENDER_LOOP="$loop" QSG_RHI_BACKEND=opengl LIBGL_ALWAYS_SOFTWARE=1 QT_QPA_PLATFORM=xcb \
+              timeout 65s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' "$executable" \
+              2>&1 | tee "tmp/r3/quick-gl-rfb-loopback-$loop.log"
+            grep -q '^R3_RFB_LOOPBACK=PASS_SCOPED' "tmp/r3/quick-gl-rfb-loopback-$loop.log"
+            echo "R3_RFB_WIRE=PASS_SCOPED loop=$loop"
+          done
+      - name: Publish only text test evidence, never a user upgrade package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-qt68-gl-real-runtime-test-logs
+          path: tmp/r3/*.log
+          retention-days: 14
+          if-no-files-found: warn

@@ -560,6 +560,25 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     endif()
 endif()
 
+# Real loopback wire test for the Default-OFF Qt6/OpenGL normal-frame
+# experiment. Uses the actual Quick CaptureSource, Core Session and RFB Raw
+# encoder. Deliberately not registered on shipping/default builds.
+if(HYREMOTE_EXPERIMENTAL_QUICK_GL_NORMAL_FRAME_TAP
+   AND HYREMOTE_REMOTEACCESS_WITH_QUICK AND HYREMOTE_WITH_VNC)
+    add_executable(hyremote-quick-gl-rfb-loopback-test
+        test_quick_gl_rfb_loopback.cpp
+    )
+    target_compile_features(hyremote-quick-gl-rfb-loopback-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-quick-gl-rfb-loopback-test PRIVATE ../src)
+    target_link_libraries(hyremote-quick-gl-rfb-loopback-test PRIVATE
+        hyremote-remoteaccess HyRemote::Core
+        Qt6::Core Qt6::Gui Qt6::Quick Qt6::Network
+    )
+    add_test(NAME hyremote-quick-gl-rfb-loopback-test
+             COMMAND hyremote-quick-gl-rfb-loopback-test)
+    set_tests_properties(hyremote-quick-gl-rfb-loopback-test PROPERTIES TIMEOUT 40)
+endif()
+
 # Real RFB listener reachability/reconciliation is a Runtime integration contract. It requires the
 # Widgets target adapter used by the fixture and the VNC/RFB backend, but not the Embedded C++ facade.
 if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS AND HYREMOTE_WITH_VNC)
