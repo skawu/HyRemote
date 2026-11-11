@@ -29,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/perf_probe.hpp"
 #include "detail/readback_frame_storage.hpp"
 #include "hyremote/core/storage.hpp"
 
@@ -299,8 +300,10 @@ private:
                         && !s->cpuConversionPending
                         && !s->queued.empty();
                 }
-                if (needsFallbackRender && window && window->isVisible())
+                if (needsFallbackRender && window && window->isVisible()) {
+                    HYREMOTE_P1_COUNT(QuickGlExplicitRender);
                     window->update();
+                }
             });
     }
 
@@ -454,6 +457,7 @@ private:
     {
         // Pool worker only: the PBO is unmapped and the bytes are CPU-owned.
         // Neither Qt's render thread nor the GUI thread flips the image rows.
+        HYREMOTE_P1_SCOPE(QuickGlCpuRepack);
         const auto stride = static_cast<std::size_t>(width) * 4u;
         const auto storage = raw ? copyReadbackFrameStorage(
             raw.get(), stride * static_cast<std::size_t>(height), stride, stride,
@@ -506,7 +510,10 @@ private:
                     shouldRender = true;
                 }
             }
-            if (shouldRender) window->update();
+            if (shouldRender) {
+                HYREMOTE_P1_COUNT(QuickGlRetirementRender);
+                window->update();
+            }
         });
     }
 
@@ -519,6 +526,7 @@ private:
             || ctx->format().majorVersion() < 3)
             return;
         auto *gl = ctx->extraFunctions();
+        HYREMOTE_P1_SCOPE(QuickGlRenderCallback);
         std::vector<hyremote::CaptureRequest> failed;
         std::shared_ptr<std::byte> conversionData;
         std::uint64_t gen = 0;
@@ -587,6 +595,7 @@ private:
                         // GL context usage stays on Qt's render thread.
                         // Copy mapped pixels ONCE to CPU memory, unmap, then
                         // allocate/frame-flip on a separate bounded worker.
+                        HYREMOTE_P1_SCOPE(QuickGlGpuMapCopy);
                         std::shared_ptr<std::byte> owned;
                         try {
                             // new byte[] is not value-initialized: avoid an
@@ -601,8 +610,10 @@ private:
                         const auto *mapped = owned ? static_cast<const std::byte *>(
                             gl->glMapBufferRange(kPackTarget, 0, GLsizeiptr(bytes), kMapRead))
                             : nullptr;
-                        if (mapped)
+                        if (mapped) {
                             std::memcpy(owned.get(), mapped, bytes);
+                            HYREMOTE_P1_BYTES(QuickGlGpuMapCopy, bytes);
+                        }
                         const bool mappingValid = mapped && gl->glUnmapBuffer(kPackTarget);
                         if (mappingValid) {
                             conversionData = std::move(owned);
@@ -647,6 +658,7 @@ private:
                             std::size_t(w)*std::size_t(h)*4u), nullptr, kStreamRead);
                         gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
                         gl->glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+                        HYREMOTE_P1_COUNT(QuickGlGpuSubmit);
                         s->fence = gl->glFenceSync(kFenceGpu, 0);
                         const bool valid = s->fence && gl->glGetError() == GL_NO_ERROR;
                         if (valid) {
