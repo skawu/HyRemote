@@ -26,13 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }/Qt
+          path: ${{ runner.temp }}/Qt
           key: qt6-6.8.3-linux-gcc64-openGL-rhi-eligibility-v1
       - name: Restore Qt6.8.3 and Xvfb/GL/RFB viewer dependencies
         shell: bash
@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          arm="${{ matrix.arm }"
+          arm="${{ matrix.arm }}"
           build="build-r4-rfb-$arm"
           sh ./build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm"
           grep -F "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=$arm" "$build/CMakeCache.txt"
@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp/r4-rfb
-          arm="${{ matrix.arm }"
+          arm="${{ matrix.arm }}"
           build="build-r4-rfb-$arm"
           export LD_LIBRARY_PATH="$QT_PREFIX/lib:$(pwd)/$build/install/lib:$(pwd)/$build/install/bin:$LD_LIBRARY_PATH"
           timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' \
@@ -80,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qt68-r4-generic-rfb-${{ matrix.arm }
+          name: qt68-r4-generic-rfb-${{ matrix.arm }}
           path: tmp/r4-rfb/*
           if-no-files-found: warn
           retention-days: 10
