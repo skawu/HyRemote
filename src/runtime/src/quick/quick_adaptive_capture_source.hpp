@@ -334,11 +334,25 @@ private:
                      && now - contentPts > kMaxRenderFrameAge)
                     || (state->newestContentPts != hyremote::TimePoint{}
                         && contentPts < state->newestContentPts));
-            dropPixels = invalidEpoch || oldContent;
+            // A non-null native storage anchor alone is not proof that the
+            // frame can be published. Reject cheap geometry/format/timing
+            // violations here, before an invalid native stream causes Core
+            // to reject every frame without ever activating the fallback.
+            const bool invalidNativeFrame = route == Route::Native
+                && frame.storage
+                && (frame.geometry.size.width == 0
+                    || frame.geometry.size.height == 0
+                    || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
+                    || frame.geometry.planeCount != 1
+                    || (renderPts && !hasContentPts)
+                    || (renderPts && frame.timing.completionTime
+                        && contentPts > *frame.timing.completionTime));
+            dropPixels = invalidEpoch || oldContent || invalidNativeFrame;
             if (dropPixels)
                 HYREMOTE_P1_COUNT(QuickStaleDrop);
             const bool nativeFailure = route == Route::Native
-                && !invalidEpoch && (!frame.storage || oldContent);
+                && !invalidEpoch && (!frame.storage || oldContent
+                                      || invalidNativeFrame);
             if (nativeFailure)
                 countNativeFailure(*state);
             else if (route == Route::Native && frame.storage && !dropPixels)
