@@ -200,16 +200,25 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
         if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
-            if(NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
+            if(HYREMOTE_QT_MAJOR STREQUAL "5")
+                if(NOT HYREMOTE_QT5_ENABLE_QUICK
+                   OR Qt5Core_VERSION VERSION_LESS 5.15.0)
+                    message(FATAL_ERROR
+                        "Experimental Qt5 direct-GL PBO requires explicit Qt5.15+ Quick opt-in")
+                endif()
+                message(WARNING
+                    "TEST ONLY Qt5.15 direct-OpenGL PBO CaptureSource is ON; not product qualified")
+            elseif(NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
                 message(FATAL_ERROR
-                    "Experimental Quick GL PBO source is qualified only for exact Qt 6.8.3")
+                    "Experimental Qt6 OpenGL PBO source requires exact Qt6.8.3 research Kit")
+            else()
+                message(WARNING
+                    "TEST ONLY Qt6 OpenGL PBO CaptureSource is ON; not approved for release")
             endif()
             target_sources(hyremote-remoteaccess PRIVATE
                 src/quick/quick_gl_pbo_capture_source.cpp)
             target_compile_definitions(hyremote-remoteaccess PRIVATE
                 HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=1)
-            message(WARNING
-                "TEST ONLY Qt6 OpenGL PBO CaptureSource is ON; not approved for release/EGLFS")
         endif()
         if(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
             if(NOT WIN32 OR NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
