@@ -156,7 +156,12 @@ inline constexpr std::array<const char *,
 // without modifying the RFB wire format or making Core depend on Qt.
 // These records are local steady-clock timestamps, NOT Viewer presentation.
 enum class FrameStep : std::uint8_t {
-    QtActivityHint,
+    QtActivityHint,  // only a genuine idle-gate release, NOT a Qt content epoch
+    QtActivityIgnoredStopped,
+    QtActivityIgnoredNoViewer,
+    QtActivityIgnoredInFlight,
+    QtActivityIgnoredBackpressure,
+    QtActivityIgnoredAlreadyActive,
     CaptureRequest,
     QuickGrabSubmitted,
     GpuReadbackSubmitted,
@@ -172,7 +177,13 @@ enum class FrameStep : std::uint8_t {
 };
 
 inline constexpr std::array<const char *, static_cast<std::size_t>(FrameStep::Count)>
-    kFrameStepNames{"qt_activity_hint", "capture_request", "quick_grab_submitted",
+    kFrameStepNames{"qt_activity_hint",
+                    "qt_activity_ignored_stopped",
+                    "qt_activity_ignored_no_viewer",
+                    "qt_activity_ignored_in_flight",
+                    "qt_activity_ignored_backpressure",
+                    "qt_activity_ignored_already_active",
+                    "capture_request", "quick_grab_submitted",
                     "gpu_readback_submitted", "gpu_readback_ready",
                     "source_completed", "composite_completed",
                     "core_frame_queued", "rfb_observed", "rfb_compared",
