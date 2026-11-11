@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/perf_probe.hpp"
 #include "hyremote/core/capture_source.hpp"
 
 namespace HyRemote::detail {
@@ -219,10 +220,14 @@ private:
 
     static void countNativeFailure(State &state)
     {
+        if (!state.nativeEnabled)
+            return;
         if (state.consecutiveNativeFailures < kFallbackAfterFailures)
             ++state.consecutiveNativeFailures;
-        if (state.consecutiveNativeFailures >= kFallbackAfterFailures)
-            state.nativeEnabled = false; // permanently for this start()
+        if (state.consecutiveNativeFailures >= kFallbackAfterFailures) {
+            state.nativeEnabled = false; // one-way until next explicit start()
+            HYREMOTE_P1_COUNT(QuickNativeFallback);
+        }
     }
 
     static void deliverEvent(const std::shared_ptr<State> &state,
@@ -238,11 +243,16 @@ private:
             callback = state->onEvent;
             // A recoverable GPU-resource failure is not an unrecoverable
             // product Session error when a public fallback is available.
-            if (route == Route::Native && !event.recoverable) {
+            if (route == Route::Native && !event.recoverable
+                && event.code == hyremote::CaptureEventCode::BackendFailure) {
+                if (state->nativeEnabled)
+                    HYREMOTE_P1_COUNT(QuickNativeFallback);
                 state->nativeEnabled = false;
                 delivered.recoverable = true;
                 delivered.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
             }
+            // TargetLost must remain fatal: the public Qt capture path
+            // cannot restore a destroyed QQuickWindow or deleted Surface.
         }
         if (callback) {
             try { callback(delivered); } catch (...) {}
@@ -278,6 +288,8 @@ private:
                     || (state->newestContentPts != hyremote::TimePoint{}
                         && frame.timing.pts < state->newestContentPts));
             dropPixels = invalidEpoch || oldContent;
+            if (dropPixels)
+                HYREMOTE_P1_COUNT(QuickStaleDrop);
             const bool nativeFailure = route == Route::Native
                 && !invalidEpoch && (!frame.storage || oldContent);
             if (nativeFailure)
