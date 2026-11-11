@@ -41,16 +41,47 @@ without an identified, previously observed failure mode is not accepted.
 A rule in `docs/` or in root `AGENTS.md` only works if the current session
 happens to read it. Project-level Rules with `alwaysApply: true` are injected by
 the client into **every** session on this checkout, without a read decision,
-and project-level Skills are discovered from `.codebuddy/skills/`. That is the
-only mechanism layer used here. The design deliberately does **not** touch
-user-level `settings.json`, plugin enablement, native hook configuration, hook
-scripts or interpreter paths — those are client internals whose failure would
-affect normal CodeBuddy operation.
+and project-level Skills are discovered from `.codebuddy/skills/`.
 
 `session-anchor.md` carries the short gates (script contract before any new
 script, three hard rules, end-of-turn verification); `script-planning/SKILL.md`
 carries the full procedure on demand. Client-side injection is a soft
-constraint, so merge-level enforcement is handled separately below.
+constraint, so a project-level PreToolUse hook and the merge-level guard below
+provide the actual blocks.
+
+## Client-level enforcement (project PreToolUse hook)
+
+`.codebuddy/settings.json` mounts one project-level `PreToolUse` hook:
+
+```
+python tools/local-owner/guard_scratch_writes.py
+```
+
+It denies, for CodeBuddy's own tool calls only, any attempt to create or modify
+an executable script under `tmp/`. Covered paths: the file tools
+(`Write`/`Edit`/`MultiEdit`) and the shell tool when the command writes a
+`tmp/` script (redirect, `Set-Content`, `cp`/`mv`, `open(...,'w')`). Everything
+else is allowed: evidence JSON, logs, screenshots, product sources, planned
+scripts, and running existing scripts.
+
+Deliberate properties:
+
+- **Scope is CodeBuddy only.** A human typing in a terminal is out of scope by
+  design; this hook sees tool calls, not keystrokes.
+- **Fail-open.** Any internal error, unparsable payload, missing interpreter or
+  timeout emits `allow`. A broken guard must never block normal file writes;
+  verified by pointing the hook at a non-existent interpreter and confirming a
+  write still succeeded.
+- **No user-level config is touched.** No `~/.codebuddy/settings.json` change,
+  no plugin enablement, no `python3` dependency (that is a WindowsApps stub on
+  this machine and would fail silently). The hook command uses `python` on PATH
+  and a repository-relative script path.
+- **Cost.** About 116 ms per covered tool call (interpreter startup). Only file
+  and shell tools are matched, so read-only turns pay nothing.
+
+Limits: this binds a CodeBuddy session on this checkout. It is not a server
+gate, it does not constrain other clients, and if `python` is not on PATH the
+hook fails open (no block, no breakage).
 
 ## Merge-level enforcement (machine, not memory)
 
