@@ -934,7 +934,7 @@ TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEn
     );
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
-        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_PBO_SOURCE";
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
         result.capture = createExperimentalQuickGlPboCaptureSource(window);
     }
 #endif
