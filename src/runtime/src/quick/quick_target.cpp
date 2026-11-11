@@ -359,9 +359,15 @@ private:
             // Qt 6 may already return the Core's exact premultiplied RGBA
             // layout. Qt 5's ARGB32_Premultiplied has a different byte order
             // and must still be converted before publication.
-            image = grabbed.format() == QImage::Format_RGBA8888_Premultiplied
-                        ? grabbed
-                        : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+            // Qt5 OpenGL/ES readbacks commonly produce RGBX8888 for
+            // opaque scenes. Qt guarantees its X byte is 255, so this format
+            // is already byte-for-byte equivalent to premultiplied RGBA and
+            // can share the QImage CPU buffer with no full-frame conversion.
+            const auto format = grabbed.format();
+            image = (format == QImage::Format_RGBA8888_Premultiplied
+                     || format == QImage::Format_RGBX8888)
+                ? grabbed
+                : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
         }
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
             retryLater(state, batch, attempt, 100);
@@ -382,7 +388,8 @@ private:
             // after checking all source row accesses.
             const std::size_t width = static_cast<std::size_t>(image.width());
             const std::size_t height = static_cast<std::size_t>(image.height());
-            if (image.format() != QImage::Format_RGBA8888_Premultiplied
+            if ((image.format() != QImage::Format_RGBA8888_Premultiplied
+                 && image.format() != QImage::Format_RGBX8888)
                 || width > std::numeric_limits<std::size_t>::max() / 4U
                 || image.bytesPerLine() <= 0 || image.sizeInBytes() <= 0
                 || !image.constBits()) {
