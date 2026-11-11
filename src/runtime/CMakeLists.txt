@@ -186,7 +186,7 @@ option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
 option(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING
     "TEST ONLY: enable Windows Qt6.8.3 public-native D3D11 staging CaptureSource" OFF)
 option(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE
-    "TEST ONLY: wake idle Qt Quick viewer capture on public afterAnimating activity" OFF)
+    "TEST ONLY: compile Qt5/Qt6 activity-driven capture; HYREMOTE_QUICK_ACTIVITY_WAKE=1 opts in at runtime" OFF)
 
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
