@@ -22,6 +22,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cmath>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
