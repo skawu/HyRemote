@@ -7,6 +7,9 @@ on:
       - src/runtime/CMakeLists.txt
       - src/runtime/src/quick/quick_target.cpp
       - src/runtime/src/quick/quick_gl_pbo_capture_source.*
+      - src/runtime/src/quick/quick_d3d11_staging_capture_source.*
+      - src/runtime/src/quick/quick_capture_backend.hpp
+      - src/runtime/src/detail/readback_frame_storage.hpp
       - tools/perf/tests/qt68_gl_pbo_source_r4/**
   workflow_dispatch:
 permissions:
@@ -55,13 +58,16 @@ jobs:
           $arm = '${{ matrix.arm }}'
           $build = 'build-r4-' + $arm.ToLowerInvariant()
           if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
-          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm"
+          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=$arm"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $setting = @(Get-Content "$build/CMakeCache.txt" | Where-Object {
-            $_ -match '^HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL='
-          })
-          if ($setting.Count -ne 1 -or $setting[0] -ne "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=$arm") {
-            throw "Incorrect actual CMake option: $($setting -join ',')"
+          foreach ($option in @('HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO', 'HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING')) {
+            $expected = "$($option):BOOL=$arm"
+            $setting = @(Get-Content "$build/CMakeCache.txt" | Where-Object {
+              $_ -match "^$($option):BOOL="
+            })
+            if ($setting.Count -ne 1 -or $setting[0] -ne $expected) {
+              throw "Incorrect actual CMake option $($option): $($setting -join ',')"
+            }
           }
           $runtime = Get-ChildItem -Path $build -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
           if (!$runtime) { throw 'Native Runtime DLL absent' }
