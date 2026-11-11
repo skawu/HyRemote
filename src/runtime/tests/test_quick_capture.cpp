@@ -139,6 +139,35 @@ public:
     }
 };
 
+void testAdaptiveQuickSceneGraphInvalidationFailClosed()
+{
+    QQuickWindow window;
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        &window, std::move(native), std::move(publicQt));
+    std::vector<hyremote::RemoteFrame> frames;
+    CHECK(source.start([&](hyremote::RemoteFrame f) {
+        frames.push_back(std::move(f));
+    }, [](const hyremote::CaptureEvent &) {}));
+    CHECK(source.requestFrame({81, hyremote::Clock::now()}));
+    CHECK(primary->accepted.size() == 1 && primary->accepted[0] == 81);
+    // Qt issues this public signal on scenegraph/device teardown. Delivering
+    // it directly tests the shared runtime policy without a real GPU reset.
+    const bool invalidated = QMetaObject::invokeMethod(
+        &window, "sceneGraphInvalidated", Qt::DirectConnection);
+    CHECK(invalidated);
+    primary->complete(81, true);
+    CHECK(frames.size() == 1 && !frames[0].storage);
+    CHECK(source.requestFrame({82, hyremote::Clock::now()}));
+    CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 82);
+    backup->complete(82, true);
+    CHECK(frames.size() == 2 && frames[1].storage);
+    source.stop();
+}
+
 void testAdaptiveQuickMalformedNativeFramesTriggerFallback()
 {
     auto native = std::make_unique<ControlledQuickSource>();
@@ -1883,6 +1912,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testAdaptiveQuickSceneGraphInvalidationFailClosed();
     testAdaptiveQuickMalformedNativeFramesTriggerFallback();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
