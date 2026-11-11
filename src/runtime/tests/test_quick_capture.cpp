@@ -106,11 +106,12 @@ public:
         return true;
     }
     void complete(hyremote::CaptureRequestId id, bool valid,
-                  std::chrono::milliseconds contentAge = std::chrono::milliseconds{0})
+                  std::chrono::milliseconds contentAge = std::chrono::milliseconds{0},
+                  hyremote::PtsSource timestampSource = hyremote::PtsSource::Render)
     {
         hyremote::RemoteFrame frame;
         frame.requestId = id;
-        frame.timing.ptsSource = hyremote::PtsSource::Render;
+        frame.timing.ptsSource = timestampSource;
         frame.timing.completionTime = hyremote::Clock::now();
         frame.timing.pts = *frame.timing.completionTime - contentAge;
         if (valid) {
@@ -181,6 +182,28 @@ void testAdaptiveQuickFallbackSurfaceEpochAndFreshness()
     CHECK(frames.size() == 7 && frames.back().storage);
     source.stop();
     CHECK(events == 0);
+
+    // A native GPU request can finish AFTER a newer public fallback frame.
+    // Do not replay that older content, even if it is under the 500ms age
+    // budget; preserve the Core request's exact terminal identity.
+    CHECK(start());
+    CHECK(request(10)); // native, deliberately left in flight
+    CHECK(request(11));
+    CHECK(request(12));
+    native->complete(11, false);
+    native->complete(12, false);
+    CHECK(request(13)); // fallback now active
+    CHECK(!publicQt->accepted.empty() && publicQt->accepted.back() == 13);
+    publicQt->complete(13, true, std::chrono::milliseconds{0},
+                       hyremote::PtsSource::Completion);
+    CHECK(frames.back().requestId && *frames.back().requestId == 13
+          && frames.back().storage);
+    const std::size_t beforeLateNative = frames.size();
+    native->complete(10, true, std::chrono::milliseconds{150});
+    CHECK(frames.size() == beforeLateNative + 1);
+    CHECK(frames.back().requestId && *frames.back().requestId == 10
+          && !frames.back().storage);
+    source.stop();
 }
 
 void testQuickOpaqueRgbxCpuStorageIsZeroCopy()
