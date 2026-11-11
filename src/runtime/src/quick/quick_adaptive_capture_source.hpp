@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -36,6 +37,8 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
     };
     struct State {
         std::mutex mutex;
+        std::condition_variable callbacksDrained;
+        std::size_t callbacksInFlight = 0;
         std::uint64_t generation = 0;
         std::uint64_t surfaceEpoch = 1;
         bool active = false;
@@ -45,6 +48,22 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
         std::unordered_map<hyremote::CaptureRequestId, Pending> pending;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
+    };
+
+    // Reserve callback admission under the same lock used by stop().
+    // A callback already admitted must finish before stop() returns, even
+    // when the underlying provider has finished its own callback first.
+    struct CallbackDrain {
+        std::shared_ptr<State> state;
+        ~CallbackDrain() noexcept
+        {
+            if (!state)
+                return;
+            std::lock_guard<std::mutex> lock(state->mutex);
+            --state->callbacksInFlight;
+            if (state->callbacksInFlight == 0)
+                state->callbacksDrained.notify_all();
+        }
     };
 
     static constexpr unsigned int kFallbackAfterFailures = 2;
@@ -175,6 +194,13 @@ public:
             m_native->stop();
         if (m_public)
             m_public->stop();
+        // Backend stop() drains THEIR callbacks, not callbacks forwarded
+        // to Core by this wrapper. Once inactive, no new wrapper callback
+        // can enter; wait for every already-admitted callback to exit.
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->callbacksDrained.wait(lock, [&] {
+            return state->callbacksInFlight == 0;
+        });
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
@@ -236,11 +262,15 @@ private:
     {
         hyremote::CaptureEventHandler callback;
         hyremote::CaptureEvent delivered = event;
+        CallbackDrain drain{state};
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active || state->generation != generation)
                 return;
             callback = state->onEvent;
+            if (!callback)
+                return;
+            ++state->callbacksInFlight;
             // A recoverable GPU-resource failure is not an unrecoverable
             // product Session error when a public fallback is available.
             if (route == Route::Native && !event.recoverable
@@ -266,6 +296,7 @@ private:
         if (!frame.requestId)
             return;
         hyremote::FrameReadyHandler callback;
+        CallbackDrain drain{state};
         bool dropPixels = false;
         const auto now = hyremote::Clock::now();
         {
@@ -308,9 +339,10 @@ private:
                 state->newestContentPts = contentPts;
             callback = state->onFrame;
             state->pending.erase(it);
+            if (!callback)
+                return;
+            ++state->callbacksInFlight;
         }
-        if (!callback)
-            return;
         if (dropPixels) {
             // One terminal outcome per admitted request. An empty completion
             // retires Core's in-flight slot without publishing stale pixels.
