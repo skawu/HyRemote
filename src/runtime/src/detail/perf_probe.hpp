@@ -195,6 +195,7 @@ struct FrameTraceRecord {
     std::uint64_t requestNs = 0;
     std::uint64_t completedNs = 0;
     std::uint64_t viewerId = 0;
+    std::uint8_t ptsSource = 0; // Core PtsSource: completion=0, render=1, presentation=2
     FrameStep step = FrameStep::CaptureRequest;
 };
 
@@ -226,13 +227,14 @@ public:
     void traceFrame(FrameStep step, std::uint64_t frameId,
                     std::uint64_t requestId, std::uint64_t ptsNs,
                     std::uint64_t requestNs, std::uint64_t completedNs,
-                    std::uint64_t viewerId = 0) noexcept
+                    std::uint64_t viewerId = 0,
+                    std::uint8_t ptsSource = 0) noexcept
     {
         if (!m_traceEnabled)
             return;
         const FrameTraceRecord record{
             monotonicNs(Clock::now()), frameId, requestId,
-            ptsNs, requestNs, completedNs, viewerId, step};
+            ptsNs, requestNs, completedNs, viewerId, ptsSource, step};
         std::lock_guard<std::mutex> lock(m_traceMutex);
         const auto active = m_traceActive;
         if (m_traceCounts[active] == kTraceCapacity)
@@ -381,7 +383,7 @@ private:
                 "\"step\":\"%s\",\"at_ns\":%llu,\"frame_id\":%llu,"
                 "\"request_id\":%llu,\"content_pts_ns\":%llu,"
                 "\"request_ns\":%llu,\"completion_ns\":%llu,"
-                "\"viewer_id\":%llu}\n",
+                "\"viewer_id\":%llu,\"pts_source\":%u}\n",
                 processId(), kFrameStepNames[static_cast<std::size_t>(r.step)],
                 static_cast<unsigned long long>(r.atNs),
                 static_cast<unsigned long long>(r.frameId),
@@ -389,7 +391,8 @@ private:
                 static_cast<unsigned long long>(r.contentPtsNs),
                 static_cast<unsigned long long>(r.requestNs),
                 static_cast<unsigned long long>(r.completedNs),
-                static_cast<unsigned long long>(r.viewerId));
+                static_cast<unsigned long long>(r.viewerId),
+                static_cast<unsigned int>(r.ptsSource));
         }
         if (dropped != 0)
             std::fprintf(file,
@@ -519,7 +522,7 @@ inline void traceAcceptedFrame(FrameStep step, const Frame &frame,
         monotonicNs(frame.timing.pts),
         frame.timing.requestTime ? monotonicNs(*frame.timing.requestTime) : 0,
         frame.timing.completionTime ? monotonicNs(*frame.timing.completionTime) : 0,
-        viewerId);
+        viewerId, static_cast<std::uint8_t>(frame.timing.ptsSource));
 }
 
 inline void addCount(Stage stage) noexcept
