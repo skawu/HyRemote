@@ -13,7 +13,7 @@
 - [只允许一个仓库内 build 目录](feedback_single_build_dir.md) — 红线：唯一工作空间是 `F:\workspace\hyremote\HyRemote`，只用其 `build`，禁止并行 build 目录
 - [禁止操作工作空间外目录](feedback_no_outside_workspace.md) — 红线：工作空间外路径（含清理）一律不得访问；只有该具体路径经用户明确授权才例外
 - [无 Human 决策时不得停下](feedback_do_not_stop_without_decision.md) — 长任务红线：没有产品/版本/安全/管理员决策或真实外部阻塞时，必须继续实现、测试、提 PR、合并
-- [超过 1 分钟无输出视为卡死](feedback_no_hung_steps.md) — 立即终止、清理并改造成有超时和进度输出的步骤
+- [长命令静默时主动检查并回报进度](feedback_no_hung_steps.md) — 60 秒是汇报间隔不是构建超时；先查进程/日志，勿杀合法 build.cmd/CTest
 - [禁止对挂起进程调用 PrintWindow](feedback_printwindow_suspended_hang.md) — 根因：NtSuspendProcess 后截图无界阻塞；必须 try/finally 恢复并加超时
 - [CodeBuddy 项目级 Skill 发现入口实测](project_codebuddy_skill_discovery.md) — 只发现 `.codebuddy/skills`（无需重载），`.agents/skills` 返回 not found；升级须指定为前者
 - [测试事前治理：逐项论证 + Human 确认后才执行](feedback_test_preapproval.md) — 五项必要性说明；禁止自行扩矩阵/重复全套件/无限复测；代码审查与设计仍自主
