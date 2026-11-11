@@ -58,7 +58,7 @@ jobs:
           $arm = '${{ matrix.arm }}'
           $build = 'build-r4-' + $arm.ToLowerInvariant()
           if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
-          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=$arm"
+          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           foreach ($option in @('HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO', 'HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING')) {
             $expected = "$($option):BOOL=$arm"
@@ -141,7 +141,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
-          & .\build.cmd build --integrations=cpp "--qt-prefix=$env:QT5_PREFIX" --build-type=Release --build-dir=build-qt515-pbo --no-tests --clean -j4 "--cmake=HYREMOTE_QT5_ENABLE_QUICK=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=OFF"
+          & .\build.cmd build --integrations=cpp "--qt-prefix=$env:QT5_PREFIX" --build-type=Release --build-dir=build-qt515-pbo --no-tests --clean -j4 "--cmake=HYREMOTE_QT5_ENABLE_QUICK=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=OFF" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $cache = Get-Content 'build-qt515-pbo/CMakeCache.txt'
           if (!($cache -contains 'HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=ON')) { throw 'Qt5 GL PBO flag did not bind' }
