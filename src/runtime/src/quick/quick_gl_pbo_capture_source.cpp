@@ -4,6 +4,7 @@
 // verified on Mesa/Xvfb only; EGLFS/front-buffer semantics remain unverified.
 #include "quick/quick_gl_pbo_capture_source.hpp"
 #include "quick/quick_readback_timing.hpp"
+#include "quick/quick_readback_batch.hpp"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -235,18 +236,13 @@ public:
                     std::lock_guard<std::mutex> lock(s->mutex);
                     if (!s->active || s->generation != requestGeneration)
                         return;
-                    auto take = [&](std::vector<hyremote::CaptureRequest> &v) {
-                        auto it = std::remove_if(v.begin(), v.end(),
-                            [&](const hyremote::CaptureRequest &pending) {
-                                if (pending.id != id) return false;
-                                expired.push_back(pending);
-                                return true;
-                            });
-                        v.erase(it, v.end());
-                    };
-                    take(s->queued);
-                    take(s->inFlight);
-                    take(s->converting);
+                    // Each physical readback has one failure episode, even
+                    // when it covers two Core request identities. Expiring
+                    // the whole owning batch is safe: every ID receives one
+                    // terminal completion, and its later timer finds no ID.
+                    if (!retireTimedOutReadbackBatch(s->inFlight, id, expired)
+                        && !retireTimedOutReadbackBatch(s->converting, id, expired))
+                        retireTimedOutReadbackBatch(s->queued, id, expired);
                 }
                 if (!expired.empty())
                     reportUnavailable(s, requestGeneration, std::move(expired),
