@@ -15,3 +15,18 @@ target_link_libraries(hyremote-qt68-gl-pbo-source-r4 PRIVATE
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(hyremote-qt68-gl-pbo-source-r4 PRIVATE -Wall -Wextra -Werror)
 endif()
+
+# Windows provider reuses the exact same real QQuickWindow/QSG four-quadrant
+# CaptureSource contract fixture. No new product Runtime or duplicate harness.
+if(WIN32)
+    add_executable(hyremote-qt68-d3d11-staging-source-r4
+        main.cpp
+        "${HYREMOTE_ROOT}/src/runtime/src/quick/quick_d3d11_staging_capture_source.cpp")
+    target_compile_definitions(hyremote-qt68-d3d11-staging-source-r4 PRIVATE
+        HYREMOTE_R4_D3D11=1)
+    target_compile_features(hyremote-qt68-d3d11-staging-source-r4 PRIVATE cxx_std_17)
+    target_include_directories(hyremote-qt68-d3d11-staging-source-r4 PRIVATE
+        "${HYREMOTE_ROOT}/src/runtime/src")
+    target_link_libraries(hyremote-qt68-d3d11-staging-source-r4 PRIVATE
+        hyremote-core Qt6::Core Qt6::Gui Qt6::Quick d3d11 dxgi)
+endif()
