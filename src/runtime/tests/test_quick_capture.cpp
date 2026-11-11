@@ -94,6 +94,39 @@ void testReadbackFrameStorageRowOrderAndPitch()
     };
     check(ReadbackRowOrder::TopDown, false);
     check(ReadbackRowOrder::BottomUp, true);
+
+    // Simulate D3D11 BGRA staging with RowPitch padding and verify that
+    // the shared CPU contract produces real RGBA bytes, not swapped colors.
+    std::array<std::byte, 24> bgra{};
+    bgra[0] = std::byte{0x41}; // B
+    bgra[1] = std::byte{0x32}; // G
+    bgra[2] = std::byte{0x23}; // R
+    bgra[3] = std::byte{0xff}; // A
+    bgra[12] = std::byte{0x54};
+    bgra[13] = std::byte{0x45};
+    bgra[14] = std::byte{0x36};
+    bgra[15] = std::byte{0xee};
+    auto normalized = copyReadbackFrameStorage(
+        bgra.data(), bgra.size(), 12, 8, 2, ReadbackRowOrder::TopDown,
+        HyRemote::detail::ReadbackPixelOrder::Bgra8888);
+    CHECK(normalized != nullptr);
+    if (normalized) {
+        const auto pixels = normalized->mapRead(0);
+        CHECK(pixels && pixels->data && pixels->stride == 8 && pixels->bytes >= 16);
+        if (pixels && pixels->data && pixels->bytes >= 16) {
+            CHECK(pixels->data[0] == std::byte{0x23});
+            CHECK(pixels->data[1] == std::byte{0x32});
+            CHECK(pixels->data[2] == std::byte{0x41});
+            CHECK(pixels->data[3] == std::byte{0xff});
+            CHECK(pixels->data[8] == std::byte{0x36});
+            CHECK(pixels->data[9] == std::byte{0x45});
+            CHECK(pixels->data[10] == std::byte{0x54});
+            CHECK(pixels->data[11] == std::byte{0xee});
+        }
+    }
+    CHECK(!copyReadbackFrameStorage(
+        bgra.data(), bgra.size(), 12, 7, 2, ReadbackRowOrder::TopDown,
+        HyRemote::detail::ReadbackPixelOrder::Bgra8888));
     CHECK(!copyReadbackFrameStorage(
         raw.data(), 19, 12, 8, 2, ReadbackRowOrder::BottomUp));
     CHECK(!copyReadbackFrameStorage(
@@ -145,7 +178,7 @@ void testQuickRendererCapabilityRouting()
         // An opt-in backend must never turn other render APIs into a PBO
         // route. Qualifying the provider is a Kit/build concern, not an
         // implicit promise that every Qt version or GL driver supports it.
-        const auto armed = selectQuickCaptureRoute(scenario.api, true);
+        const auto armed = selectQuickCaptureRoute(scenario.api, true, true);
         CHECK(armed.route ==
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
               QuickCaptureRoute::PublicQtGrabToImage);
@@ -156,7 +189,9 @@ void testQuickRendererCapabilityRouting()
 #else
               (scenario.backend == QuickCaptureBackend::OpenGL
                ? QuickCaptureRoute::ExperimentalOpenGlPbo
-               : QuickCaptureRoute::PublicQtGrabToImage));
+               : scenario.backend == QuickCaptureBackend::Direct3D11
+                 ? QuickCaptureRoute::ExperimentalD3d11Staging
+                 : QuickCaptureRoute::PublicQtGrabToImage));
         if (scenario.api == Api::OpenGL)
             CHECK(armed.renderingPath == QuickRenderingPath::Qt6Rhi);
 #endif
