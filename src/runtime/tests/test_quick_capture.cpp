@@ -45,6 +45,7 @@
 #include "detail/readback_frame_storage.hpp"
 #include "detail/cursor_mapping.hpp"
 #include "quick/quick_capture_backend.hpp"
+#include "quick/quick_readback_batch.hpp"
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
@@ -165,6 +166,82 @@ void testAdaptiveQuickSceneGraphInvalidationFailClosed()
     CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 82);
     backup->complete(82, true);
     CHECK(frames.size() == 2 && frames[1].storage);
+    source.stop();
+}
+
+void testNativeReadbackBatchTimeoutIsOneFailure()
+{
+    using hyremote::CaptureRequest;
+    const auto now = hyremote::Clock::now();
+    std::vector<CaptureRequest> submitted{{101, now}, {102, now}};
+    std::vector<CaptureRequest> queued{{103, now}};
+    std::vector<CaptureRequest> expired;
+    CHECK(HyRemote::detail::retireTimedOutReadbackBatch(
+        submitted, 102, expired));
+    CHECK(submitted.empty() && expired.size() == 2);
+    CHECK(expired[0].id == 101 && expired[1].id == 102);
+    CHECK(!HyRemote::detail::retireTimedOutReadbackBatch(
+        submitted, 101, expired)); // its later timer cannot publish again
+    CHECK(expired.size() == 2 && queued.size() == 1);
+    CHECK(!HyRemote::detail::retireTimedOutReadbackBatch(
+        queued, 102, expired)); // unrelated batch is not revoked
+    CHECK(queued.size() == 1);
+    CHECK(HyRemote::detail::retireTimedOutReadbackBatch(
+        queued, 103, expired));
+    CHECK(expired.size() == 3 && queued.empty());
+}
+
+void testAdaptiveNativeFailureEventCountsOncePerGpuBatch()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    std::vector<hyremote::RemoteFrame> frames;
+    int observedUnavailableEvents = 0;
+    CHECK(source.start([&](hyremote::RemoteFrame frame) {
+        frames.push_back(std::move(frame));
+    }, [&](const hyremote::CaptureEvent &event) {
+        if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable)
+            ++observedUnavailableEvents;
+    }));
+    CHECK(source.requestFrame({101, hyremote::Clock::now()}));
+    CHECK(source.requestFrame({102, hyremote::Clock::now()}));
+
+    // The same unsignaled GPU staging/PBO copy serves BOTH accepted IDs.
+    // Its one provider event arrives before the two empty completions.
+    hyremote::CaptureEvent unavailable;
+    unavailable.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+    unavailable.recoverable = true;
+    unavailable.message = "D3D11 staging Map not ready after bounded renders";
+    CHECK(static_cast<bool>(primary->onEvent));
+    primary->onEvent(unavailable);
+    primary->complete(101, false);
+    primary->complete(102, false);
+    CHECK(observedUnavailableEvents == 1);
+    CHECK(frames.size() == 2);
+    CHECK(!frames[0].storage && !frames[1].storage);
+    CHECK(frames[0].requestId && *frames[0].requestId == 101);
+    CHECK(frames[1].requestId && *frames[1].requestId == 102);
+
+    // One failed GPU readback does NOT permanently disable native.
+    CHECK(source.requestFrame({103, hyremote::Clock::now()}));
+    CHECK(primary->accepted.size() == 3 && primary->accepted.back() == 103);
+    CHECK(backup->accepted.empty());
+
+    // A SECOND independent provider event triggers one-way fallback.
+    unavailable.message = "D3D11 capture exceeded bounded deadline";
+    primary->onEvent(unavailable);
+    primary->complete(103, false);
+    CHECK(observedUnavailableEvents == 2);
+    CHECK(source.requestFrame({104, hyremote::Clock::now()}));
+    CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 104);
+    backup->complete(104, true);
+    CHECK(frames.size() == 4 && frames.back().storage);
+    primary->complete(101, true); // retired IDs must never re-enter Core
+    CHECK(frames.size() == 4);
     source.stop();
 }
 
@@ -1913,6 +1990,8 @@ int main(int argc, char **argv)
     }
 
     testAdaptiveQuickSceneGraphInvalidationFailClosed();
+    testNativeReadbackBatchTimeoutIsOneFailure();
+    testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
     testAdaptiveQuickMalformedNativeFramesTriggerFallback();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
