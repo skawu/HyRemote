@@ -95,13 +95,16 @@ def main():
                         viewer.captureScreen(str(current))
                         with Image.open(current) as frame:
                             rgb = frame.convert("RGB")
-                            marker_point = (round(245 * args.scale_factor),
-                                            round(140 * args.scale_factor))
+                            # Generic/Automatic Composite is frozen at one
+                            # output pixel per logical canvas unit (#806).
+                            # Its source child may render at DPR>1, but final
+                            # framebuffer and marker coordinates remain 1x.
+                            marker_point = (245, 140)
                             require(marker_point[0] < rgb.width
                                     and marker_point[1] < rgb.height,
                                     f"DPR capture produced undersized RFB image: "
                                     f"scale={args.scale_factor} frame={rgb.size} "
-                                    f"expected={(round(460*args.scale_factor),round(190*args.scale_factor))} "
+                                    f"expected=(460,190) under #806 logical composite contract "
                                     f"marker={marker_point}")
                             marker = rgb.getpixel(marker_point)
                         red = (0xdf, 0x25, 0x34)
@@ -117,10 +120,9 @@ def main():
                 shape, top_left, bottom_right = sample(png)
                 require(colors == {"red", "green"},
                         f"Real VNC did not display both independent QML source states: {colors}")
-                expected_size = (round(460 * args.scale_factor),
-                                 round(190 * args.scale_factor))
+                expected_size = (460, 190)  # approved Generic/QPA composite pixel grid #806
                 require(shape == expected_size,
-                        f"incorrect RFB physical framebuffer size at DPR={args.scale_factor}: "
+                        f"incorrect RFB logical composite framebuffer size at screen DPR={args.scale_factor}: "
                         f"actual={shape} expected={expected_size}")
                 if args.scale_factor != 1.0:
                     # The reported Windows DPR failure also closed the listener
@@ -144,6 +146,10 @@ def main():
                         "Generic activation did not preserve the original xcb platform")
                 require(trace.count("HYREMOTE_R4_QML_SOURCE_PHASE=") >= 2,
                         "Qt QML independent source Timer did not produce two real changes")
+                if args.scale_factor == 1.5:
+                    require("HYREMOTE_R4_QML_SCREEN_DPR=1.5" in trace,
+                            "Qt Quick test Screen did not report requested 1.5 DPR; "
+                            "cannot claim high-DPI coverage")
                 if args.arm == "ON":
                     require("HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE" in trace,
                             "ON product did not select the real experimental PBO CaptureSource")
@@ -158,7 +164,7 @@ def main():
                     "graphics_api": "OpenGL_RHI",
                     "pixel_size": list(shape),
                     "window_scale_factor": args.scale_factor,
-                    "physical_framebuffer_matches_scaled_window": shape == expected_size,
+                    "automatic_composite_logical_canvas_contract": shape == expected_size,
                     "reconnected_after_high_dpr": args.scale_factor != 1.0,
                     "top_left_rgb": top_left,
                     "bottom_right_rgb": bottom_right,
