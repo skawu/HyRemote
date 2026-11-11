@@ -521,9 +521,8 @@ private:
             || ctx->format().majorVersion() < 3)
             return;
         auto *gl = ctx->extraFunctions();
-        std::vector<hyremote::CaptureRequest> completed;
         std::vector<hyremote::CaptureRequest> failed;
-        std::shared_ptr<const hyremote::FrameStorage> frameStorage;
+        std::shared_ptr<std::vector<std::byte>> conversionData;
         std::uint64_t gen = 0;
         int frameWidth = 0, frameHeight = 0;
         float frameDpr = 1.f;
@@ -552,8 +551,8 @@ private:
                 return;
             }
             gen = s->generation;
-            if (!s->gpuPending && s->queued.empty())
-                return; // NO demand: no PBO allocation or readback GL work.
+            if (!s->gpuPending && (s->queued.empty() || s->cpuConversionPending))
+                return; // NO demand or bounded conversion still pending.
             if (!s->pbo)
                 gl->glGenBuffers(1, &s->pbo);
             if (!s->pbo) {
@@ -586,33 +585,38 @@ private:
                             static_cast<std::size_t>(s->pixelWidth) * 4u;
                         const std::size_t bytes =
                             stride * static_cast<std::size_t>(s->pixelHeight);
-                        auto storage = hyremote::CpuFrameStorage::createSinglePlane(
-                            stride, static_cast<std::size_t>(s->pixelHeight));
-                        std::byte *dest = storage ? storage->mutablePlane(0) : nullptr;
-                        const auto *mapped = static_cast<const std::byte *>(
-                            gl->glMapBufferRange(kPackTarget, 0, GLsizeiptr(bytes), kMapRead));
-                        if (mapped && dest) {
-                            for (int y=0; y<s->pixelHeight; ++y) {
-                                std::memcpy(dest + std::size_t(y)*stride,
-                                            mapped + std::size_t(s->pixelHeight-1-y)*stride,
-                                            stride);
-                            }
-                            frameStorage = std::move(storage);
+                        // GL context usage stays on Qt's render thread.
+                        // Copy mapped pixels ONCE to CPU memory, unmap, then
+                        // allocate/frame-flip on a separate bounded worker.
+                        std::shared_ptr<std::vector<std::byte>> owned;
+                        try {
+                            owned = std::make_shared<std::vector<std::byte>>(bytes);
+                        } catch (...) {
+                            // Out of memory is a recoverable capture failure.
+                        }
+                        const auto *mapped = owned ? static_cast<const std::byte *>(
+                            gl->glMapBufferRange(kPackTarget, 0, GLsizeiptr(bytes), kMapRead))
+                            : nullptr;
+                        if (mapped)
+                            std::memcpy(owned->data(), mapped, bytes);
+                        const bool mappingValid = mapped && gl->glUnmapBuffer(kPackTarget);
+                        if (mappingValid) {
+                            conversionData = std::move(owned);
                             frameWidth = s->pixelWidth;
                             frameHeight = s->pixelHeight;
                             frameDpr = s->dpr;
-                            completed.swap(s->inFlight);
+                            s->converting.swap(s->inFlight);
+                            s->cpuConversionPending = true;
                         } else {
                             failed.swap(s->inFlight);
                             failureReason = "GL PBO could not map owned CPU frame";
                         }
-                        if (mapped) gl->glUnmapBuffer(kPackTarget);
                         } // geometryMatches
                         gl->glDeleteSync(s->fence);
                         s->fence = nullptr;
                         s->gpuPending = false;
                         s->forcedRenders = 0;
-                        kickAgain = !s->queued.empty();
+                        kickAgain = !s->queued.empty() && !s->cpuConversionPending;
                     } else if (s->forcedRenders < 2) {
                         pumpAgain = true;
                     } else {
@@ -623,8 +627,9 @@ private:
                         s->gpuPending = false;
                     }
                 }
-                if (!s->gpuPending && !kickAgain && failed.empty()
-                    && completed.empty() && !s->queued.empty()) {
+                if (!s->gpuPending && !s->cpuConversionPending
+                    && !kickAgain && failed.empty()
+                    && !conversionData && !s->queued.empty()) {
                     const qreal dpr = window->effectiveDevicePixelRatio();
                     const int w = qRound(window->width()*dpr);
                     const int h = qRound(window->height()*dpr);
@@ -663,9 +668,16 @@ private:
                 gl->glPixelStorei(GL_PACK_ALIGNMENT, oldPack);
             }
         }
-        if (!completed.empty())
-            reportFrame(s, gen, std::move(completed),
-                        std::move(frameStorage), frameWidth, frameHeight, frameDpr);
+        if (conversionData) {
+            // At most one conversion per source. Fence polling remains
+            // nonblocking and CPU row inversion never blocks Scene Graph.
+            QThreadPool::globalInstance()->start(
+                [s, gen, raw = std::move(conversionData),
+                 frameWidth, frameHeight, frameDpr] {
+                    finishCpuConversion(s, gen, raw,
+                                        frameWidth, frameHeight, frameDpr);
+                });
+        }
         if (!failed.empty())
             reportUnavailable(s, gen, std::move(failed), failureReason);
         if (pumpAgain)
