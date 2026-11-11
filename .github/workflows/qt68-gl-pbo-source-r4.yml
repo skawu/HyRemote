@@ -117,22 +117,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp/r4-source
-          timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 | tee tmp/r4-source/$QSG_RENDER_LOOP.jsonl
+          for scenario in default resize; do
+            args=()
+            if [ "$scenario" = resize ]; then args+=(--resize); fi
+            timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 "${args[@]}" | tee "tmp/r4-source/$QSG_RENDER_LOOP-$scenario.jsonl"
+          done
           python - <<'PY'
           import json
           import os
           from pathlib import Path
-          log = Path("tmp/r4-source/" + os.environ["QSG_RENDER_LOOP"] + ".jsonl").read_text()
-          assert "R4_VERDICT=PASS_SCOPED_CAPTURE_SOURCE" in log, log
-          rows = [x.partition("=")[2] for x in log.splitlines() if x.startswith("R4_RESULT_JSON=")]
-          assert len(rows) == 1, rows
-          r = json.loads(rows[0])
-          assert r["qt"] == "6.8.3" and r["backend"] == "Qt6_RHI_OpenGL", r
-          assert r["phases_expected"] == r["owned_frames_validated"] == r["unique_request_ids"] == 12, r
-          assert r["stop_restart_cycles"] == 2 and r["abandoned_predispatch_request_isolated"] is True and r["late_callbacks_after_stop"] == r["errors"] == 0, r
-          assert r["hidden_unavailable_events"] == 1 and r["hidden_terminal_remote_frames"] == 1, r
-          assert r["qualified_for_product"] is False, r
-          print("R4_CAPTURE_SOURCE_RUNTIME_PIXEL_AND_LIFETIME=PASS_SCOPED", r)
+          for scenario in ("default", "resize"):
+              log = Path("tmp/r4-source/" + os.environ["QSG_RENDER_LOOP"] + "-" + scenario + ".jsonl").read_text()
+              assert "R4_VERDICT=PASS_SCOPED_CAPTURE_SOURCE" in log, log
+              rows = [x.partition("=")[2] for x in log.splitlines() if x.startswith("R4_RESULT_JSON=")]
+              assert len(rows) == 1, rows
+              r = json.loads(rows[0])
+              assert r["qt"] == "6.8.3" and r["backend"] == "Qt6_RHI_OpenGL", r
+              assert r["phases_expected"] == r["owned_frames_validated"] == r["unique_request_ids"] == 12, r
+              assert r["stop_restart_cycles"] == 2 and r["abandoned_predispatch_request_isolated"] is True and r["late_callbacks_after_stop"] == r["errors"] == 0, r
+              assert r["hidden_unavailable_events"] == 1 and r["hidden_terminal_remote_frames"] == 1, r
+              assert r["resize_scenario"] is (scenario == "resize"), r
+              assert r["resize_verified"] is (scenario == "resize"), r
+              assert r["final_pixel_size"] == ([800,450] if scenario == "resize" else [640,360]), r
+              assert r["qualified_for_product"] is False, r
+              print("R4_CAPTURE_SOURCE_RUNTIME_PIXEL_RESIZE_AND_LIFETIME=PASS_SCOPED", scenario, r)
           PY
       - name: Publish only source test JSON, not installation files
         if: always()
