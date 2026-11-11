@@ -47,6 +47,7 @@
 #  include <QDebug>
 #endif
 #include "quick/quick_capture_single_flight.hpp"
+#include "quick/quick_grab_geometry.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -55,10 +56,11 @@
 namespace HyRemote::detail {
 namespace {
 
-// Qt Quick geometry is logical; grabToImage(targetSize) returns the requested
-// pixel grid. Direct Quick uses native physical pixels. Automatic multi-Surface
-// composition explicitly uses one pixel per logical canvas unit (#806), so its
-// child Quick grab stays logical and its OUTPUT DPR is 1.
+// Qt Quick output frame geometry is expressed in pixels, while grabToImage's
+// targetSize is NOT the same pixel contract across Qt versions: Qt5 takes it
+// literally, Qt6 multiplies it by the window's effective device pixel ratio.
+// See tagged qtdeclarative qquickitemgrabresult.cpp and quick_grab_geometry.hpp.
+// Direct Quick exports physical pixels; Automatic composite exports 1x logical.
 inline qreal quickWindowDpr(const QQuickWindow *window) noexcept
 {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -512,14 +514,10 @@ private:
         prototype.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         prototype.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         prototype.geometry.planeCount = 1;
-        // This is the OUTPUT pixel-grid ratio, not an arbitrary image/monitor
-        // tag: Automatic composite children use DPR=1 (#806), direct Quick
-        // uses the real physical Qt window DPR.
-        prototype.geometry.devicePixelRatio = static_cast<float>(
-            state->logicalPixelsForComposite
-                ? static_cast<qreal>(image.width())
-                    / static_cast<qreal>(window->width())
-                : expectedDpr);
+        // Metadata describes the owned OUTPUT canvas contract. The Qt6
+        // offscreen texture may round fractional DPR into +/-1 buffer pixel;
+        // that rounding does not change the logical Composite canvas DPR.
+        prototype.geometry.devicePixelRatio = static_cast<float>(expectedDpr);
         prototype.storage = std::move(storage);
         prototype.timing.ptsSource = hyremote::PtsSource::Completion;
         prototype.timing.completionTime = completion;
@@ -581,6 +579,13 @@ private:
         const auto grab = std::make_shared<GrabAttempt>();
         grab->requestedPixelSize = pixelSize;
         grab->windowDpr = quickWindowDpr(window);
+        const QSize qtTargetSize = quickGrabTargetForOutput(
+            pixelSize, window->size(), grab->windowDpr,
+            state->logicalPixelsForComposite);
+        if (qtTargetSize.isEmpty()) {
+            retryLater(state, batch, attempt, 100);
+            return;
+        }
         grab->requestedDpr = state->logicalPixelsForComposite
             ? 1.0 : grab->windowDpr;
         // RendererInterface is Qt's public backend identity, not evidence
@@ -605,7 +610,7 @@ private:
 #endif
         {
             HYREMOTE_P1_SCOPE(QuickGrabSubmit);
-            grab->result = content->grabToImage(pixelSize);
+            grab->result = content->grabToImage(qtTargetSize);
         }
         if (grab->result.isNull()) {
             retryLater(state, batch, attempt, 100);
