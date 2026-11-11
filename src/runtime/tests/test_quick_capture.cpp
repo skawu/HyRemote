@@ -186,6 +186,14 @@ void testQuickRendererCapabilityRouting()
             CHECK(armed.renderingPath == QuickRenderingPath::Qt5Direct);
         if (scenario.api == Api::OpenGLRhi)
             CHECK(armed.renderingPath == QuickRenderingPath::Qt5EarlyRhi);
+        // Qt5 direct-GL is opt-in and may use the shared PBO implementation,
+        // but never confuse its render phase with Qt5's early RHI path.
+        const auto qt5Gl = selectQuickCaptureRoute(scenario.api,
+                                                  true, true, true);
+        CHECK(qt5Gl.route ==
+              (scenario.api == Api::OpenGL
+                  ? QuickCaptureRoute::ExperimentalOpenGlPbo
+                  : QuickCaptureRoute::PublicQtGrabToImage));
 #else
               (scenario.backend == QuickCaptureBackend::OpenGL
                ? QuickCaptureRoute::ExperimentalOpenGlPbo
