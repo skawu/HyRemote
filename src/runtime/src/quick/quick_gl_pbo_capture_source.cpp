@@ -762,6 +762,8 @@ private:
                             frameHeight = s->pixelHeight;
                             frameDpr = s->dpr;
                             frameRenderTime = s->readbackRenderTime;
+                            for (const auto &request : s->inFlight)
+                                HYREMOTE_P1_TRACE_REQUEST(GpuReadbackReady, request);
                             s->converting.swap(s->inFlight);
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
@@ -829,6 +831,8 @@ private:
                             s->readbackRenderTime = hyremote::Clock::now();
                             s->forcedRenders = 0;
                             s->inFlight.swap(s->queued);
+                            for (const auto &request : s->inFlight)
+                                HYREMOTE_P1_TRACE_REQUEST(GpuReadbackSubmitted, request);
                             pumpAgain = true;
                         } else {
                             if (s->fence) gl->glDeleteSync(s->fence);
