@@ -108,6 +108,48 @@ bool expectOwnGrabDoesNotWakeStaticWait(Gate &gate)
                  "self-induced Qt grab update retriggered static capture");
 }
 
+bool testQtActivityClassification()
+{
+    // This is the exact semantic distinction absent in #952's first
+    // Windows A1/B/A2: most Qt render signals do NOT release idle gating.
+    // afterAnimating may originate from grabToImage() itself.
+    Gate gate;
+    using Reason = Gate::ActivityResult;
+    if (!check(gate.noteQtRenderActivity() == Reason::Stopped,
+               "stopped session accepted Qt render activity"))
+        return false;
+    gate.start();
+    if (!check(gate.noteQtRenderActivity() == Reason::NoViewer,
+               "zero-viewer activity bypassed capture admission"))
+        return false;
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    if (!check(gate.noteQtRenderActivity() == Reason::AlreadyActive,
+               "already-active capture was rearmed unnecessarily"))
+        return false;
+    for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i)
+        gate.noteFrameChange(false);
+    gate.noteCaptureStarted();
+    if (!check(gate.noteQtRenderActivity() == Reason::CaptureInFlight,
+               "our own in-flight grab unexpectedly rearmed idle capture"))
+        return false;
+    gate.noteCaptureCompleted();
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.noteQtRenderActivity() == Reason::DeliveryBackpressure,
+               "Qt activity bypassed transport backpressure"))
+        return false;
+    gate.noteDeliveryBackpressure(false);
+    if (!check(gate.noteQtRenderActivity() == Reason::ReleasedStaticWait,
+               "idle-ready Qt activity failed to release bounded static probe"))
+        return false;
+    if (!check(gate.noteQtRenderActivity() == Reason::AlreadyActive,
+               "same Qt update repeatedly reset active frame counting"))
+        return false;
+    gate.stop();
+    return check(gate.noteQtRenderActivity() == Reason::Stopped,
+                 "Qt activity still accepted after stop");
+}
+
 void enterStaticGate(Gate &gate)
 {
     gate.start();
@@ -121,6 +163,8 @@ void enterStaticGate(Gate &gate)
 
 int main()
 {
+    if (!testQtActivityClassification())
+        return 18;
     Gate gate;
     enterStaticGate(gate);
     if (!check(Gate::kStaticProbeInterval == 250ms,
