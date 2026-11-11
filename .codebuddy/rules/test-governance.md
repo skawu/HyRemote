@@ -13,9 +13,10 @@ paths:
 
 Root `AGENTS.md` remains the single execution entry.
 
-- Before adding, modifying or executing any test (CTest, scratch script,
-  physical scenario, stress/scan), justify it item by item and obtain Human
-  confirmation. Each item must state: (1) name and concrete goal; (2) the real
+- Before adding, modifying or executing any test (CTest, planned registered
+  script, physical scenario, stress/scan), justify it item by item and obtain
+  Human confirmation. A throwaway scratch script is not an admissible test
+  type; see `script-planning/SKILL.md`. Each item must state: (1) name and concrete goal; (2) the real
   risk or requirement; (3) why existing evidence, code review or current
   tests cannot replace it; (4) exact timing, environment, scope and maximum
   number of runs; (5) PASS/FAIL criteria, cost of not running, and expected

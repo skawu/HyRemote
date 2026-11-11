@@ -10,8 +10,8 @@ may redefine product scope, architecture, release authority or acceptance gates.
 | Path | Loaded by CodeBuddy | Purpose |
 |---|---|---|
 | `AGENTS.md` (repo root) | yes, as project guidance | authority order, architecture invariants, stop/continuation contract |
-| `.codebuddy/rules/*.md` | yes, project-level Rules | focused, single-responsibility operating constraints |
-| `.codebuddy/skills/<name>/SKILL.md` | yes, project-level Skills | reusable execution workflows |
+| `.codebuddy/rules/*.md` | **injected by the client**, `alwaysApply: true` every turn or conditional by `paths` | small operating constraints; an injection layer, not a hard block |
+| `.codebuddy/skills/<name>/SKILL.md` | yes, project-level Skills | on-demand detailed procedures; no context cost when unused |
 | `.codebuddy/memory/MEMORY.md` + topic files | this directory is the versioned copy | durable long-term memory |
 | `memory/archive/legacy-durable-index.md` | in git, not indexed | superseded 2026-09 durable index, kept for provenance |
 | `memory/20??-??-*.md`, `daily/`, `archive/MEMORY-2026-09-19-pre-distill.md` | **excluded from git** | per-task daily chronicles only |
@@ -26,15 +26,65 @@ Per CodeBuddy docs, project-level Rules load only from the current workspace's
 
 | Rule | Applies when |
 |---|---|
-| `session-anchor.md` | **every turn** (`alwaysApply: true`), deliberately under 20 lines |
+| `session-anchor.md` | **every turn** (`alwaysApply: true`), deliberately short |
 | `build-and-test-authority.md` | touching `build.cmd`, `build.yml`, CMake files or CI workflows |
-| `evidence-and-workspace-discipline.md` | writing evidence/probes under `tmp/`, `tools/perf/`, `docs/internal/` |
+| `evidence-and-workspace-discipline.md` | writing evidence/logs, creating scripts, one-off compiles, `git status` |
 | `test-governance.md` | adding/modifying/executing tests, physical scenarios or CI waits |
 
 Exactly one rule is always-on. It is short on purpose: a long always-on rule
 recreates the context dilution it is meant to fix. The other three are
 conditional so they cost no context on unrelated turns. Broad generic wording
 without an identified, previously observed failure mode is not accepted.
+
+### Why the enforcement lives here, not in a document
+
+A rule in `docs/` or in root `AGENTS.md` only works if the current session
+happens to read it. Project-level Rules with `alwaysApply: true` are injected by
+the client into **every** session on this checkout, without a read decision,
+and project-level Skills are discovered from `.codebuddy/skills/`. That is the
+only mechanism layer used here. The design deliberately does **not** touch
+user-level `settings.json`, plugin enablement, native hook configuration, hook
+scripts or interpreter paths — those are client internals whose failure would
+affect normal CodeBuddy operation.
+
+`session-anchor.md` carries the short gates (script contract before any new
+script, three hard rules, end-of-turn verification); `script-planning/SKILL.md`
+carries the full procedure on demand. Client-side injection is a soft
+constraint, so merge-level enforcement is handled separately below.
+
+## Merge-level enforcement (machine, not memory)
+
+`tests/release-readiness/check_script_discipline.cmake` is registered in the
+`facts-layout` group of `tests/release-readiness/run_grouped_checks.cmake`. It
+runs in the Qt-free `authority-governance` lane; `ci-merge-verdict` requires that
+lane to succeed, and the protected develop ruleset requires `ci-merge-verdict`.
+No client setting, plugin or hook is involved.
+
+The guard fails closed when:
+
+- the anchor, the workspace rule or the `script-planning` Skill is removed, or
+  the anchor loses `alwaysApply: true` / the `tmp/` script gate;
+- any executable script lives outside the planned directories
+  (`tmp/`, the repository root and `.codebuddy/` are always rejected);
+- a new tracked script is not declared in
+  `tests/release-readiness/script_inventory.txt` (the planned register), or a
+  declared script no longer exists;
+- the guard is no longer registered in the grouped runner.
+
+`script_inventory.txt` is the planned register: declare a new script there
+during task planning, before creating it. It doubles as the archive-safe
+inventory, so a released source archive without `.git` runs the same
+facts-layout CTest without any Git dependency.
+
+`.github/scripts/resolve-ci-scope.py` turns governance on for any PR that adds
+or edits an executable script, changes `.codebuddy/` assets, or edits the guard
+or its registration. This is additive: it only enables the cheap governance lane
+and never changes product lane selection. Both the guard and the classifier
+carry self-tests with positive and negative cases.
+
+Remaining limit: the guard sees tracked files, so an untracked scratch script
+that never enters a PR is invisible to it. Client-side Rules cover that case by
+injection, but only as a soft constraint.
 
 ### Why `session-anchor.md` exists
 
@@ -53,6 +103,11 @@ Discovery entry is `.codebuddy/skills/<name>/SKILL.md`. On this client the
 is the project-owned Skill restored from commit `42cf41e` after `9078c1e`
 moved it to the non-discoverable path. Its debugging-discipline section is
 adapted from `obra/superpowers` `systematic-debugging` v7.0.1 (MIT).
+
+`script-planning` is the second project Skill. It is the detailed procedure
+behind the script-contract gate in `session-anchor.md`: contract before file,
+planned tracked directories only, parameterise instead of copying, `/Fo` for
+one-off compiles, and an end-of-turn verification list.
 
 The Spec Kit pilot Skills (`speckit-*`) are intentionally **not** restored:
 their pilot conclusion recorded unverified productivity gain and a missing
