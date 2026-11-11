@@ -43,6 +43,7 @@
 #include "detail/readback_frame_storage.hpp"
 #include "detail/cursor_mapping.hpp"
 #include "quick/quick_capture_backend.hpp"
+#include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
@@ -62,6 +63,28 @@ int failures = 0;
 // A single Qt-free CPU normalization contract is used by the GL provider and
 // can also handle pitched D3D staging and Qt5 source rows without QtPrivate.
 // These fixtures deliberately avoid any GPU or platform dependency.
+void testQuickOpaqueRgbxCpuStorageIsZeroCopy()
+{
+    QImage opaque(3, 2, QImage::Format_RGBX8888);
+    opaque.fill(QColor(19, 58, 113));
+    const auto *ownerBytes = opaque.constBits();
+    CHECK(ownerBytes != nullptr);
+    auto storage = HyRemote::detail::QuickImageFrameStorage::create(opaque);
+    CHECK(storage != nullptr);
+    if (!storage)
+        return;
+    opaque = QImage(); // FrameStorage must retain the sole lifetime anchor
+    auto mapped = storage->mapRead(0);
+    CHECK(mapped && mapped->data && mapped->stride >= 12 && mapped->bytes >= 24);
+    if (mapped && mapped->data && mapped->bytes >= 4) {
+        CHECK(reinterpret_cast<const uchar *>(mapped->data) == ownerBytes);
+        CHECK(mapped->data[0] == std::byte{19});
+        CHECK(mapped->data[1] == std::byte{58});
+        CHECK(mapped->data[2] == std::byte{113});
+        CHECK(mapped->data[3] == std::byte{255});
+    }
+}
+
 void testReadbackFrameStorageRowOrderAndPitch()
 {
     using HyRemote::detail::ReadbackRowOrder;
@@ -1519,6 +1542,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testQuickOpaqueRgbxCpuStorageIsZeroCopy();
     testReadbackFrameStorageRowOrderAndPitch();
     testQuickRendererCapabilityRouting();
     testQuickFactoryAndOwnedFrame();
