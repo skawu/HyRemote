@@ -156,7 +156,11 @@ inline constexpr std::array<const char *,
 // without modifying the RFB wire format or making Core depend on Qt.
 // These records are local steady-clock timestamps, NOT Viewer presentation.
 enum class FrameStep : std::uint8_t {
+    QtActivityHint,
     CaptureRequest,
+    QuickGrabSubmitted,
+    GpuReadbackSubmitted,
+    GpuReadbackReady,
     SourceCompleted,
     CompositeCompleted,
     CoreFrameQueued,
@@ -168,7 +172,9 @@ enum class FrameStep : std::uint8_t {
 };
 
 inline constexpr std::array<const char *, static_cast<std::size_t>(FrameStep::Count)>
-    kFrameStepNames{"capture_request", "source_completed", "composite_completed",
+    kFrameStepNames{"qt_activity_hint", "capture_request", "quick_grab_submitted",
+                    "gpu_readback_submitted", "gpu_readback_ready",
+                    "source_completed", "composite_completed",
                     "core_frame_queued", "rfb_observed", "rfb_compared",
                     "rfb_encoded", "rfb_socket_queued"};
 
@@ -552,6 +558,9 @@ inline void addAsyncWall(Stage stage, std::chrono::steady_clock::duration durati
 #define HYREMOTE_P1_BYTES(stage, bytes) \
     ::HyRemote::detail::p1perf::addBytes(::HyRemote::detail::p1perf::Stage::stage, \
                                         static_cast<std::uint64_t>(bytes))
+#define HYREMOTE_P1_TRACE_HINT(stage) \
+    ::HyRemote::detail::p1perf::Recorder::instance().traceFrame( \
+        ::HyRemote::detail::p1perf::FrameStep::stage, 0, 0, 0, 0, 0)
 #define HYREMOTE_P1_TRACE_REQUEST(stage, request) \
     ::HyRemote::detail::p1perf::traceRequestFrame( \
         ::HyRemote::detail::p1perf::FrameStep::stage, request)
@@ -563,6 +572,7 @@ inline void addAsyncWall(Stage stage, std::chrono::steady_clock::duration durati
 #define HYREMOTE_P1_COUNT(stage) ((void)0)
 #define HYREMOTE_P1_QUICK_BACKEND(backend) ((void)0)
 #define HYREMOTE_P1_BYTES(stage, bytes) ((void)0)
+#define HYREMOTE_P1_TRACE_HINT(stage) ((void)0)
 #define HYREMOTE_P1_TRACE_REQUEST(stage, request) ((void)0)
 #define HYREMOTE_P1_TRACE_FRAME(stage, frame, viewer) ((void)0)
 #endif
