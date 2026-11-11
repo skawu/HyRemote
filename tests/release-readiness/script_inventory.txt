@@ -25,6 +25,7 @@ tests/product-e2e/qml_product_fit.py
 tests/release-readiness/verify_linux_dependency_origin.py
 tests/release-readiness/verify_linux_deployed_elf_paths.py
 tests/v01-examples/example_adoption_smoke.py
+tools/local-owner/guard_workspace_boundary.py
 tools/local-owner/guard_scratch_writes.py
 tools/local-owner/register-worker.ps1
 tools/local-owner/worker.py
