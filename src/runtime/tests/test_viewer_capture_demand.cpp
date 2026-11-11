@@ -191,6 +191,9 @@ int main()
     if (!expectOwnGrabDoesNotWakeStaticWait(gate))
         return 14;
     gate.stop();
+    // This next scenario belongs to a fresh live Session, not the gate
+    // stopped by the preceding independent activity-gating test.
+    enterStaticGate(gate);
 
     // Removing the last viewer must NOT make capture run. It remains sleeping
     // until a subsequent real connection; reconnect then requires full init.
