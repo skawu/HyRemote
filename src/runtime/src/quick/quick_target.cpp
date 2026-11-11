@@ -37,6 +37,11 @@
 #include "quick/quick_capture_backend.hpp"
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
 #  include "quick/quick_gl_pbo_capture_source.hpp"
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+#  include "quick/quick_d3d11_staging_capture_source.hpp"
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO) || defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
 #  include <QDebug>
 #endif
 #include "quick/quick_capture_single_flight.hpp"
@@ -900,16 +905,35 @@ TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEn
         return result;
 
     result.supported = true;
-#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO) || defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
     const auto *ri = window->rendererInterface();
     const auto selection = selectQuickCaptureRoute(
         ri ? ri->graphicsApi() : QSGRendererInterface::Unknown,
-        true /* exact Qt Kit / experimental provider already gated by CMake */);
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+        true,
+#else
+        false,
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+        true
+#else
+        false
+#endif
+    );
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
         result.capture = createExperimentalQuickGlPboCaptureSource(window);
-    } else {
-        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_FALLBACK_NO_GL_RHI";
+    }
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+    if (selection.route == QuickCaptureRoute::ExperimentalD3d11Staging) {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=D3D11_STAGING_SOURCE";
+        result.capture = createExperimentalQuickD3d11StagingCaptureSource(window);
+    }
+#endif
+    if (!result.capture) {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_QT_FALLBACK";
         result.capture = std::make_unique<QuickCaptureSource>(window);
     }
 #else
