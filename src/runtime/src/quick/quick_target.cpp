@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -53,6 +54,34 @@
 
 namespace HyRemote::detail {
 namespace {
+
+// Qt Quick's window/item geometry is in device-independent coordinates,
+// whereas RFB and RemoteFrame::geometry.size describe ACTUAL pixels.
+// QQuickItem::grabToImage(targetSize) renders the requested output size;
+// passing logical QSize produces an undersized framebuffer for DPR != 1.
+// Use the same physical-grid policy as the Runtime's ServerInit contract.
+inline qreal quickWindowDpr(const QQuickWindow *window) noexcept
+{
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    return window->devicePixelRatio();
+#else
+    return window->effectiveDevicePixelRatio();
+#endif
+}
+
+inline QSize quickPhysicalSize(const QQuickWindow *window) noexcept
+{
+    const qreal dpr = quickWindowDpr(window);
+    if (!std::isfinite(dpr) || dpr <= 0.0)
+        return {};
+    const qreal width = static_cast<qreal>(window->width()) * dpr;
+    const qreal height = static_cast<qreal>(window->height()) * dpr;
+    if (!std::isfinite(width) || !std::isfinite(height)
+        || width < 1.0 || height < 1.0
+        || width > 65535.0 || height > 65535.0)
+        return {};
+    return QSize(qRound(width), qRound(height));
+}
 
 class QuickCaptureSource final : public hyremote::CaptureSource
 {
@@ -174,6 +203,8 @@ private:
     {
         bool finished = false;
         QSharedPointer<QQuickItemGrabResult> result;
+        QSize requestedPixelSize;
+        qreal requestedDpr = 1.0;
         QMetaObject::Connection readyConnection;
         QPointer<QTimer> timeoutTimer; // GUI-thread-only, cancelled when ready
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
@@ -338,7 +369,9 @@ private:
     static void publishImage(const std::shared_ptr<State> &state,
                              const GrabBatchPtr &batch,
                              unsigned int attempt,
-                             const QImage &grabbed)
+                             const QImage &grabbed,
+                             const QSize &expectedPixelSize,
+                             qreal expectedDpr)
     {
         if (!isActive(state, batch->generation))
             return;
@@ -350,6 +383,16 @@ private:
             return;
         }
         if (grabbed.isNull()) {
+            retryLater(state, batch, attempt, 100);
+            return;
+        }
+        // An asynchronous grab may finish after a DPR change or resize.
+        // Never publish old-size pixels under a new RFB Surface identity.
+        const auto *window = state->target.data();
+        if (!window || expectedPixelSize.isEmpty()
+            || grabbed.size() != expectedPixelSize
+            || quickPhysicalSize(window) != expectedPixelSize
+            || std::abs(quickWindowDpr(window) - expectedDpr) > 0.0001) {
             retryLater(state, batch, attempt, 100);
             return;
         }
@@ -441,8 +484,10 @@ private:
         prototype.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         prototype.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         prototype.geometry.planeCount = 1;
-        prototype.geometry.devicePixelRatio =
-            image.devicePixelRatio() > 0.0 ? static_cast<float>(image.devicePixelRatio()) : 1.0F;
+        // Grabbed QImage can have DPR=1 even though the Qt window itself
+        // rendered at 1.5 or 2.0. This is the producing window's true DPR,
+        // captured with the pixel target and checked again on completion.
+        prototype.geometry.devicePixelRatio = static_cast<float>(expectedDpr);
         prototype.storage = std::move(storage);
         prototype.timing.ptsSource = hyremote::PtsSource::Completion;
         prototype.timing.completionTime = completion;
@@ -492,10 +537,17 @@ private:
             return;
         }
 
-        // grabToImage() takes logical item dimensions and applies DPR itself.
-        const QSize logicalSize(qMax(1, qCeil(window->width())),
-                                qMax(1, qCeil(window->height())));
+        // RFB ServerInit and native GL/D3D readbacks use physical pixels.
+        // grabToImage() takes an OUTPUT QSize; it does not implicitly scale
+        // the explicit targetSize by the window's device pixel ratio.
+        const QSize physicalSize = quickPhysicalSize(window);
+        if (physicalSize.isEmpty()) {
+            retryLater(state, batch, attempt, 100);
+            return;
+        }
         const auto grab = std::make_shared<GrabAttempt>();
+        grab->requestedPixelSize = physicalSize;
+        grab->requestedDpr = quickWindowDpr(window);
         // RendererInterface is Qt's public backend identity, not evidence
         // of permission for a private GPU readback implementation. Public
         // Qt capture is the selected route on software/GL/D3D/Vulkan/Metal,
@@ -518,7 +570,7 @@ private:
 #endif
         {
             HYREMOTE_P1_SCOPE(QuickGrabSubmit);
-            grab->result = content->grabToImage(logicalSize);
+            grab->result = content->grabToImage(physicalSize);
         }
         if (grab->result.isNull()) {
             retryLater(state, batch, attempt, 100);
@@ -555,7 +607,8 @@ private:
 #endif
                 const QImage image = grab->result ? grab->result->image() : QImage();
                 grab->result.clear();
-                publishImage(state, batch, attempt, image);
+                publishImage(state, batch, attempt, image,
+                             grab->requestedPixelSize, grab->requestedDpr);
             });
 
         // The deadline is owned by the GUI dispatcher and uses Qt's normal
