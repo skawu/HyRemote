@@ -35,7 +35,11 @@ int main(int argc, char **argv)
     std::cerr << "requires opt-in Linux probe compilation\n";
     return 1;
 #else
-    if (argc != 2 || setenv("HYREMOTE_CPU_PROBE_FILE", argv[1], 1) != 0)
+    if (argc != 2)
+        return 2;
+    const std::string tracePath = std::string(argv[1]) + ".frames.jsonl";
+    if (setenv("HYREMOTE_CPU_PROBE_FILE", argv[1], 1) != 0
+        || setenv("HYREMOTE_FRAME_TRACE_FILE", tracePath.c_str(), 1) != 0)
         return 2;
 
     using namespace HyRemote::detail::p1perf;
@@ -46,8 +50,15 @@ int main(int argc, char **argv)
         return 3;
 
     auto &recorder = Recorder::instance();
-    if (!check(recorder.enabled(), "opt-in recorder did not enable"))
+    if (!check(recorder.enabled() && recorder.frameTraceEnabled(),
+               "opt-in recorder/frame trace did not enable"))
         return 4;
+    // Exercise real bounded frame-step event serialization without Qt.
+    // The main aggregate JSONL schema=2 remains the first log entry.
+    recorder.traceFrame(FrameStep::CaptureRequest, 0, 17, 0, 100, 0);
+    recorder.traceFrame(FrameStep::SourceCompleted, 0, 17, 900, 100, 850);
+    recorder.traceFrame(FrameStep::CoreFrameQueued, 8, 17, 900, 100, 850);
+    recorder.traceFrame(FrameStep::RfbSocketQueued, 8, 17, 900, 100, 850, 2);
 
     {
         HYREMOTE_P1_SCOPE(RfbCompare);
@@ -99,8 +110,29 @@ int main(int argc, char **argv)
                   "CPU stage samples missing"))
         return 7;
 
-    std::cout << "PASS Linux unprivileged process/thread clocks, "
-                 "actual RfbCompare stage CPU and privacy-safe JSON\n";
+    // Legacy CPU parser still sees ONLY schema=2 rows. Frame records
+    // must be in their own file and not appended to that old format.
+    if (!check(!static_cast<bool>(std::getline(stream, json)),
+               "frame steps unexpectedly contaminated aggregate CPU JSONL"))
+        return 8;
+    std::ifstream frameStream(tracePath);
+    std::string trace;
+    std::size_t traceEvents = 0;
+    bool sawViewer = false;
+    while (std::getline(frameStream, trace)) {
+        if (trace.find("\"type\":\"frame_step\"") == std::string::npos)
+            continue;
+        ++traceEvents;
+        if (trace.find("\"viewer_id\":2") != std::string::npos
+            && trace.find("\"frame_id\":8") != std::string::npos)
+            sawViewer = true;
+    }
+    if (!check(traceEvents == 4 && sawViewer,
+               "bounded trace did not flush four correlated frame events"))
+        return 8;
+
+    std::cout << "PASS Linux unprivileged CPU clocks, stage attribution, "
+                 "bounded per-frame host chronology, viewer identity, JSONL\n";
     return 0;
 #endif
 }

@@ -17,6 +17,17 @@ namespace HyRemote::detail {
 class ViewerCaptureDemand final
 {
 public:
+    // An afterAnimating signal is merely a Qt render-loop ACTIVITY hint.
+    // Recording a reason here prevents a fake "hint-to-request latency"
+    // from being reported as actual scheduler wakeup gain.
+    enum class ActivityResult {
+        Stopped,
+        NoViewer,
+        CaptureInFlight,
+        DeliveryBackpressure,
+        AlreadyActive,
+        ReleasedStaticWait
+    };
     // A local-only Qt Quick page change still becomes visible through the next bounded probe.
     // Do not rely solely on QQuickWindow rendering signals: offscreen grabs can generate them.
     // #789: matched 1080p A/B/A static tests showed about half the capture
@@ -45,6 +56,7 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         m_stopped = false;
         m_viewers = 0;
+        m_capturesInFlight = 0;
         m_bootstrapFrameQueued = false;
         m_deliveryBackpressured = false;
         m_noViewerUpdateDemand = false;
@@ -152,6 +164,54 @@ public:
         m_changed.notify_all();
     }
 
+    // Qt 5.15 and Qt 6.8 both emit QQuickWindow::afterAnimating on the
+    // GUI thread before scenegraph synchronization. This is only an ACTIVITY
+    // hint, never trustworthy damage or proof of a different pixel.
+    //
+    // A public grabToImage() itself schedules a Qt update. Suppress render
+    // hints while a Core-authorized capture is outstanding or the grab would
+    // retrigger itself forever at 60fps on an otherwise static surface.
+    // A genuine UI change concurrent with a grab remains covered by the
+    // captured pixels or the existing bounded 250ms freshness probe.
+    void noteCaptureStarted()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_stopped)
+            ++m_capturesInFlight;
+    }
+
+    void noteCaptureCompleted()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_capturesInFlight != 0)
+            --m_capturesInFlight;
+    }
+
+    ActivityResult noteQtRenderActivity()
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_stopped)
+                return ActivityResult::Stopped;
+            if (m_viewers == 0)
+                return ActivityResult::NoViewer;
+            if (m_capturesInFlight != 0)
+                return ActivityResult::CaptureInFlight;
+            // A render hint is NOT an explicit Viewer refresh request.
+            // It must never spend the single-use backpressure escape.
+            if (m_deliveryBackpressured)
+                return ActivityResult::DeliveryBackpressure;
+            // Already-active capture should not be rearmed by the Qt
+            // render loop itself; this was causing even unchanged scenes
+            // to stay in the 60fps mode just because Qt kept rendering.
+            if (m_identicalFrames < kConsecutiveUnchangedFrames)
+                return ActivityResult::AlreadyActive;
+            resetIdleLocked();
+        }
+        m_changed.notify_all();
+        return ActivityResult::ReleasedStaticWait;
+    }
+
     bool waitForViewer()
     {
         std::unique_lock<std::mutex> lock(m_mutex);
@@ -208,6 +268,7 @@ public:
             std::lock_guard<std::mutex> lock(m_mutex);
             m_stopped = true;
             m_viewers = 0;
+            m_capturesInFlight = 0;
             m_deliveryBackpressured = false;
             m_noViewerUpdateDemand = false;
             m_nextNoDemandProbe = {};
@@ -229,6 +290,7 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_changed;
     std::size_t m_viewers = 0;
+    std::size_t m_capturesInFlight = 0;
     std::size_t m_identicalFrames = 0;
     Clock::time_point m_nextStaticProbe{};
     bool m_bootstrapFrameQueued = false;

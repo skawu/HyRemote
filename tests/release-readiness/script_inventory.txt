@@ -1,6 +1,6 @@
 .github/release/resolve-release-tag.py
-.github/scripts/check_review_dispositions.py
 .github/scripts/check-pr-branch-name.sh
+.github/scripts/check_review_dispositions.py
 .github/scripts/drain-superseded-v1-runs.ps1
 .github/scripts/finalize-v1-repository-settings.ps1
 .github/scripts/install-linux-qt-desktop-deps.sh
@@ -29,4 +29,7 @@ tools/local-owner/guard_scratch_writes.py
 tools/local-owner/register-worker.ps1
 tools/local-owner/worker.py
 tools/perf/aggregate_cpu_probe.py
+tools/perf/analyze_frame_trace.py
 tools/perf/assess_quick_public_profile.py
+tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py
+tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py

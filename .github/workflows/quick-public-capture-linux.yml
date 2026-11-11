@@ -10,6 +10,8 @@ on:
       - .github/workflows/quick-public-capture-linux.yml
       - src/runtime/src/quick/**
       - src/runtime/src/detail/perf_probe.hpp
+      - src/runtime/src/detail/viewer_capture_demand.hpp
+      - src/runtime/tests/test_viewer_capture_demand.cpp
       - src/runtime/tests/test_cpu_probe_linux_clock.cpp
       - tools/perf/aggregate_cpu_probe.py
       - tools/perf/assess_quick_public_profile.py
@@ -72,7 +74,8 @@ jobs:
             --xvfb --clean -j4 \
             "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
             "--cmake=HYREMOTE_ENABLE_CPU_PROBE=${{ matrix.cpu_probe }}" \
-            "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator|linux-cpu-probe)-test$" \
+            "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=${{ matrix.cpu_probe }}" \
+            "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator|viewer-capture-demand|linux-cpu-probe)-test$" \
             "--env=QT_QUICK_BACKEND=software"
 
       - name: Verify public capture on a real OpenGL scenegraph (Mesa/Xvfb)

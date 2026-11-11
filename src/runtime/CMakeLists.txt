@@ -178,6 +178,16 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
+# Diagnostic only: true Qt6.8.3 OpenGL-RHI PBO/Fence frame capture path.
+# The public grabToImage route stays the default for all products. This flag
+# is not enabled in releases and NEVER extends QtGuiPrivate permissions.
+option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
+    "TEST ONLY: enable Qt6.8.3 public OpenGL RHI PBO CaptureSource" OFF)
+option(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING
+    "TEST ONLY: enable Windows Qt6.8.3 public-native D3D11 staging CaptureSource" OFF)
+option(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE
+    "TEST ONLY: compile Qt5/Qt6 activity-driven capture; HYREMOTE_QUICK_ACTIVITY_WAKE=1 opts in at runtime" OFF)
+
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
 if(HYREMOTE_BUILD_QUICK_ADAPTER)
@@ -191,11 +201,58 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
+        if(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=1)
+            message(WARNING
+                "TEST ONLY Qt Quick activity-triggered capture is ON; no viewer latency GO")
+        endif()
+        if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+            if(HYREMOTE_QT_MAJOR STREQUAL "5")
+                if(NOT HYREMOTE_QT5_ENABLE_QUICK
+                   OR Qt5Core_VERSION VERSION_LESS 5.15.0)
+                    message(FATAL_ERROR
+                        "Experimental Qt5 direct-GL PBO requires explicit Qt5.15+ Quick opt-in")
+                endif()
+                message(WARNING
+                    "TEST ONLY Qt5.15 direct-OpenGL PBO CaptureSource is ON; not product qualified")
+            elseif(NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
+                message(FATAL_ERROR
+                    "Experimental Qt6 OpenGL PBO source requires exact Qt6.8.3 research Kit")
+            else()
+                message(WARNING
+                    "TEST ONLY Qt6 OpenGL PBO CaptureSource is ON; not approved for release")
+            endif()
+            target_sources(hyremote-remoteaccess PRIVATE
+                src/quick/quick_gl_pbo_capture_source.cpp)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=1)
+        endif()
+        if(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+            if(NOT WIN32 OR NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
+                message(FATAL_ERROR
+                    "Experimental native D3D11 staging source requires Windows + exact Qt 6.8.3")
+            endif()
+            target_sources(hyremote-remoteaccess PRIVATE
+                src/quick/quick_d3d11_staging_capture_source.cpp)
+            target_link_libraries(hyremote-remoteaccess PRIVATE d3d11 dxgi)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=1)
+            message(WARNING
+                "TEST ONLY Qt6 D3D11 native staging CaptureSource is ON; not approved for release")
+        endif()
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
     else()
+        if(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+            message(FATAL_ERROR
+                "Activity-triggered Quick capture requires the enabled Qt Quick adapter")
+        endif()
         message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
     endif()
+elseif(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+    message(FATAL_ERROR
+        "Activity-triggered Quick capture requires HYREMOTE_BUILD_QUICK_ADAPTER=ON")
 endif()
 
 # Pointer input enters Qt at the same QPA/window-system boundary used by platform plugins. Keep the
