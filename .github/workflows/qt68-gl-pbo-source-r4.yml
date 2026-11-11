@@ -73,6 +73,37 @@ jobs:
           if (!$runtime) { throw 'Native Runtime DLL absent' }
           Write-Host "R4_RUNTIME_COMPILE=PASS ${{ matrix.arm }}=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Real Qt6.8.3 D3D11 staging CaptureSource four-quadrant pixels and lifecycle
+        if: matrix.arm == 'ON'
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S tools/perf/tests/qt68_gl_pbo_source_r4 -B build-r4-d3d11-native -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-r4-d3d11-native --target hyremote-qt68-d3d11-staging-source-r4 --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = '.\\build-r4-d3d11-native\\hyremote-qt68-d3d11-staging-source-r4.exe'
+          foreach ($scenario in @('default', 'resize')) {
+            $args = @()
+            if ($scenario -eq 'resize') { $args += '--resize' }
+            $output = & $exe @args 2>&1
+            $exit = $LASTEXITCODE
+            $output | ForEach-Object { Write-Host $_ }
+            if ($exit -ne 0 -or !($output -match 'R4_VERDICT=PASS_SCOPED_CAPTURE_SOURCE')) {
+              throw "D3D11 native real-pixel CaptureSource $scenario failed with exit=$exit"
+            }
+            $dataLine = @($output | Where-Object { $_ -match '^R4_RESULT_JSON=' })
+            if ($dataLine.Count -ne 1) { throw 'Missing unique D3D11 result JSON' }
+            $result = (($dataLine[0] -replace '^R4_RESULT_JSON=', '') | ConvertFrom-Json)
+            if ($result.backend -ne 'Qt6_RHI_Direct3D11' -or $result.owned_frames_validated -ne 12 -or
+                $result.errors -ne 0 -or $result.late_callbacks_after_stop -ne 0 -or
+                $result.qualified_for_product -ne $false) {
+              throw "Unexpected D3D11 real-pixel outcome: $($dataLine[0])"
+            }
+          }
+
   qt5-windows-quick-gl:
     name: Windows MSVC Qt5.15.2 direct-GL Quick opt-in compile (NON-PRODUCT)
     runs-on: windows-2022
