@@ -72,6 +72,7 @@ jobs:
             --xvfb --clean -j4 \
             "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" \
             "--cmake=HYREMOTE_ENABLE_CPU_PROBE=${{ matrix.cpu_probe }}" \
+            "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=${{ matrix.cpu_probe }}" \
             "--test-filter=^hyremote-(quick-capture|watermark-frame-decorator|linux-cpu-probe)-test$" \
             "--env=QT_QUICK_BACKEND=software"
 
