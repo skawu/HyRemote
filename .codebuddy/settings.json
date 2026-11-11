@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python tools/local-owner/guard_scratch_writes.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
