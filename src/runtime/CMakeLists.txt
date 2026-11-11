@@ -185,6 +185,8 @@ option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
     "TEST ONLY: enable Qt6.8.3 public OpenGL RHI PBO CaptureSource" OFF)
 option(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING
     "TEST ONLY: enable Windows Qt6.8.3 public-native D3D11 staging CaptureSource" OFF)
+option(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE
+    "TEST ONLY: wake idle Qt Quick viewer capture on public afterAnimating activity" OFF)
 
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
@@ -199,6 +201,12 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         )
         target_link_libraries(hyremote-remoteaccess PRIVATE Qt6::Quick)
         target_compile_definitions(hyremote-remoteaccess PRIVATE HYREMOTE_HAS_QUICK_ADAPTER=1)
+        if(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=1)
+            message(WARNING
+                "TEST ONLY Qt Quick activity-triggered capture is ON; no viewer latency GO")
+        endif()
         if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
             if(HYREMOTE_QT_MAJOR STREQUAL "5")
                 if(NOT HYREMOTE_QT5_ENABLE_QUICK
@@ -236,8 +244,15 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
     else()
+        if(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+            message(FATAL_ERROR
+                "Activity-triggered Quick capture requires the enabled Qt Quick adapter")
+        endif()
         message(STATUS "  Quick adapter skipped: Qt 6.8+ Quick not found")
     endif()
+elseif(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+    message(FATAL_ERROR
+        "Activity-triggered Quick capture requires HYREMOTE_BUILD_QUICK_ADAPTER=ON")
 endif()
 
 # Pointer input enters Qt at the same QPA/window-system boundary used by platform plugins. Keep the
