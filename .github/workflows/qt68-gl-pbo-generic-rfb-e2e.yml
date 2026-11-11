@@ -78,6 +78,13 @@ jobs:
             python tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py \
             --exe "$build/install/bin/hyremote-learning-03-quick" \
             --arm "$arm" --out "tmp/r4-rfb/$arm.json"
+          # Same installed product and Qt Kit, no second build or A/B
+          # experiment: assert that RFB pixels are PHYSICAL for DPR=1.5,
+          # and listener remains reachable after a viewer reconnect.
+          timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' \
+            python tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py \
+            --exe "$build/install/bin/hyremote-learning-03-quick" \
+            --arm "$arm" --scale-factor 1.5 --out "tmp/r4-rfb/$arm-dpr15.json"
       - name: Publish only JSON and host logs, never installer
         if: always()
         uses: actions/upload-artifact@v4
