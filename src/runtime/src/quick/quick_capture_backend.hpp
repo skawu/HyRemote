@@ -28,7 +28,8 @@ enum class QuickRenderingPath {
 
 enum class QuickCaptureRoute {
     PublicQtGrabToImage,
-    ExperimentalOpenGlPbo
+    ExperimentalOpenGlPbo,
+    ExperimentalD3d11Staging
 };
 
 struct QuickCaptureSelection {
@@ -39,7 +40,8 @@ struct QuickCaptureSelection {
 
 inline QuickCaptureSelection selectQuickCaptureRoute(
     QSGRendererInterface::GraphicsApi api,
-    bool qualifiedOpenGlProviderEnabled = false) noexcept
+    bool qualifiedOpenGlProviderEnabled = false,
+    bool qualifiedD3d11ProviderEnabled = false) noexcept
 {
     QuickCaptureBackend backend = QuickCaptureBackend::Other;
     QuickRenderingPath renderingPath = QuickRenderingPath::Unknown;
@@ -123,10 +125,14 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
     // Current OpenGL PBO provider is research-only, enabled solely by the
     // exact Qt6.8.3 experimental CMake switch. Qt5.15 remains public until
     // its own render-phase/GL context capability is qualified.
-    if (backend == QuickCaptureBackend::OpenGL
-        && renderingPath == QuickRenderingPath::Qt6Rhi
-        && qualifiedOpenGlProviderEnabled)
-        return {backend, renderingPath, QuickCaptureRoute::ExperimentalOpenGlPbo};
+    if (renderingPath == QuickRenderingPath::Qt6Rhi) {
+        if (backend == QuickCaptureBackend::OpenGL
+            && qualifiedOpenGlProviderEnabled)
+            return {backend, renderingPath, QuickCaptureRoute::ExperimentalOpenGlPbo};
+        if (backend == QuickCaptureBackend::Direct3D11
+            && qualifiedD3d11ProviderEnabled)
+            return {backend, renderingPath, QuickCaptureRoute::ExperimentalD3d11Staging};
+    }
     return {backend, renderingPath, QuickCaptureRoute::PublicQtGrabToImage};
 }
 
