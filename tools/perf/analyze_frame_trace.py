@@ -123,11 +123,11 @@ def analyze(records):
         admission = steps["capture_request"][0]
         initial = int(admission["at_ns"])
         issue = int(admission.get("request_ns", 0))
-        // Core constructed its Request BEFORE Runtime::waitForViewer().
-        // Comparing the two host-monotonic instants measures actual time
-        // spent in demand gating plus scheduler-to-runtime call overhead.
-        // The older request_to_source metric starts AFTER that wait and
-        // consequently hides the time most relevant to activity wakeups.
+        # Core constructed its Request BEFORE Runtime::waitForViewer().
+        # Comparing the two host-monotonic instants measures actual time
+        # spent in demand gating plus scheduler-to-runtime call overhead.
+        # The older request_to_source metric starts AFTER that wait and
+        # consequently hides the time most relevant to activity wakeups.
         if issue > 0:
             if issue <= initial:
                 out["core_issue_to_runtime_admit"].append(
