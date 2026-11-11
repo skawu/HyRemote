@@ -57,6 +57,7 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         bool active = false;
         bool connected = false;
         bool kickPosted = false;
+        bool fallbackRenderTimerArmed = false;
         bool cleanupRequested = false;
         unsigned int callbacksInFlight = 0;
         std::vector<hyremote::CaptureRequest> queued;
@@ -110,6 +111,7 @@ public:
         // Never let its posted-token suppress the first request of this
         // generation. Old tasks still verify their captured generation.
         s->kickPosted = false;
+        s->fallbackRenderTimerArmed = false;
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->active = true;
@@ -130,6 +132,7 @@ public:
             s->queued.clear();
             s->inFlight.clear();
             s->kickPosted = false;
+            s->fallbackRenderTimerArmed = false;
             s->onFrame = {};
             s->onEvent = {};
             s->cleanupRequested = true;
@@ -265,19 +268,25 @@ private:
         // A quiet source still uses a bounded explicit update as fallback.
         if (!window)
             return;
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            if (!s->active || s->generation != generation
+                || s->fallbackRenderTimerArmed)
+                return;
+            s->fallbackRenderTimerArmed = true;
+        }
         QTimer::singleShot(kNormalFrameOpportunityMs, window.data(),
             [s, window, generation] {
-                if (!window || !window->isVisible())
-                    return;
                 bool needsFallbackRender = false;
                 {
                     std::lock_guard<std::mutex> guard(s->mutex);
-                    needsFallbackRender = s->active
-                        && s->generation == generation
-                        && !s->gpuPending
+                    if (!s->active || s->generation != generation)
+                        return;
+                    s->fallbackRenderTimerArmed = false;
+                    needsFallbackRender = !s->gpuPending
                         && !s->queued.empty();
                 }
-                if (needsFallbackRender)
+                if (needsFallbackRender && window && window->isVisible())
                     window->update();
             });
     }
