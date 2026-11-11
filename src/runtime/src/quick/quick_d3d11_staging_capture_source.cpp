@@ -501,8 +501,8 @@ private:
                           int width, int height, float dpr, DXGI_FORMAT format,
                           hyremote::TimePoint pts)
     {
-        const auto storage = copyReadbackFrameStorage(
-            raw.get(), bytes, pitch, rowBytes, static_cast<std::size_t>(height),
+        const auto storage = adoptReadbackFrameStorage(
+            std::move(raw), bytes, pitch, rowBytes, static_cast<std::size_t>(height),
             ReadbackRowOrder::TopDown,
             isBgra(format) ? ReadbackPixelOrder::Bgra8888
                            : ReadbackPixelOrder::Rgba8888);
