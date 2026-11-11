@@ -42,6 +42,7 @@
 #  include "quick/quick_d3d11_staging_capture_source.hpp"
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO) || defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+#  include "quick/quick_adaptive_capture_source.hpp"
 #  include <QDebug>
 #endif
 #include "quick/quick_capture_single_flight.hpp"
@@ -935,13 +936,17 @@ TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEn
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
-        result.capture = createExperimentalQuickGlPboCaptureSource(window);
+        result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
+            window, createExperimentalQuickGlPboCaptureSource(window),
+            std::make_unique<QuickCaptureSource>(window));
     }
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
     if (selection.route == QuickCaptureRoute::ExperimentalD3d11Staging) {
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=D3D11_STAGING_SOURCE";
-        result.capture = createExperimentalQuickD3d11StagingCaptureSource(window);
+        result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
+            window, createExperimentalQuickD3d11StagingCaptureSource(window),
+            std::make_unique<QuickCaptureSource>(window));
     }
 #endif
     if (!result.capture) {
