@@ -6,7 +6,7 @@ type: feedback
 
 在这台 Windows 机器上做实机验收（启动 GUI/监听器、抓窗口、长时间采样）时：
 
-1. 把逻辑写进 `.ps1` 文件并用 `powershell -NoProfile -ExecutionPolicy Bypass -File <path>` 调用，**脚本内容只用 ASCII**；不要在 `-Command` 里内联 `$变量`，也不要依赖 `Select-Object`（工具外壳在 PowerShell 与 cmd 之间会漂移，`cd /d`、内联变量、中文注释都会失败）。
+1. 把逻辑写进 `.ps1` 文件并用 `powershell -NoProfile -ExecutionPolicy Bypass -File <path>` 调用，**脚本内容只用 ASCII**；不要在 `-Command` 里内联 `$变量`，也不要依赖 `Select-Object`（工具外壳在 PowerShell 与 cmd 之间会漂移，`cd /d`、内联变量、中文注释都会失败）。**脚本本身必须落在规划目录**（`tools/local-owner/`、`tests/`、`.github/scripts/` 之一）并登记进 `tests/release-readiness/script_inventory.txt`；`tmp/` 只放运行输出（日志、证据），客户端 hook 会拒绝对 `tmp/` 下脚本的写入。
 2. 需要**跨工具调用存活**的进程（产品 GUI、TCP sink、HTTP 分发、后台采样）必须用 `Invoke-CimMethod -ClassName Win32_Process -MethodName Create` 创建（`cmd.exe /c "... > log 2>&1"` 转日志），因为 `Start-Process` 的子进程会随宿主命令结束被回收。
 3. 想抓某个 Qt 窗口的完整位图用 `PrintWindow(hwnd, hdc, 2)` + `System.Drawing`（需 `Add-Type -AssemblyName System.Drawing`，且该引用不能写进 `Add-Type @"..."@` 的内联 C#）；前台锁需用 ALT 键 + `AttachThreadInput` 才能 `SetForegroundWindow`。
 

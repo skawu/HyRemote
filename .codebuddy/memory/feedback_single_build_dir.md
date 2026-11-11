@@ -14,4 +14,4 @@ F:\workspace\hyremote\HyRemote\build
 
 **Why:** 此前我在 `F:\workspace\hyremote\build\HyRemote` 下保留多个临时构建目录，违反了“只允许一个 build”的红线；用户随后明确工作空间只有仓库本身，外部路径均非法。旧记忆“仓库内 build 必须为零”已被该更新决定取代。
 
-**How to apply:** 所有 CMake/CTest 只使用 `F:\workspace\hyremote\HyRemote\build`；切换 Qt Kit 时清空并重建同一目录，不另建并行目录。任务结束前确认工作空间外没有本轮产物、仓库内除该 `build` 外没有其他 `build*`。不得为了清理再访问工作空间外路径。
+**How to apply:** 所有 CMake/CTest 只使用 `F:\workspace\hyremote\HyRemote\build`；切换 Qt Kit 时清空并重建同一目录，不另建并行目录。任务结束前确认工作空间外没有本轮**产物**（只读查看是允许的，写入外部一律拒绝）、仓库内除该 `build` 外没有其他 `build*`。
