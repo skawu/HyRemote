@@ -54,12 +54,16 @@ def main():
     parser.add_argument("--exe", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--arm", choices=["OFF", "ON"], required=True)
+    parser.add_argument("--scale-factor", type=float, default=1.0)
     args = parser.parse_args()
+    require(args.scale_factor in (1.0, 1.5),
+            "supported deterministic DPR fixture scale factors are 1.0 and 1.5")
 
     require(args.exe.is_file(), f"installed Qt-only app missing: {args.exe}")
     args.out.parent.mkdir(parents=True, exist_ok=True)
     port = free_port()
     env = os.environ.copy()
+    env["QT_SCALE_FACTOR"] = str(args.scale_factor)
     require(env.get("QSG_RHI_BACKEND") == "opengl",
             "This test qualifies only exact Qt6.8.3 OpenGL RHI")
     cmd = [str(args.exe.resolve()), "-plugin", f"hyremote:port={port}", "--test-seconds", "30"]
@@ -91,7 +95,8 @@ def main():
                         viewer.captureScreen(str(current))
                         with Image.open(current) as frame:
                             rgb = frame.convert("RGB")
-                            marker = rgb.getpixel((245, 140))
+                            marker = rgb.getpixel((round(245 * args.scale_factor),
+                                                   round(140 * args.scale_factor)))
                         red = (0xdf, 0x25, 0x34)
                         green = (0x25, 0xd2, 0x42)
                         if all(abs(x-y) <= 8 for x, y in zip(marker, red)):
@@ -105,8 +110,21 @@ def main():
                 shape, top_left, bottom_right = sample(png)
                 require(colors == {"red", "green"},
                         f"Real VNC did not display both independent QML source states: {colors}")
-                require(shape == (460, 190),
-                        f"unexpected real RFB frame size {shape}; expected 460x190")
+                expected_size = (round(460 * args.scale_factor),
+                                 round(190 * args.scale_factor))
+                require(shape == expected_size,
+                        f"incorrect RFB physical framebuffer size at DPR={args.scale_factor}: "
+                        f"actual={shape} expected={expected_size}")
+                if args.scale_factor != 1.0:
+                    # The reported Windows DPR failure also closed the listener
+                    # after the original RFB session reset. Exercise a NEW
+                    # connection to the same still-alive Host in the same run.
+                    with api.connect(f"127.0.0.1::{port}", password=None, timeout=12) as reconnect:
+                        reconnect_png = Path(temp) / "reconnected-dpr.png"
+                        reconnect.captureScreen(str(reconnect_png))
+                        reconnect_size, _, _ = sample(reconnect_png)
+                        require(reconnect_size == expected_size,
+                                f"DPR reconnect pixel size changed: {reconnect_size}")
                 expected = (0x20, 0x27, 0x33)
                 require(all(abs(a - b) <= 3 for a,b in zip(top_left, expected)),
                         f"actual RFB pixel mismatch top-left={top_left}, expected={expected}")
@@ -132,6 +150,9 @@ def main():
                     "platform": "xcb",
                     "graphics_api": "OpenGL_RHI",
                     "pixel_size": list(shape),
+                    "window_scale_factor": args.scale_factor,
+                    "physical_framebuffer_matches_scaled_window": shape == expected_size,
+                    "reconnected_after_high_dpr": args.scale_factor != 1.0,
                     "top_left_rgb": top_left,
                     "bottom_right_rgb": bottom_right,
                     "source_route": "GlPboCaptureSource" if args.arm == "ON" else "PublicQtGrabToImage",
