@@ -120,8 +120,29 @@ def analyze(records):
                 if at >= pts:
                     out["render_pts_to_socket_queue"].append((at - pts) / 1_000_000)
 
+        admission = steps["capture_request"][0]
+        initial = int(admission["at_ns"])
+        issue = int(admission.get("request_ns", 0))
+        // Core constructed its Request BEFORE Runtime::waitForViewer().
+        // Comparing the two host-monotonic instants measures actual time
+        // spent in demand gating plus scheduler-to-runtime call overhead.
+        // The older request_to_source metric starts AFTER that wait and
+        // consequently hides the time most relevant to activity wakeups.
+        if issue > 0:
+            if issue <= initial:
+                out["core_issue_to_runtime_admit"].append(
+                    (initial - issue) / 1_000_000.0)
+                for sent in steps["rfb_socket_queued"]:
+                    queued = int(sent["at_ns"])
+                    if queued >= issue:
+                        out["core_issue_to_socket_queue"].append(
+                            (queued - issue) / 1_000_000.0)
+                    else:
+                        impossible += 1
+            else:
+                impossible += 1
+
         hints = sorted(activity[pid])
-        initial = int(steps["capture_request"][0]["at_ns"])
         index = bisect.bisect_right(hints, initial) - 1
         if index >= 0 and 0 <= initial - hints[index] <= 250_000_000:
             out["qt_activity_hint_to_request"].append(
@@ -133,12 +154,26 @@ def analyze(records):
         "endpoint": "RFB_socket_queued_not_viewer_present",
         "content_change_to_present": "NOT_MEASURED",
         "qt_activity_is_not_content_damage": True,
+        "hint_to_request_is_noncausal_nearest_sample": True,
+        "qt_activity_disposition": {
+            key: totals.get(key, 0)
+            for key in ("qt_activity_hint",
+                        "qt_activity_ignored_in_flight",
+                        "qt_activity_ignored_backpressure",
+                        "qt_activity_ignored_already_active",
+                        "qt_activity_ignored_no_viewer",
+                        "qt_activity_ignored_stopped")
+        },
         "request_identity_collisions_skipped": ambiguous,
         "negative_or_out_of_order_pairs_skipped": impossible,
         "trace_events_dropped": overflow,
         "steps": dict(sorted(totals.items())),
         "intervals": {name: describe(out[name]) for name, _, _ in PAIRS}
-            | {"qt_activity_hint_to_request":
+            | {"core_issue_to_runtime_admit":
+               describe(out["core_issue_to_runtime_admit"]),
+               "core_issue_to_socket_queue":
+               describe(out["core_issue_to_socket_queue"]),
+               "qt_activity_hint_to_request":
                describe(out["qt_activity_hint_to_request"]),
                "render_pts_to_source":
                describe(out["render_pts_to_source"]),
@@ -155,7 +190,8 @@ def self_test():
     data = [
         {"schema": 2, "stages": {}},
         point("qt_activity_hint", 1_000_000, request=0),
-        point("capture_request", 2_000_000),
+        {**point("capture_request", 2_000_000),
+         "request_ns": 1_500_000},
         point("gpu_readback_submitted", 3_000_000),
         point("gpu_readback_ready", 8_000_000),
         {**point("source_completed", 10_000_000),
@@ -175,6 +211,9 @@ def self_test():
     assert result["intervals"]["capture_request_to_socket_queue"]["n"] == 2
     assert result["intervals"]["capture_request_to_socket_queue"]["p50_ms"] == 14.5
     assert result["intervals"]["qt_activity_hint_to_request"]["p50_ms"] == 1.0
+    assert result["intervals"]["core_issue_to_runtime_admit"]["p50_ms"] == 0.5
+    assert result["intervals"]["core_issue_to_socket_queue"]["p50_ms"] == 15.0
+    assert result["hint_to_request_is_noncausal_nearest_sample"]
     assert result["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 2.25
     assert result["intervals"]["render_pts_to_source"]["p50_ms"] == 1.0
     assert result["intervals"]["render_pts_to_socket_queue"]["p50_ms"] == 7.5
