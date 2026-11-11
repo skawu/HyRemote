@@ -25,6 +25,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -441,14 +442,14 @@ private:
     static void finishCpuConversion(
         const std::shared_ptr<State> &s,
         std::uint64_t generation,
-        const std::shared_ptr<std::vector<std::byte>> &raw,
+        const std::shared_ptr<std::byte> &raw,
         int width, int height, float dpr)
     {
         // Pool worker only: the PBO is unmapped and the bytes are CPU-owned.
         // Neither Qt's render thread nor the GUI thread flips the image rows.
         const auto stride = static_cast<std::size_t>(width) * 4u;
         const auto storage = raw ? copyReadbackFrameStorage(
-            raw->data(), raw->size(), stride, stride,
+            raw.get(), stride * static_cast<std::size_t>(height), stride, stride,
             static_cast<std::size_t>(height), ReadbackRowOrder::BottomUp)
             : std::shared_ptr<const hyremote::FrameStorage>{};
 
@@ -512,7 +513,7 @@ private:
             return;
         auto *gl = ctx->extraFunctions();
         std::vector<hyremote::CaptureRequest> failed;
-        std::shared_ptr<std::vector<std::byte>> conversionData;
+        std::shared_ptr<std::byte> conversionData;
         std::uint64_t gen = 0;
         int frameWidth = 0, frameHeight = 0;
         float frameDpr = 1.f;
@@ -578,9 +579,14 @@ private:
                         // GL context usage stays on Qt's render thread.
                         // Copy mapped pixels ONCE to CPU memory, unmap, then
                         // allocate/frame-flip on a separate bounded worker.
-                        std::shared_ptr<std::vector<std::byte>> owned;
+                        std::shared_ptr<std::byte> owned;
                         try {
-                            owned = std::make_shared<std::vector<std::byte>>(bytes);
+                            // new byte[] is not value-initialized: avoid an
+                            // unnecessary 8 MB zero-fill before the actual
+                            // 1080p GPU->CPU memcpy on the render thread.
+                            owned = std::shared_ptr<std::byte>(
+                                new (std::nothrow) std::byte[bytes],
+                                std::default_delete<std::byte[]>());
                         } catch (...) {
                             // Out of memory is a recoverable capture failure.
                         }
@@ -588,7 +594,7 @@ private:
                             gl->glMapBufferRange(kPackTarget, 0, GLsizeiptr(bytes), kMapRead))
                             : nullptr;
                         if (mapped)
-                            std::memcpy(owned->data(), mapped, bytes);
+                            std::memcpy(owned.get(), mapped, bytes);
                         const bool mappingValid = mapped && gl->glUnmapBuffer(kPackTarget);
                         if (mappingValid) {
                             conversionData = std::move(owned);
