@@ -11,6 +11,13 @@ cmake_minimum_required(VERSION 3.21)
 #   cmake -DHYREMOTE_SOURCE_DIR=<repo> -P check_script_discipline.cmake
 #   cmake -DHYREMOTE_SOURCE_DIR=<repo> -DHYREMOTE_SCRIPT_SELF_TEST=ON \
 #         -P check_script_discipline.cmake
+#
+# script_inventory.txt is the planned script register: declare a new script
+# there during task planning, before creating it. It is also the archive-safe
+# inventory. When .git is present the register must match the tracked script
+# set exactly; source archives without .git use the register alone. The file
+# contains one repository-relative path per line and no comments, so CMake
+# list parsing cannot mistake prose for an entry.
 
 if(NOT DEFINED HYREMOTE_SOURCE_DIR)
     message(FATAL_ERROR "script-discipline: HYREMOTE_SOURCE_DIR is required")
@@ -131,40 +138,82 @@ if(_evidence_pos EQUAL -1)
     message(FATAL_ERROR "script-discipline: workspace rule lost the 'tmp holds outputs only' clause")
 endif()
 
-# 2. Every tracked executable script must live in a planned directory.
-execute_process(
-    COMMAND git ls-files
-    WORKING_DIRECTORY "${HYREMOTE_SOURCE_DIR}"
-    RESULT_VARIABLE _git_result
-    OUTPUT_VARIABLE _tracked_text
-    ERROR_VARIABLE _git_error
-)
-if(NOT _git_result EQUAL 0)
-    message(FATAL_ERROR "script-discipline: git ls-files failed (${_git_result}): ${_git_error}")
+# 2. Read the planned script register. It is the archive-safe inventory: a
+#    released source archive has no .git, so the regular facts-layout CTest
+#    must still run without any Git metadata.
+set(_inventory_path "${HYREMOTE_SOURCE_DIR}/tests/release-readiness/script_inventory.txt")
+if(NOT EXISTS "${_inventory_path}")
+    message(FATAL_ERROR "script-discipline: missing planned script register: ${_inventory_path}")
 endif()
-if("${_tracked_text}" STREQUAL "")
-    message(FATAL_ERROR "script-discipline: git ls-files returned no tracked files (false green)")
+file(READ "${_inventory_path}" _inventory_text)
+string(REPLACE "\r\n" "\n" _inventory_text "${_inventory_text}")
+string(REPLACE "\n" ";" _inventory_lines "${_inventory_text}")
+set(_declared "")
+foreach(_line IN LISTS _inventory_lines)
+    string(STRIP "${_line}" _line)
+    if(_line STREQUAL "" OR _line MATCHES "^#")
+        continue()
+    endif()
+    list(APPEND _declared "${_line}")
+endforeach()
+if("${_declared}" STREQUAL "")
+    message(FATAL_ERROR "script-discipline: planned script register is empty (false green)")
 endif()
 
-string(REPLACE "\r\n" "\n" _tracked_text "${_tracked_text}")
-string(REPLACE "\n" ";" _tracked_list "${_tracked_text}")
+# 3. When Git metadata is available, the register must match reality exactly:
+#    a new script that was not declared fails the gate; a stale declared script
+#    that no longer exists fails too. Without .git, the register is the source
+#    of truth (source-archive / distributed-source build).
+set(_tracked_scripts "")
+set(_git_available FALSE)
+if(EXISTS "${HYREMOTE_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND git ls-files
+        WORKING_DIRECTORY "${HYREMOTE_SOURCE_DIR}"
+        RESULT_VARIABLE _git_result
+        OUTPUT_VARIABLE _tracked_text
+        ERROR_VARIABLE _git_error
+    )
+    if(_git_result EQUAL 0 AND NOT "${_tracked_text}" STREQUAL "")
+        set(_git_available TRUE)
+        string(REPLACE "\r\n" "\n" _tracked_text "${_tracked_text}")
+        string(REPLACE "\n" ";" _tracked_list "${_tracked_text}")
+        foreach(_rel IN LISTS _tracked_list)
+            string(STRIP "${_rel}" _rel)
+            if(_rel STREQUAL "")
+                continue()
+            endif()
+            foreach(_suffix IN LISTS _script_suffixes)
+                if(_rel MATCHES "${_suffix}$")
+                    list(APPEND _tracked_scripts "${_rel}")
+                    break()
+                endif()
+            endforeach()
+        endforeach()
+    endif()
+endif()
+
+if(_git_available)
+    set(_expected_sorted "${_declared}")
+    set(_actual_sorted "${_tracked_scripts}")
+    list(SORT _expected_sorted)
+    list(SORT _actual_sorted)
+    if(NOT "${_expected_sorted}" STREQUAL "${_actual_sorted}")
+        message(FATAL_ERROR
+            "script-discipline: planned script register differs from tracked scripts. "
+            "Declare new scripts in tests/release-readiness/script_inventory.txt during planning. "
+            "declared=[${_expected_sorted}] tracked=[${_actual_sorted}]")
+    endif()
+    set(_to_check "${_tracked_scripts}")
+    set(_origin "git index + register")
+else()
+    set(_to_check "${_declared}")
+    set(_origin "register only (no Git metadata)")
+endif()
 
 set(_script_count 0)
 set(_violations "")
-foreach(_rel IN LISTS _tracked_list)
-    if(_rel STREQUAL "")
-        continue()
-    endif()
-    set(_is_script FALSE)
-    foreach(_suffix IN LISTS _script_suffixes)
-        if(_rel MATCHES "${_suffix}$")
-            set(_is_script TRUE)
-            break()
-        endif()
-    endforeach()
-    if(NOT _is_script)
-        continue()
-    endif()
+foreach(_rel IN LISTS _to_check)
     math(EXPR _script_count "${_script_count} + 1")
     _script_discipline_verdict("${_rel}" _verdict)
     if(_verdict STREQUAL "REJECT")
@@ -173,10 +222,10 @@ foreach(_rel IN LISTS _tracked_list)
 endforeach()
 
 if(_script_count EQUAL 0)
-    message(FATAL_ERROR "script-discipline: zero tracked scripts found (false green)")
+    message(FATAL_ERROR "script-discipline: zero scripts found (false green)")
 endif()
 if(NOT "${_violations}" STREQUAL "")
-    message(FATAL_ERROR "script-discipline: tracked scripts outside planned directories: ${_violations}")
+    message(FATAL_ERROR "script-discipline: scripts outside planned directories: ${_violations}")
 endif()
 
 # 3. The guard must itself be registered, otherwise it never executes.
@@ -186,4 +235,4 @@ if(_registered_pos EQUAL -1)
     message(FATAL_ERROR "script-discipline: guard is not registered in run_grouped_checks.cmake")
 endif()
 
-message(STATUS "script-discipline PASS: ${_script_count} tracked scripts in planned directories; institution intact")
+message(STATUS "script-discipline PASS: ${_script_count} scripts in planned directories (${_origin}); institution intact")
