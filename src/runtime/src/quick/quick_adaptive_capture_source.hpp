@@ -84,24 +84,31 @@ public:
             // These signals describe Qt's actual Surface, not a GPU model.
             // A callback can be queued on the GUI or render thread; only the
             // small epoch counter is shared with the capture scheduler.
-            auto bump = [state = m_state] {
+            auto bump = [state = m_state](bool nativeResourceInvalidated) {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 ++state->surfaceEpoch;
                 state->newestContentPts = {};
+                if (nativeResourceInvalidated && state->nativeEnabled) {
+                    // A new GPU device, render target or scenegraph must
+                    // requalify before native resources can be accessed.
+                    // No implicit re-arm during the same Core Session.
+                    state->nativeEnabled = false;
+                    HYREMOTE_P1_COUNT(QuickNativeFallback);
+                }
                 state->consecutiveNativeFailures = 0;
             };
             m_connections.push_back(QObject::connect(
                 window, &QWindow::widthChanged, window,
-                [bump](int) { bump(); }, Qt::DirectConnection));
+                [bump](int) { bump(false); }, Qt::DirectConnection));
             m_connections.push_back(QObject::connect(
                 window, &QWindow::heightChanged, window,
-                [bump](int) { bump(); }, Qt::DirectConnection));
+                [bump](int) { bump(false); }, Qt::DirectConnection));
             m_connections.push_back(QObject::connect(
                 window, &QWindow::screenChanged, window,
-                [bump](QScreen *) { bump(); }, Qt::DirectConnection));
+                [bump](QScreen *) { bump(true); }, Qt::DirectConnection));
             m_connections.push_back(QObject::connect(
                 window, &QQuickWindow::sceneGraphInvalidated, window,
-                [bump] { bump(); }, Qt::DirectConnection));
+                [bump] { bump(true); }, Qt::DirectConnection));
         }
     }
 
