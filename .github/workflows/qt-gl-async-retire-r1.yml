@@ -65,10 +65,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp/r953
-          for mode in default cancel fullhd; do
+          for mode in default cancel fullhd hide; do
             args=()
             if [ "$mode" = cancel ]; then args+=(--cancel); fi
             if [ "$mode" = fullhd ]; then args+=(--fullhd); fi
+            if [ "$mode" = hide ]; then args+=(--hide); fi
             timeout 25s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r953/hyremote-qt-gl-async-retire-r1 "${args[@]}" | tee "tmp/r953/$mode.log"
             grep -q '^R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE$' "tmp/r953/$mode.log"
             grep -q '"extra_window_updates":0' "tmp/r953/$mode.log"
@@ -80,6 +81,11 @@ jobs:
               grep -q '"frame_height":1080' "tmp/r953/$mode.log"
             fi
             if [ "$mode" = cancel ]; then grep -q '"cancel_suppressed_delivery":true' "tmp/r953/$mode.log"; fi
+            if [ "$mode" = hide ]; then
+              grep -q '"hide_requested":true' "tmp/r953/$mode.log"
+              grep -q '"window_hidden":true' "tmp/r953/$mode.log"
+              grep -q '"cancel_suppressed_delivery":true' "tmp/r953/$mode.log"
+            fi
           done
       - name: Preserve non-product proof output
         if: always()
