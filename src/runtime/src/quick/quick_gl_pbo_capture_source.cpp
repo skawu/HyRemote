@@ -85,6 +85,19 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         int forcedRenders = 0;
     };
 
+    // Prevent a queued/running conversion from surviving CaptureSource::stop()
+    // and subsequently executing code from an unloaded Runtime library.
+    // The worker count must retire even if normalization/reporting throws.
+    struct CpuWorkerDrainGuard {
+        std::shared_ptr<State> state;
+        ~CpuWorkerDrainGuard() noexcept
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            --state->cpuWorkersInFlight;
+            state->drained.notify_all();
+        }
+    };
+
 public:
     explicit GlPboCaptureSource(QQuickWindow *window)
         : m_state(std::make_shared<State>())
@@ -701,6 +714,7 @@ private:
                 QThreadPool::globalInstance()->start(
                     [s, gen, raw = std::move(conversionData),
                      frameWidth, frameHeight, frameDpr, frameRenderTime] {
+                        CpuWorkerDrainGuard drain{s};
                         try {
                             finishCpuConversion(s, gen, raw,
                                                 frameWidth, frameHeight, frameDpr,
@@ -714,14 +728,14 @@ private:
                                     abandoned.swap(s->converting);
                                 }
                             }
-                            if (!abandoned.empty())
-                                reportUnavailable(s, gen, std::move(abandoned),
-                                                  "GL PBO CPU worker failed");
-                        }
-                        {
-                            std::lock_guard<std::mutex> lock(s->mutex);
-                            --s->cpuWorkersInFlight;
-                            s->drained.notify_all();
+                            if (!abandoned.empty()) {
+                                try {
+                                    reportUnavailable(s, gen, std::move(abandoned),
+                                                      "GL PBO CPU worker failed");
+                                } catch (...) {
+                                    // The drain guard still guarantees shutdown.
+                                }
+                            }
                         }
                     });
             } catch (...) {
