@@ -47,6 +47,8 @@ enum class Stage : std::size_t {
     QuickGlExplicitRender,    // count: source-forced Qt update (not real frames)
     QuickGlRetirementRender,  // count: extra frame to retire a GL fence
     QuickGlGpuSubmit,         // count: GL PBO readback submissions
+    QuickGlPboResize,         // count: allocate/reallocate PBO storage
+    QuickGlPboReuse,          // count: reuse completed PBO storage
     QuickNativeFallback,     // count: native provider switched to public Qt
     QuickStaleDrop,          // count: epoch/age/reordered frame suppressed
     QuickD3d11StagingReuse, // count: staging resource reused on same device
@@ -66,6 +68,7 @@ inline constexpr std::array<const char *, static_cast<std::size_t>(Stage::Count)
     "quick_buffer", "quick_copy",
     "quick_gl_render_callback", "quick_gl_gpu_map_copy", "quick_gl_cpu_repack",
     "quick_gl_explicit_render", "quick_gl_retirement_render", "quick_gl_gpu_submit",
+    "quick_gl_pbo_resize", "quick_gl_pbo_reuse",
     "quick_native_fallback", "quick_stale_drop",
     "quick_d3d11_staging_reuse", "quick_d3d11_staging_allocation",
     "generic_compose", "watermark_compose",
