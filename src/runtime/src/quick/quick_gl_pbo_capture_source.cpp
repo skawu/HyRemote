@@ -40,6 +40,13 @@ constexpr GLenum kFenceGpu = 0x9117; // GL_SYNC_GPU_COMMANDS_COMPLETE
 constexpr GLenum kAlready = 0x911A; // GL_ALREADY_SIGNALED
 constexpr GLenum kSatisfied = 0x911C; // GL_CONDITION_SATISFIED
 
+// Give the application's normal Qt render loop one frame opportunity before
+// requesting a new render solely for a remote Viewer. The render callback
+// consumes queued requests immediately if a normal frame arrives. Idle
+// sources still get a bounded fallback update, followed by the existing
+// 750ms terminal-outcome timer if the window cannot render.
+constexpr int kNormalFrameOpportunityMs = 17;
+
 class GlPboCaptureSource final : public hyremote::CaptureSource
 {
     struct State {
@@ -218,7 +225,7 @@ public:
                                           "GL PBO capture target is not visible");
                     return;
                 }
-                target->update(); // bounded source request: first render
+                requestFallbackRenderIfNoNormalFrame(s, target, generation);
             }, Qt::QueuedConnection)) {
             // A failed GUI dispatch means this request was *rejected*:
             // Core will retry it. Remove its ID so a later dispatch cannot
@@ -247,6 +254,34 @@ public:
     }
 
 private:
+    static void requestFallbackRenderIfNoNormalFrame(
+        const std::shared_ptr<State> &s,
+        QPointer<QQuickWindow> window,
+        std::uint64_t generation)
+    {
+        // Executed on GUI thread. A natural Qt frame may already have moved
+        // the pending requests into inFlight; in that case do NOT schedule
+        // another Qt rendering pass. This does not depend on Qt6 RHI APIs.
+        // A quiet source still uses a bounded explicit update as fallback.
+        if (!window)
+            return;
+        QTimer::singleShot(kNormalFrameOpportunityMs, window.data(),
+            [s, window, generation] {
+                if (!window || !window->isVisible())
+                    return;
+                bool needsFallbackRender = false;
+                {
+                    std::lock_guard<std::mutex> guard(s->mutex);
+                    needsFallbackRender = s->active
+                        && s->generation == generation
+                        && !s->gpuPending
+                        && !s->queued.empty();
+                }
+                if (needsFallbackRender)
+                    window->update();
+            });
+    }
+
     static void releaseGl(State &s, QOpenGLExtraFunctions *gl)
     {
         if (s.fence) {
@@ -562,8 +597,9 @@ private:
         if (pumpAgain)
             requestOneRetirementRender(s, window, gen);
         if (kickAgain)
-            QMetaObject::invokeMethod(window, [window] {window->update();},
-                                      Qt::QueuedConnection);
+            QMetaObject::invokeMethod(window, [s, window, gen] {
+                requestFallbackRenderIfNoNormalFrame(s, window, gen);
+            }, Qt::QueuedConnection);
     }
 
     std::shared_ptr<State> m_state;
