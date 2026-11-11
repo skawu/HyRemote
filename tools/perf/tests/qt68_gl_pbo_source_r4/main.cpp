@@ -2,7 +2,11 @@
 // Deliberately does not use QtGuiPrivate, a Viewer, network or QML business hints.
 // It checks the real Core request→frame callback contract, immutable CPU storage,
 // four-quadrant pixel truth, request time/ID, and stop/restart on a visible window.
+#if defined(HYREMOTE_R4_D3D11)
+#include "quick/quick_d3d11_staging_capture_source.hpp"
+#else
 #include "quick/quick_gl_pbo_capture_source.hpp"
+#endif
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
 #include <QCoreApplication>
@@ -142,11 +146,19 @@ int main(int argc, char **argv)
             return 9;
         }
     }
+#if defined(HYREMOTE_R4_D3D11)
+    if (qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("d3d11")) {
+        std::cerr << "R4=BLOCKED_NOT_D3D11_RHI\n";
+        return 10;
+    }
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
+#else
     if (qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("opengl")) {
         std::cerr << "R4=BLOCKED_NOT_OPENGL_RHI\n";
         return 10;
     }
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#endif
     QQuickWindow window;
     window.resize(kW, kH);
     window.setColor(Qt::black);
@@ -154,7 +166,11 @@ int main(int argc, char **argv)
     scene.setPhase(0);
     window.show();
 
+#if defined(HYREMOTE_R4_D3D11)
+    auto source = HyRemote::detail::createExperimentalQuickD3d11StagingCaptureSource(&window);
+#else
     auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
+#endif
     if (!source || !source->capabilities().cpuReadable) {
         std::cerr << "R4=FAIL_INVALID_CAPABILITY\n";
         return 11;
@@ -247,8 +263,16 @@ int main(int argc, char **argv)
                     && hiddenUnavailableEvents == 1 && hiddenTerminalFrames == 1;
                 std::cout << "R4_RESULT_JSON={"
                     << "\"qt\":\"" << QT_VERSION_STR << "\","
+#if defined(HYREMOTE_R4_D3D11)
+                    << "\"backend\":\"Qt6_RHI_Direct3D11\","
+#else
                     << "\"backend\":\"Qt6_RHI_OpenGL\","
+#endif
+#if defined(HYREMOTE_R4_D3D11)
+                    << "\"source\":\"real_D3d11StagingCaptureSource\","
+#else
                     << "\"source\":\"real_GlPboCaptureSource\","
+#endif
                     << "\"phases_expected\":" << kPhases << ","
                     << "\"owned_frames_validated\":" << completed << ","
                     << "\"unique_request_ids\":" << seenRequestIds.size() << ","
