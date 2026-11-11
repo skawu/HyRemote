@@ -163,7 +163,10 @@ int main(int argc, char **argv)
             }
             ++hiddenTerminalFrames;
             hiddenRequestPending = false;
-            finishCase();
+            // FrameReadyHandler executes inside the source's callback
+            // accounting. stop() waits for it to drain, so invoke stop
+            // AFTER returning to the Qt event loop, never recursively.
+            QTimer::singleShot(0, &app, finishCase);
             return;
         }
         if (fullyStopped || intentionallyStopped) {
