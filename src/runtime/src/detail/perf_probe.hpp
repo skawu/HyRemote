@@ -41,6 +41,12 @@ enum class Stage : std::size_t {
     QuickConvert,
     QuickBuffer,
     QuickCopy,
+    QuickGlRenderCallback,    // Qt scenegraph callback CPU+wall cost
+    QuickGlGpuMapCopy,        // GL fence-ready map and raw GPU->CPU memcpy
+    QuickGlCpuRepack,         // pool worker row normalization
+    QuickGlExplicitRender,    // count: source-forced Qt update (not real frames)
+    QuickGlRetirementRender,  // count: extra frame to retire a GL fence
+    QuickGlGpuSubmit,         // count: GL PBO readback submissions
     GenericCompose,
     WatermarkCompose,    // CPU copy+paint on RFB worker, one per real composition
     WatermarkReuse,      // count only: immutable-source cache hit
@@ -53,7 +59,10 @@ enum class Stage : std::size_t {
 inline constexpr std::array<const char *, static_cast<std::size_t>(Stage::Count)> kNames{
     "widget_buffer", "widget_paint", "quick_accepted_requests", "quick_gui_batches",
     "quick_grab_submit", "quick_grab_ready_wall", "quick_convert",
-    "quick_buffer", "quick_copy", "generic_compose", "watermark_compose",
+    "quick_buffer", "quick_copy",
+    "quick_gl_render_callback", "quick_gl_gpu_map_copy", "quick_gl_cpu_repack",
+    "quick_gl_explicit_render", "quick_gl_retirement_render", "quick_gl_gpu_submit",
+    "generic_compose", "watermark_compose",
     "watermark_reuse", "rfb_compare", "rfb_encode", "rfb_write"
 };
 
