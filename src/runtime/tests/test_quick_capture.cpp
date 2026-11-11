@@ -70,6 +70,7 @@ class ControlledQuickSource final : public hyremote::CaptureSource
 {
 public:
     bool running = false;
+    bool startsSuccessfully = true;
     bool acceptsRequests = true;
     std::vector<hyremote::CaptureRequestId> accepted;
     hyremote::FrameReadyHandler onFrame;
@@ -86,6 +87,8 @@ public:
     bool start(hyremote::FrameReadyHandler frame,
                hyremote::CaptureEventHandler event) override
     {
+        if (!startsSuccessfully)
+            return false;
         running = true;
         accepted.clear();
         onFrame = std::move(frame);
@@ -204,6 +207,54 @@ void testAdaptiveQuickFallbackSurfaceEpochAndFreshness()
     CHECK(frames.back().requestId && *frames.back().requestId == 10
           && !frames.back().storage);
     source.stop();
+}
+
+void testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission()
+{
+    {
+        auto native = std::make_unique<ControlledQuickSource>();
+        auto publicQt = std::make_unique<ControlledQuickSource>();
+        auto *backup = publicQt.get();
+        native->startsSuccessfully = false; // unsupported native capability
+        HyRemote::detail::AdaptiveQuickCaptureSource source(
+            nullptr, std::move(native), std::move(publicQt));
+        std::vector<hyremote::RemoteFrame> received;
+        CHECK(source.start([&](hyremote::RemoteFrame f) {
+            received.push_back(std::move(f));
+        }, [](const hyremote::CaptureEvent &) {}));
+        CHECK(source.requestFrame({41, hyremote::Clock::now()}));
+        CHECK(backup->accepted.size() == 1 && backup->accepted.back() == 41);
+        backup->complete(41, true);
+        CHECK(received.size() == 1 && received.back().storage);
+        source.stop();
+    }
+    {
+        auto native = std::make_unique<ControlledQuickSource>();
+        auto publicQt = std::make_unique<ControlledQuickSource>();
+        auto *primary = native.get();
+        auto *backup = publicQt.get();
+        HyRemote::detail::AdaptiveQuickCaptureSource source(
+            nullptr, std::move(native), std::move(publicQt));
+        std::vector<hyremote::RemoteFrame> received;
+        CHECK(source.start([&](hyremote::RemoteFrame f) {
+            received.push_back(std::move(f));
+        }, [](const hyremote::CaptureEvent &) {}));
+        primary->acceptsRequests = false;
+        CHECK(!source.requestFrame({42, hyremote::Clock::now()}));
+        CHECK(!source.requestFrame({43, hyremote::Clock::now()}));
+        CHECK(source.requestFrame({44, hyremote::Clock::now()}));
+        CHECK(backup->accepted.size() == 1 && backup->accepted.back() == 44);
+        backup->complete(44, true);
+        CHECK(received.size() == 1 && received.back().storage);
+        // Neither source is permitted to accumulate an unbounded backlog.
+        for (hyremote::CaptureRequestId id = 50; id < 58; ++id)
+            CHECK(source.requestFrame({id, hyremote::Clock::now()}));
+        CHECK(!source.requestFrame({58, hyremote::Clock::now()}));
+        for (hyremote::CaptureRequestId id = 50; id < 58; ++id)
+            backup->complete(id, true);
+        CHECK(received.size() == 9);
+        source.stop();
+    }
 }
 
 void testQuickOpaqueRgbxCpuStorageIsZeroCopy()
@@ -1729,6 +1780,7 @@ int main(int argc, char **argv)
     }
 
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
+    testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();
     testQuickOpaqueRgbxCpuStorageIsZeroCopy();
     testAdoptReadbackStorageNoSecondFullFrame();
     testReadbackFrameStorageRowOrderAndPitch();
