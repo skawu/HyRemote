@@ -280,7 +280,7 @@ int main(int argc, char **argv)
     std::atomic<unsigned> generation{1};
     std::atomic<int> submissions{0};
     std::atomic<int> sceneGraphInvalidations{0};
-    QObject::connect(&window, &QQuickWindow::sceneGraphInvalidated,
+    const auto invalidationConnection = QObject::connect(&window, &QQuickWindow::sceneGraphInvalidated,
                      &window, [&sceneGraphInvalidations] {
                          ++sceneGraphInvalidations;
                      }, Qt::DirectConnection);
@@ -458,6 +458,9 @@ int main(int argc, char **argv)
     const int exitCode = app.exec();
     if (worker.isRunning())
         worker.wait(); // bounded 750ms GPU wait, no runaway DLL worker
+    // Disconnect before captured state is destroyed. QQuickWindow may emit
+    // sceneGraphInvalidated while its own destructor runs afterwards.
+    QObject::disconnect(invalidationConnection);
     // The offscreen surface remains live until worker stopped and context
     // was destroyed in the correct worker thread.
     return exitCode;
