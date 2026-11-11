@@ -14,6 +14,7 @@
 #include <QThread>
 #include <QThreadPool>
 #include <QTimer>
+#include <QtGlobal>
 
 #include <algorithm>
 #include <atomic>
@@ -50,6 +51,19 @@ constexpr GLenum kSatisfied = 0x911C; // GL_CONDITION_SATISFIED
 // sources still get a bounded fallback update, followed by the existing
 // 750ms terminal-outcome timer if the window cannot render.
 constexpr int kNormalFrameOpportunityMs = 17;
+
+// Qt 5.15 direct OpenGL renders into its current framebuffer and exposes
+// screen-scraping via afterRendering() before swap. Qt 6 RHI has a different
+// submission lifecycle and uses afterFrameEnd(). This adapter is the ONLY
+// version-specific portion of the GL PBO provider.
+inline qreal captureWindowDpr(QQuickWindow *window) noexcept
+{
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    return window->devicePixelRatio();
+#else
+    return window->effectiveDevicePixelRatio();
+#endif
+}
 
 class GlPboCaptureSource final : public hyremote::CaptureSource
 {
@@ -236,10 +250,17 @@ public:
                     if (connectNow) s->connected = true;
                 }
                 if (connectNow) {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+                    s->frameConnection = QObject::connect(
+                        target, &QQuickWindow::afterRendering, target,
+                        [s, target] { onRender(s, target); },
+                        Qt::DirectConnection);
+#else
                     s->frameConnection = QObject::connect(
                         target, &QQuickWindow::afterFrameEnd, target,
                         [s, target] { onRender(s, target); },
                         Qt::DirectConnection);
+#endif
                     s->invalidatedConnection = QObject::connect(
                         target, &QQuickWindow::sceneGraphInvalidated, target,
                         [s] { onInvalidated(s); },
@@ -597,7 +618,7 @@ private:
                         // current geometry. The public CaptureSource contract
                         // can recover with a new request once the target
                         // scene graph has synchronized its new dimensions.
-                        const qreal currentDpr = window->effectiveDevicePixelRatio();
+                        const qreal currentDpr = captureWindowDpr(window);
                         const int currentW = qRound(window->width() * currentDpr);
                         const int currentH = qRound(window->height() * currentDpr);
                         const bool geometryMatches =
@@ -667,7 +688,7 @@ private:
                 if (!s->gpuPending && !s->cpuConversionPending
                     && !kickAgain && failed.empty()
                     && !conversionData && !s->queued.empty()) {
-                    const qreal dpr = window->effectiveDevicePixelRatio();
+                    const qreal dpr = captureWindowDpr(window);
                     const int w = qRound(window->width()*dpr);
                     const int h = qRound(window->height()*dpr);
                     if (w>0 && h>0 && std::size_t(w) <=
