@@ -526,8 +526,9 @@ public:
             // the public-Qt product behavior remains OFF unless opt-in=1.
             const bool enableActivityWake =
                 qEnvironmentVariableIntValue("HYREMOTE_QUICK_ACTIVITY_WAKE") == 1;
-            qInfo() << "HYREMOTE_QUICK_ACTIVITY_WAKE="
-                    << (enableActivityWake ? "ON" : "OFF");
+            qInfo().noquote() << (enableActivityWake
+                ? "HYREMOTE_QUICK_ACTIVITY_WAKE=ON"
+                : "HYREMOTE_QUICK_ACTIVITY_WAKE=OFF");
             if (enableActivityWake) {
                 const std::weak_ptr<ViewerCaptureDemand> weak(m_demand);
                 m_quickActivityConnection = QObject::connect(
