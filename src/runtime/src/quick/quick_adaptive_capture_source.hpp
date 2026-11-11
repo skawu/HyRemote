@@ -7,6 +7,7 @@
 #include <QMetaObject>
 #include <QPointer>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QWindow>
 
 #include <algorithm>
