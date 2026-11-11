@@ -8,6 +8,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 
 #include "hyremote/core/storage.hpp"
 
@@ -67,6 +68,87 @@ inline std::shared_ptr<const hyremote::FrameStorage> copyReadbackFrameStorage(
             }
         }
         return owned;
+    } catch (...) {
+        return {};
+    }
+}
+
+// The GPU mapping was already copied into this source-owned CPU allocation.
+// Keep that exact allocation as the immutable FrameStorage lifetime anchor,
+// rather than allocating a second full frame and copying all pixels again.
+// For bottom-up GL, reverse rows IN PLACE using only one stride-sized scratch
+// buffer; for D3D staging, preserve RowPitch and swap BGRA channels in place.
+// No GL/D3D handle escapes its renderer thread or is retained here.
+class AdoptedReadbackFrameStorage final : public hyremote::FrameStorage
+{
+public:
+    AdoptedReadbackFrameStorage(std::shared_ptr<std::byte> data,
+                               std::size_t bytes, std::size_t stride) noexcept
+        : m_data(std::move(data)), m_bytes(bytes), m_stride(stride) {}
+
+    hyremote::StorageKind kind() const noexcept override
+    {
+        return hyremote::StorageKind::Cpu;
+    }
+    std::size_t planeCount() const noexcept override { return 1; }
+    std::optional<hyremote::PlaneView> mapRead(std::size_t plane) const override
+    {
+        if (plane != 0 || !m_data)
+            return std::nullopt;
+        return hyremote::PlaneView{m_data.get(), m_bytes, m_stride};
+    }
+    std::string_view externalDomain() const noexcept override { return {}; }
+    std::shared_ptr<const hyremote::StorageExtension>
+    extension(std::string_view) const override { return {}; }
+
+private:
+    const std::shared_ptr<std::byte> m_data;
+    const std::size_t m_bytes;
+    const std::size_t m_stride;
+};
+
+inline std::shared_ptr<const hyremote::FrameStorage> adoptReadbackFrameStorage(
+    std::shared_ptr<std::byte> source,
+    std::size_t sourceBytes,
+    std::size_t sourceStride,
+    std::size_t pixelRowBytes,
+    std::size_t height,
+    ReadbackRowOrder order,
+    ReadbackPixelOrder pixels = ReadbackPixelOrder::Rgba8888) noexcept
+{
+    if (!source || pixelRowBytes == 0 || height == 0
+        || pixelRowBytes % 4 != 0
+        || sourceStride < pixelRowBytes
+        || sourceStride > std::numeric_limits<std::size_t>::max() / height
+        || sourceBytes < sourceStride * height)
+        return {};
+    try {
+        std::byte *data = source.get();
+        if (order == ReadbackRowOrder::BottomUp && height > 1) {
+            std::unique_ptr<std::byte[]> scratch(
+                new (std::nothrow) std::byte[sourceStride]);
+            if (!scratch)
+                return {};
+            for (std::size_t y = 0; y < height / 2; ++y) {
+                auto *top = data + y * sourceStride;
+                auto *bottom = data + (height - y - 1) * sourceStride;
+                std::memcpy(scratch.get(), top, sourceStride);
+                std::memcpy(top, bottom, sourceStride);
+                std::memcpy(bottom, scratch.get(), sourceStride);
+            }
+        }
+        if (pixels == ReadbackPixelOrder::Bgra8888) {
+            for (std::size_t y = 0; y < height; ++y) {
+                auto *row = data + y * sourceStride;
+                for (std::size_t x = 0; x < pixelRowBytes; x += 4) {
+                    const std::byte blue = row[x];
+                    row[x] = row[x + 2];
+                    row[x + 2] = blue;
+                }
+            }
+        }
+        return std::make_shared<AdoptedReadbackFrameStorage>(
+            std::move(source), sourceBytes, sourceStride);
     } catch (...) {
         return {};
     }
