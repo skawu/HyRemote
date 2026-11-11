@@ -4,6 +4,7 @@
 // Ref: #937 actual visible Qt6.8.3 D3D11 RTV/staging pixel experiment.
 // Qualification for product requires fixed-SHA Windows Viewer A/B.
 #include "quick/quick_d3d11_staging_capture_source.hpp"
+#include "quick/quick_readback_timing.hpp"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -43,9 +44,8 @@
 namespace HyRemote::detail {
 namespace {
 using Microsoft::WRL::ComPtr;
-constexpr int kNormalOpportunityMs = 17;
-constexpr int kRetirePumpMs = 25;
-constexpr int kMaxExtraRenders = 2;
+constexpr int kNormalOpportunityMs = QuickReadbackTiming::normalFrameOpportunityMs;
+constexpr int kMaxExtraRenders = QuickReadbackTiming::maxExtraRenders;
 constexpr int kRequestDeadlineMs = 750;
 
 bool isBgra(DXGI_FORMAT format) noexcept
@@ -404,7 +404,16 @@ private:
     {
         if (!window)
             return;
-        QTimer::singleShot(kRetirePumpMs, window.data(),
+        int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            if (!s->active || s->generation != generation
+                || !s->staging || s->forcedRenders >= kMaxExtraRenders)
+                return;
+            if (s->forcedRenders > 0)
+                delayMs = QuickReadbackTiming::secondRetirementRenderMs;
+        }
+        QTimer::singleShot(delayMs, window.data(),
             [s, window, generation] {
                 bool shouldRender = false;
                 {
