@@ -101,6 +101,11 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         ComPtr<ID3D11Texture2D> staging;
         ComPtr<ID3D11Device> stagingDevice;
         D3D11_TEXTURE2D_DESC stagingDesc{};
+        // Retain at most ONE completed staging texture, not one per frame.
+        // Once Map/Unmap succeeds the CPU result owns its bytes separately.
+        ComPtr<ID3D11Texture2D> reusableStaging;
+        ComPtr<ID3D11Device> reusableDevice;
+        D3D11_TEXTURE2D_DESC reusableDesc{};
         hyremote::TimePoint capturedPts{};
         hyremote::TimePoint submittedPts{};
         int pixelWidth = 0, pixelHeight = 0;
@@ -417,7 +422,7 @@ private:
             });
     }
 
-    static void releaseNative(State &state)
+    static void releaseActiveReadback(State &state)
     {
         state.capturedTarget.Reset();
         state.staging.Reset();
@@ -425,6 +430,33 @@ private:
         state.stagingDesc = {};
         state.forcedRenders = 0;
         state.pixelWidth = state.pixelHeight = 0;
+    }
+
+    static void releaseNative(State &state)
+    {
+        releaseActiveReadback(state);
+        // Full source/device invalidation discards even an idle GPU resource.
+        state.reusableStaging.Reset();
+        state.reusableDevice.Reset();
+        state.reusableDesc = {};
+    }
+
+    static bool canReuseStaging(const State &state, ID3D11Device *device,
+                                const D3D11_TEXTURE2D_DESC &desc) noexcept
+    {
+        const auto &old = state.reusableDesc;
+        return state.reusableStaging
+            && state.reusableDevice.Get() == device
+            && old.Width == desc.Width && old.Height == desc.Height
+            && old.MipLevels == desc.MipLevels
+            && old.ArraySize == desc.ArraySize
+            && old.Format == desc.Format
+            && old.SampleDesc.Count == desc.SampleDesc.Count
+            && old.SampleDesc.Quality == desc.SampleDesc.Quality
+            && old.Usage == desc.Usage
+            && old.BindFlags == desc.BindFlags
+            && old.CPUAccessFlags == desc.CPUAccessFlags
+            && old.MiscFlags == desc.MiscFlags;
     }
 
     static void onInvalidated(const std::shared_ptr<State> &s)
@@ -626,14 +658,21 @@ private:
                         }
                         context->Unmap(s->staging.Get(), 0);
                         if (raw) {
+                            // The mapped result has been copied into owned
+                            // CPU bytes and unmapped: safely reuse this same
+                            // GPU staging allocation for the next request.
+                            s->reusableStaging = std::move(s->staging);
+                            s->reusableDevice = s->stagingDevice;
+                            s->reusableDesc = s->stagingDesc;
                             s->converting.swap(s->submitted);
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
+                            releaseActiveReadback(*s);
                         } else {
                             failed.swap(s->submitted);
                             failure = "D3D11 resize or CPU readback allocation failed";
+                            releaseNative(*s);
                         }
-                        releaseNative(*s);
                         tryNext = !s->queued.empty() && !s->cpuConversionPending;
                     }
                 }
@@ -645,8 +684,23 @@ private:
                 desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
                 desc.MiscFlags = 0;
                 ComPtr<ID3D11Texture2D> staging;
-                if (SUCCEEDED(device->CreateTexture2D(&desc, nullptr,
-                                                      staging.GetAddressOf())) && staging) {
+                if (canReuseStaging(*s, device, desc)) {
+                    staging = std::move(s->reusableStaging);
+                    s->reusableDevice.Reset();
+                    s->reusableDesc = {};
+                    HYREMOTE_P1_COUNT(QuickD3d11StagingReuse);
+                } else {
+                    // A driver/format/size change invalidates the one-slot
+                    // cache; never keep incompatible staging allocations.
+                    s->reusableStaging.Reset();
+                    s->reusableDevice.Reset();
+                    s->reusableDesc = {};
+                    if (SUCCEEDED(device->CreateTexture2D(&desc, nullptr,
+                                                         staging.GetAddressOf()))
+                        && staging)
+                        HYREMOTE_P1_COUNT(QuickD3d11StagingAllocation);
+                }
+                if (staging) {
                     // Borrow the Qt render target only until this
                     // same-frame CopyResource submission. D3D11 staging owns
                     // its CPU-readable copy independently after return.
