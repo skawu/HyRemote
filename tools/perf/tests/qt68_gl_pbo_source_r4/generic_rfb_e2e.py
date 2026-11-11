@@ -76,9 +76,35 @@ def main():
                 # workaround or arbitrary retries until color happens to pass.
                 time.sleep(0.5)
                 png = Path(temp) / "viewer-frame.png"
+                colors = set()
+                frames_observed = 0
                 with api.connect(f"127.0.0.1::{port}", password=None, timeout=12) as viewer:
+                    # One real framebuffer frame first, then repeatedly sample
+                    # *the same connected RFB client* as ordinary QML Timer
+                    # drives new Scene Graph pixels. Do not infer all source
+                    # events were seen: this is a bounded delivery smoke.
                     viewer.captureScreen(str(png))
+                    for index in range(12):
+                        if index:
+                            time.sleep(0.3)
+                        current = Path(temp) / f"dynamic-{index}.png"
+                        viewer.captureScreen(str(current))
+                        with Image.open(current) as frame:
+                            rgb = frame.convert("RGB")
+                            marker = rgb.getpixel((245, 140))
+                        red = (0xdf, 0x25, 0x34)
+                        green = (0x25, 0xd2, 0x42)
+                        if all(abs(x-y) <= 8 for x, y in zip(marker, red)):
+                            colors.add("red")
+                        elif all(abs(x-y) <= 8 for x, y in zip(marker, green)):
+                            colors.add("green")
+                        else:
+                            raise RuntimeError(
+                                f"RFB dynamic marker has unexpected pixel {marker} at sample {index}")
+                        frames_observed += 1
                 shape, top_left, bottom_right = sample(png)
+                require(colors == {"red", "green"},
+                        f"Real VNC did not display both independent QML source states: {colors}")
                 require(shape == (460, 190),
                         f"unexpected real RFB frame size {shape}; expected 460x190")
                 expected = (0x20, 0x27, 0x33)
@@ -91,6 +117,8 @@ def main():
                 trace = logpath.read_text(encoding="utf-8")
                 require("APP_READY" in trace and "PLATFORM_NAME=xcb" in trace,
                         "Generic activation did not preserve the original xcb platform")
+                require(trace.count("HYREMOTE_R4_QML_SOURCE_PHASE=") >= 2,
+                        "Qt QML independent source Timer did not produce two real changes")
                 if args.arm == "ON":
                     require("HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE" in trace,
                             "ON product did not select the real experimental PBO CaptureSource")
@@ -108,6 +136,9 @@ def main():
                     "bottom_right_rgb": bottom_right,
                     "source_route": "GlPboCaptureSource" if args.arm == "ON" else "PublicQtGrabToImage",
                     "actual_rfb_handshake_and_full_frame": True,
+                    "dynamic_source_colors_visible_via_real_rfb": sorted(colors),
+                    "dynamic_rfb_viewport_observations": frames_observed,
+                    "dynamic_qml_timed_source_changes_minimum": 2,
                     "wall_time_to_first_complete_frame_s": round(elapsed, 3),
                     "real_physical_viewer": False,
                     "full_dynamic_consistency_test": False,
