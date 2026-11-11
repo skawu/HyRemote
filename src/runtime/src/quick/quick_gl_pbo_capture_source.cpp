@@ -275,6 +275,17 @@ private:
             s->fence = nullptr;
             s->gpuPending = false;
         }
+        s->cleanupRequested = false;
+        // A hidden/destroyed Scene Graph may never produce the retirement
+        // afterFrameEnd requested by stop(). Invalidating the graph already
+        // releases its GL context; revoke subscription references here.
+        if (!s->active && s->connected) {
+            QObject::disconnect(s->frameConnection);
+            QObject::disconnect(s->invalidatedConnection);
+            s->frameConnection = {};
+            s->invalidatedConnection = {};
+            s->connected = false;
+        }
     }
 
     static void reportUnavailable(const std::shared_ptr<State> &s,
