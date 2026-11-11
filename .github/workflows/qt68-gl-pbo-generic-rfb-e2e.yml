@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/qt68-gl-pbo-generic-rfb-e2e.yml
       - tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py
+      - tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
       - src/runtime/src/quick/quick_gl_pbo_capture_source.cpp
       - src/runtime/src/quick/quick_target.cpp
       - src/runtime/CMakeLists.txt
@@ -56,6 +57,7 @@ jobs:
           set -euo pipefail
           arm="${{ matrix.arm }}"
           build="build-r4-rfb-$arm"
+          python tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
           sh ./build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm"
           grep -F "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=$arm" "$build/CMakeCache.txt"
           test -x "$build/install/bin/hyremote-learning-03-quick"
