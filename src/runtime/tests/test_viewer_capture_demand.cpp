@@ -256,6 +256,60 @@ int main()
         return 12;
     gate.stop();
 
+    // Qt render notifications must not escape socket backpressure or
+    // wake a 0-viewer Source. This is independent of real Qt render-loop
+    // timing and uses strict blocked futures (rather than sleeps as a
+    // substitute for acquisition).
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.waitForViewer(), "initial capture escape was lost"))
+        return 15;
+    std::promise<bool> activityBlockedPromise;
+    auto activityBlocked = activityBlockedPromise.get_future();
+    std::thread activityBlockedThread([&] {
+        activityBlockedPromise.set_value(gate.waitForViewer());
+    });
+    const bool wasBlockedForNetwork =
+        activityBlocked.wait_for(40ms) == std::future_status::timeout;
+    gate.noteQtRenderActivity();
+    const bool stayedBlockedForNetwork =
+        activityBlocked.wait_for(60ms) == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool networkDrainWoke =
+        activityBlocked.wait_for(2s) == std::future_status::ready;
+    if (!networkDrainWoke)
+        gate.stop();
+    activityBlockedThread.join();
+    if (!check(wasBlockedForNetwork && stayedBlockedForNetwork
+                   && networkDrainWoke && activityBlocked.get(),
+               "Qt activity bypassed socket backpressure"))
+        return 16;
+    gate.stop();
+
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(0);
+    std::promise<bool> zeroActivityPromise;
+    auto zeroActivity = zeroActivityPromise.get_future();
+    std::thread zeroActivityThread([&] {
+        zeroActivityPromise.set_value(gate.waitForViewer());
+    });
+    const bool zeroWasBlocked =
+        zeroActivity.wait_for(40ms) == std::future_status::timeout;
+    gate.noteQtRenderActivity();
+    const bool zeroStayedBlocked =
+        zeroActivity.wait_for(60ms) == std::future_status::timeout;
+    gate.stop();
+    const bool zeroStopWoke =
+        zeroActivity.wait_for(2s) == std::future_status::ready;
+    zeroActivityThread.join();
+    if (!check(zeroWasBlocked && zeroStayedBlocked && zeroStopWoke
+                   && !zeroActivity.get(),
+               "Qt render activity forced capture with zero viewers"))
+        return 17;
+
     std::cout << "PASS 250ms bounded probe, Qt GUI activity wake and self-grab suppression, "
                  "remote input prompt wake, disconnect/reconnect, delivery backpressure, "
                  "no-demand freshness and stop\n";
