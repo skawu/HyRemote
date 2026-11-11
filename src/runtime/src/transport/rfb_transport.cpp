@@ -2104,10 +2104,12 @@ public:
 
     void enqueueFrame(hyremote::RemoteFrame frame) override
     {
-        HYREMOTE_P1_TRACE_FRAME(CoreFrameQueued, frame, 0);
         std::lock_guard<std::mutex> lifecycleLock(m_lifecycleMutex);
         if (!m_worker || !m_thread)
             return;
+        // Only trace a genuinely live transport submission, not the frame
+        // discarded after stop(). Core assigned FrameId before this call.
+        HYREMOTE_P1_TRACE_FRAME(CoreFrameQueued, frame, 0);
 
         bool notify = false;
         {
