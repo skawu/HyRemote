@@ -21,6 +21,8 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <utility>
 
@@ -73,6 +75,7 @@ public:
     bool startsSuccessfully = true;
     bool acceptsRequests = true;
     std::vector<hyremote::CaptureRequestId> accepted;
+    std::mutex callbackMutex;
     hyremote::FrameReadyHandler onFrame;
     hyremote::CaptureEventHandler onEvent;
 
@@ -89,6 +92,7 @@ public:
     {
         if (!startsSuccessfully)
             return false;
+        std::lock_guard<std::mutex> lock(callbackMutex);
         running = true;
         accepted.clear();
         onFrame = std::move(frame);
@@ -97,6 +101,7 @@ public:
     }
     void stop() noexcept override
     {
+        std::lock_guard<std::mutex> lock(callbackMutex);
         running = false;
         onFrame = {};
         onEvent = {};
@@ -124,10 +129,61 @@ public:
             frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
             frame.damage = hyremote::Damage::fullFrame();
         }
-        if (onFrame)
-            onFrame(std::move(frame));
+        hyremote::FrameReadyHandler callback;
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            callback = onFrame; // immutable local copy survives concurrent stop
+        }
+        if (callback)
+            callback(std::move(frame));
     }
 };
+
+void testAdaptiveQuickStopDrainsForwardedCoreCallback()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    std::mutex gateMutex;
+    std::condition_variable gateCv;
+    bool callbackEntered = false;
+    bool callbackReleased = false;
+    std::atomic<bool> stopped{false};
+    CHECK(source.start([&](hyremote::RemoteFrame) {
+        std::unique_lock<std::mutex> lock(gateMutex);
+        callbackEntered = true;
+        gateCv.notify_all();
+        gateCv.wait(lock, [&] { return callbackReleased; });
+    }, [](const hyremote::CaptureEvent &) {}));
+    CHECK(source.requestFrame({9101, hyremote::Clock::now()}));
+    std::thread producer([&] {
+        primary->complete(9101, true);
+    });
+    {
+        std::unique_lock<std::mutex> lock(gateMutex);
+        const bool entered = gateCv.wait_for(
+            lock, std::chrono::seconds(3), [&] { return callbackEntered; });
+        CHECK(entered);
+    }
+    std::thread stopper([&] {
+        source.stop();
+        stopped.store(true, std::memory_order_release);
+    });
+    // This test must not rely on an unbounded sleep: the callback is already
+    // admitted, and release happens only after stop has had a chance to run.
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    CHECK(!stopped.load(std::memory_order_acquire));
+    {
+        std::lock_guard<std::mutex> lock(gateMutex);
+        callbackReleased = true;
+    }
+    gateCv.notify_all();
+    producer.join();
+    stopper.join();
+    CHECK(stopped.load(std::memory_order_acquire));
+}
 
 void testAdaptiveQuickFallbackSurfaceEpochAndFreshness()
 {
@@ -1779,6 +1835,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
     testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();
     testQuickOpaqueRgbxCpuStorageIsZeroCopy();
