@@ -64,6 +64,7 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         bool fallbackRenderTimerArmed = false;
         bool cleanupRequested = false;
         unsigned int callbacksInFlight = 0;
+        unsigned int cpuWorkersInFlight = 0;
         std::vector<hyremote::CaptureRequest> queued;
         std::vector<hyremote::CaptureRequest> inFlight;
         hyremote::FrameReadyHandler onFrame;
@@ -148,7 +149,13 @@ public:
             s->onFrame = {};
             s->onEvent = {};
             s->cleanupRequested = true;
-            s->drained.wait(guard, [&] { return s->callbacksInFlight == 0; });
+            // A worker may still execute code from the Runtime DLL even
+            // after its generation has been revoked. Drain it before the
+            // owner can unload the module or destroy the State.
+            s->drained.wait(guard, [&] {
+                return s->callbacksInFlight == 0
+                    && s->cpuWorkersInFlight == 0;
+            });
             target = s->window;
         }
         // The GL context belongs to Qt's render thread. Never glDeleteBuffers
@@ -623,6 +630,7 @@ private:
                             frameRenderTime = s->readbackRenderTime;
                             s->converting.swap(s->inFlight);
                             s->cpuConversionPending = true;
+                            ++s->cpuWorkersInFlight;
                         } else {
                             failed.swap(s->inFlight);
                             failureReason = "GL PBO could not map owned CPU frame";
@@ -687,15 +695,50 @@ private:
             }
         }
         if (conversionData) {
-            // At most one conversion per source. Fence polling remains
-            // nonblocking and CPU row inversion never blocks Scene Graph.
-            QThreadPool::globalInstance()->start(
-                [s, gen, raw = std::move(conversionData),
-                 frameWidth, frameHeight, frameDpr, frameRenderTime] {
-                    finishCpuConversion(s, gen, raw,
-                                        frameWidth, frameHeight, frameDpr,
-                                        frameRenderTime);
-                });
+            // At most one conversion per source. The stop() quiescence gate
+            // also drains running pool work before Runtime code can unload.
+            try {
+                QThreadPool::globalInstance()->start(
+                    [s, gen, raw = std::move(conversionData),
+                     frameWidth, frameHeight, frameDpr, frameRenderTime] {
+                        try {
+                            finishCpuConversion(s, gen, raw,
+                                                frameWidth, frameHeight, frameDpr,
+                                                frameRenderTime);
+                        } catch (...) {
+                            std::vector<hyremote::CaptureRequest> abandoned;
+                            {
+                                std::lock_guard<std::mutex> lock(s->mutex);
+                                if (s->active && s->generation == gen) {
+                                    s->cpuConversionPending = false;
+                                    abandoned.swap(s->converting);
+                                }
+                            }
+                            if (!abandoned.empty())
+                                reportUnavailable(s, gen, std::move(abandoned),
+                                                  "GL PBO CPU worker failed");
+                        }
+                        {
+                            std::lock_guard<std::mutex> lock(s->mutex);
+                            --s->cpuWorkersInFlight;
+                            s->drained.notify_all();
+                        }
+                    });
+            } catch (...) {
+                std::vector<hyremote::CaptureRequest> notScheduled;
+                {
+                    std::lock_guard<std::mutex> lock(s->mutex);
+                    if (s->active && s->generation == gen) {
+                        s->cpuConversionPending = false;
+                        notScheduled.swap(s->converting);
+                    }
+                    --s->cpuWorkersInFlight;
+                    s->drained.notify_all();
+                }
+                if (!notScheduled.empty())
+                    reportUnavailable(s, gen, std::move(notScheduled),
+                                      "GL PBO CPU worker could not be scheduled");
+            }
         }
         if (!failed.empty())
             reportUnavailable(s, gen, std::move(failed), failureReason);
