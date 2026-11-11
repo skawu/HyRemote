@@ -12,6 +12,7 @@
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QThread>
+#include <QThreadPool>
 #include <QTimer>
 
 #include <algorithm>
@@ -70,6 +71,9 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         GLuint pbo = 0;
         GLsync fence = nullptr;
         bool gpuPending = false;
+        // One outstanding CPU conversion per source, independent of the GL fence.
+        bool cpuConversionPending = false;
+        std::vector<hyremote::CaptureRequest> converting;
         int pixelWidth = 0;
         int pixelHeight = 0;
         float dpr = 1.0f;
@@ -107,6 +111,8 @@ public:
         ++s->generation;
         s->queued.clear();
         s->inFlight.clear();
+        s->converting.clear();
+        s->cpuConversionPending = false;
         // A queued GUI dispatch from an earlier Session may never have run.
         // Never let its posted-token suppress the first request of this
         // generation. Old tasks still verify their captured generation.
@@ -131,6 +137,8 @@ public:
             ++s->generation;
             s->queued.clear();
             s->inFlight.clear();
+            s->converting.clear();
+            s->cpuConversionPending = false;
             s->kickPosted = false;
             s->fallbackRenderTimerArmed = false;
             s->onFrame = {};
@@ -181,6 +189,7 @@ public:
                     };
                     take(s->queued);
                     take(s->inFlight);
+                    take(s->converting);
                 }
                 if (!expired.empty())
                     reportUnavailable(s, requestGeneration, std::move(expired),
@@ -284,6 +293,7 @@ private:
                         return;
                     s->fallbackRenderTimerArmed = false;
                     needsFallbackRender = !s->gpuPending
+                        && !s->cpuConversionPending
                         && !s->queued.empty();
                 }
                 if (needsFallbackRender && window && window->isVisible())
@@ -425,6 +435,61 @@ private:
                     s->drained.notify_all();
                 }
             }, Qt::QueuedConnection);
+    }
+
+    static void finishCpuConversion(
+        const std::shared_ptr<State> &s,
+        std::uint64_t generation,
+        const std::shared_ptr<std::vector<std::byte>> &raw,
+        int width, int height, float dpr)
+    {
+        // Pool worker only: the PBO is unmapped and the bytes are CPU-owned.
+        // Neither Qt's render thread nor the GUI thread flips the image rows.
+        std::shared_ptr<const hyremote::FrameStorage> storage;
+        try {
+            const auto stride = static_cast<std::size_t>(width) * 4u;
+            auto owned = hyremote::CpuFrameStorage::createSinglePlane(
+                stride, static_cast<std::size_t>(height));
+            std::byte *dst = owned ? owned->mutablePlane(0) : nullptr;
+            if (dst && raw && raw->size() == stride * static_cast<std::size_t>(height)) {
+                for (int y = 0; y < height; ++y)
+                    std::memcpy(dst + static_cast<std::size_t>(y) * stride,
+                                raw->data() + static_cast<std::size_t>(height - y - 1) * stride,
+                                stride);
+                storage = std::move(owned);
+            }
+        } catch (...) {
+            // A failed allocation must not escape a pool worker.
+        }
+
+        std::vector<hyremote::CaptureRequest> requests;
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            if (!s->active || s->generation != generation)
+                return; // stop/restart revoked the work
+            s->cpuConversionPending = false;
+            requests.swap(s->converting); // timeout may already have retired IDs
+        }
+        if (!requests.empty()) {
+            if (storage)
+                reportFrame(s, generation, std::move(requests),
+                            std::move(storage), width, height, dpr);
+            else
+                reportUnavailable(s, generation, std::move(requests),
+                                  "GL PBO CPU frame conversion failed");
+        }
+        if (auto *app = QCoreApplication::instance()) {
+            QMetaObject::invokeMethod(app, [s, generation] {
+                QPointer<QQuickWindow> target;
+                {
+                    std::lock_guard<std::mutex> guard(s->mutex);
+                    if (!s->active || s->generation != generation)
+                        return;
+                    target = s->window;
+                }
+                requestFallbackRenderIfNoNormalFrame(s, target, generation);
+            }, Qt::QueuedConnection);
+        }
     }
 
     static void requestOneRetirementRender(const std::shared_ptr<State> &s,
