@@ -56,6 +56,20 @@ constexpr int kNormalFrameOpportunityMs = 17;
 // screen-scraping via afterRendering() before swap. Qt 6 RHI has a different
 // submission lifecycle and uses afterFrameEnd(). This adapter is the ONLY
 // version-specific portion of the GL PBO provider.
+inline bool hasRequiredPboFenceApi(const QOpenGLContext *ctx) noexcept
+{
+    if (!ctx)
+        return false;
+    const auto version = ctx->format();
+    // GLES 3.0 provides PBO, mapBufferRange and GLsync in core.
+    // Desktop GLsync is only core as of OpenGL 3.2; advertising GL 3.0
+    // alone is NOT sufficient for glFenceSync or a safe async provider.
+    if (ctx->isOpenGLES())
+        return version.majorVersion() >= 3;
+    return version.majorVersion() > 3
+        || (version.majorVersion() == 3 && version.minorVersion() >= 2);
+}
+
 inline qreal captureWindowDpr(QQuickWindow *window) noexcept
 {
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -600,7 +614,7 @@ private:
         auto *renderer = window->rendererInterface();
         if (!ctx || !renderer
             || renderer->graphicsApi() != QSGRendererInterface::OpenGL
-            || ctx->format().majorVersion() < 3) {
+            || !hasRequiredPboFenceApi(ctx)) {
             std::vector<hyremote::CaptureRequest> unsupported;
             std::uint64_t generation = 0;
             {
