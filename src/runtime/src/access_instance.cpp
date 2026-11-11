@@ -505,6 +505,7 @@ public:
         auto captureCompleted = [demand = m_demand,
                                  onFrame = std::move(onFrame)](
                                     hyremote::RemoteFrame frame) mutable {
+            HYREMOTE_P1_TRACE_FRAME(SourceCompleted, frame, 0);
             demand->noteCaptureCompleted();
             if (onFrame)
                 onFrame(std::move(frame));
@@ -574,6 +575,7 @@ public:
         if (!m_demand->waitForViewer())
             return false;
         m_demand->noteCaptureStarted();
+        HYREMOTE_P1_TRACE_REQUEST(CaptureRequest, request);
         bool accepted = false;
         try {
             accepted = m_source->requestFrame(request);
