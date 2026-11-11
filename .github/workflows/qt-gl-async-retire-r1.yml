@@ -65,15 +65,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp/r953
-          for mode in default cancel; do
+          for mode in default cancel fullhd; do
             args=()
             if [ "$mode" = cancel ]; then args+=(--cancel); fi
-            timeout 25s xvfb-run -a -s '-screen 0 1280x720x24 +extension GLX' ./build-r953/hyremote-qt-gl-async-retire-r1 "${args[@]}" | tee "tmp/r953/$mode.log"
+            if [ "$mode" = fullhd ]; then args+=(--fullhd); fi
+            timeout 25s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r953/hyremote-qt-gl-async-retire-r1 "${args[@]}" | tee "tmp/r953/$mode.log"
             grep -q '^R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE$' "tmp/r953/$mode.log"
             grep -q '"extra_window_updates":0' "tmp/r953/$mode.log"
             grep -q '"shared_context":true' "tmp/r953/$mode.log"
             grep -q '"qualified_for_product":false' "tmp/r953/$mode.log"
-            if [ "$mode" = default ]; then grep -q '"pixel_truth":true' "tmp/r953/$mode.log"; fi
+            if [ "$mode" != cancel ]; then grep -q '"pixel_truth":true' "tmp/r953/$mode.log"; fi
+            if [ "$mode" = fullhd ]; then
+              grep -q '"frame_width":1920' "tmp/r953/$mode.log"
+              grep -q '"frame_height":1080' "tmp/r953/$mode.log"
+            fi
             if [ "$mode" = cancel ]; then grep -q '"cancel_suppressed_delivery":true' "tmp/r953/$mode.log"; fi
           done
       - name: Preserve non-product proof output
