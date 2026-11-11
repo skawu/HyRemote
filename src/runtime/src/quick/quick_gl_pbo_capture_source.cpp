@@ -3,6 +3,7 @@
 // NOT RELEASE QUALIFIED. A readable default framebuffer in afterFrameEnd is
 // verified on Mesa/Xvfb only; EGLFS/front-buffer semantics remain unverified.
 #include "quick/quick_gl_pbo_capture_source.hpp"
+#include "quick/quick_readback_timing.hpp"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -50,7 +51,7 @@ constexpr GLenum kSatisfied = 0x911C; // GL_CONDITION_SATISFIED
 // consumes queued requests immediately if a normal frame arrives. Idle
 // sources still get a bounded fallback update, followed by the existing
 // 750ms terminal-outcome timer if the window cannot render.
-constexpr int kNormalFrameOpportunityMs = 17;
+constexpr int kNormalFrameOpportunityMs = QuickReadbackTiming::normalFrameOpportunityMs;
 
 // Qt 5.15 direct OpenGL renders into its current framebuffer and exposes
 // screen-scraping via afterRendering() before swap. Qt 6 RHI has a different
@@ -587,7 +588,17 @@ private:
     {
         // At most two extra renders per submitted GPU readback. Never
         // continuously redraw a static application to wait for a fence.
-        QTimer::singleShot(25, window, [s, window, generation] {
+        int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            if (!s->active || s->generation != generation
+                || !s->gpuPending
+                || s->forcedRenders >= QuickReadbackTiming::maxExtraRenders)
+                return;
+            if (s->forcedRenders > 0)
+                delayMs = QuickReadbackTiming::secondRetirementRenderMs;
+        }
+        QTimer::singleShot(delayMs, window, [s, window, generation] {
             bool shouldRender = false;
             {
                 std::lock_guard<std::mutex> guard(s->mutex);
