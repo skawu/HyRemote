@@ -130,6 +130,7 @@ jobs:
           assert r["qt"] == "6.8.3" and r["backend"] == "Qt6_RHI_OpenGL", r
           assert r["phases_expected"] == r["owned_frames_validated"] == r["unique_request_ids"] == 12, r
           assert r["stop_restart_cycles"] == 2 and r["abandoned_predispatch_request_isolated"] is True and r["late_callbacks_after_stop"] == r["errors"] == 0, r
+          assert r["hidden_unavailable_events"] == 1 and r["hidden_terminal_remote_frames"] == 1, r
           assert r["qualified_for_product"] is False, r
           print("R4_CAPTURE_SOURCE_RUNTIME_PIXEL_AND_LIFETIME=PASS_SCOPED", r)
           PY
