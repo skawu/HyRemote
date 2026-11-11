@@ -6,6 +6,7 @@
 // is selected only when its exact Kit/build was explicitly qualified and armed.
 // A Qt6-specific provider must not be mistaken for the product architecture.
 #include <QtQuick/QSGRendererInterface>
+#include <QtGlobal>
 
 #include <cstddef>
 
@@ -40,18 +41,41 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
     case QSGRendererInterface::OpenGL:
         backend = QuickCaptureBackend::OpenGL;
         break;
-    case QSGRendererInterface::Direct3D11:
-        backend = QuickCaptureBackend::Direct3D11;
-        break;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    // Qt 5.15 has both the default direct-GL scenegraph and opt-in early
+    // RHI graphics APIs. Never refer to Qt6 enum names in a Qt5 build.
     case QSGRendererInterface::Direct3D12:
         backend = QuickCaptureBackend::Direct3D12;
         break;
+    case QSGRendererInterface::OpenGLRhi:
+        backend = QuickCaptureBackend::OpenGL;
+        break;
+    case QSGRendererInterface::Direct3D11Rhi:
+        backend = QuickCaptureBackend::Direct3D11;
+        break;
+    case QSGRendererInterface::VulkanRhi:
+        backend = QuickCaptureBackend::Vulkan;
+        break;
+    case QSGRendererInterface::MetalRhi:
+        backend = QuickCaptureBackend::Metal;
+        break;
+#else
+    // Qt 6 RHI reuses these enum names, but not Qt5's enum identities.
+    case QSGRendererInterface::Direct3D11:
+        backend = QuickCaptureBackend::Direct3D11;
+        break;
+#  if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+    case QSGRendererInterface::Direct3D12:
+        backend = QuickCaptureBackend::Direct3D12;
+        break;
+#  endif
     case QSGRendererInterface::Vulkan:
         backend = QuickCaptureBackend::Vulkan;
         break;
     case QSGRendererInterface::Metal:
         backend = QuickCaptureBackend::Metal;
         break;
+#endif
     default:
         break;
     }
