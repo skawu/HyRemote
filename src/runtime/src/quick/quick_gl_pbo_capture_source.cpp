@@ -88,6 +88,9 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         // All GL fields below may be ACCESSED ONLY in the render callback.
         GLuint pbo = 0;
         GLsync fence = nullptr;
+        // GL object names are meaningful ONLY in their creating Context.
+        // Qt may destroy that Context before an eventual delayed stop().
+        QPointer<QOpenGLContext> resourceContext;
         bool gpuPending = false;
         std::size_t pboCapacityBytes = 0; // render-thread-only under State mutex
         hyremote::TimePoint readbackRenderTime{};
@@ -351,14 +354,20 @@ private:
 
     static void releaseGl(State &s, QOpenGLExtraFunctions *gl)
     {
-        if (s.fence) {
-            gl->glDeleteSync(s.fence);
-            s.fence = nullptr;
+        // NEVER glDelete an old context's PBO/Fence name in the replacement
+        // context: numeric names may alias unrelated Qt/driver resources.
+        // If the original context disappeared, Qt/GL reclaimed those names.
+        const bool ownsCurrentContext = s.resourceContext
+            && s.resourceContext.data() == QOpenGLContext::currentContext();
+        if (ownsCurrentContext) {
+            if (s.fence)
+                gl->glDeleteSync(s.fence);
+            if (s.pbo)
+                gl->glDeleteBuffers(1, &s.pbo);
         }
-        if (s.pbo) {
-            gl->glDeleteBuffers(1, &s.pbo);
-            s.pbo = 0;
-        }
+        s.pbo = 0;
+        s.fence = nullptr;
+        s.resourceContext = nullptr;
         s.gpuPending = false;
         s.pboCapacityBytes = 0;
         s.pixelWidth = 0;
@@ -394,6 +403,7 @@ private:
                 s->fence = nullptr;
                 s->gpuPending = false;
                 s->pboCapacityBytes = 0;
+                s->resourceContext = nullptr;
             }
             s->cleanupRequested = false;
             // A hidden/destroyed Scene Graph may never produce the stop
@@ -626,6 +636,17 @@ private:
         const char *failureReason = "GL PBO frame readback unavailable";
         {
             std::lock_guard<std::mutex> guard(s->mutex);
+            if ((s->pbo || s->fence)
+                && (!s->resourceContext || s->resourceContext.data() != ctx)) {
+                // Missing sceneGraphInvalidated is not permission to reuse
+                // stale GPU objects from an unrelated Qt GL context.
+                gen = s->generation;
+                failed.swap(s->inFlight);
+                failureReason = "Qt OpenGL context changed during GPU readback";
+                releaseGl(*s, gl); // safe: drops mismatched names without glDelete
+                s->cleanupRequested = false;
+                kickAgain = !s->queued.empty();
+            }
             if (s->cleanupRequested) {
                 releaseGl(*s, gl);
                 s->cleanupRequested = false;
@@ -646,10 +667,15 @@ private:
                 return;
             }
             gen = s->generation;
-            if (!s->gpuPending && (s->queued.empty() || s->cpuConversionPending))
+            if (!s->gpuPending
+                && (s->queued.empty() || s->cpuConversionPending)
+                && failed.empty())
                 return; // NO demand or bounded conversion still pending.
-            if (!s->pbo)
+            if (!s->pbo) {
                 gl->glGenBuffers(1, &s->pbo);
+                if (s->pbo)
+                    s->resourceContext = ctx;
+            }
             if (!s->pbo) {
                 failed.swap(s->queued);
                 failureReason = "GL PBO allocation failed";
