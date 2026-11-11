@@ -100,6 +100,22 @@ def analyze(records):
                     continue
                 out[metric].append((last - earlier_ns) / 1_000_000.0)
 
+        # Render-origin timestamps are meaningful ONLY if Core's PTS
+        # source is Render. Completion-origin PTS must never masquerade
+        # as render latency, even if the numeric values are plausible.
+        rendered = [x for x in steps["source_completed"]
+                    if int(x.get("pts_source", 0)) == 1
+                    and int(x.get("content_pts_ns", 0)) > 0]
+        for event in rendered:
+            pts = int(event["content_pts_ns"])
+            completed = int(event["at_ns"])
+            if completed >= pts:
+                out["render_pts_to_source"].append((completed - pts) / 1_000_000)
+            for sent in steps["rfb_socket_queued"]:
+                at = int(sent["at_ns"])
+                if at >= pts:
+                    out["render_pts_to_socket_queue"].append((at - pts) / 1_000_000)
+
         hints = sorted(activity[pid])
         initial = int(steps["capture_request"][0]["at_ns"])
         index = bisect.bisect_right(hints, initial) - 1
@@ -119,7 +135,11 @@ def analyze(records):
         "steps": dict(sorted(totals.items())),
         "intervals": {name: describe(out[name]) for name, _, _ in PAIRS}
             | {"qt_activity_hint_to_request":
-               describe(out["qt_activity_hint_to_request"])},
+               describe(out["qt_activity_hint_to_request"]),
+               "render_pts_to_source":
+               describe(out["render_pts_to_source"]),
+               "render_pts_to_socket_queue":
+               describe(out["render_pts_to_socket_queue"])},
     }
 
 
@@ -134,7 +154,8 @@ def self_test():
         point("capture_request", 2_000_000),
         point("gpu_readback_submitted", 3_000_000),
         point("gpu_readback_ready", 8_000_000),
-        point("source_completed", 10_000_000),
+        {**point("source_completed", 10_000_000),
+         "pts_source": 1, "content_pts_ns": 9_000_000},
         point("core_frame_queued", 11_000_000),
         point("rfb_observed", 12_000_000),
         point("rfb_compared", 13_000_000),
@@ -151,6 +172,8 @@ def self_test():
     assert result["intervals"]["capture_request_to_socket_queue"]["p50_ms"] == 14.5
     assert result["intervals"]["qt_activity_hint_to_request"]["p50_ms"] == 1.0
     assert result["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 2.25
+    assert result["intervals"]["render_pts_to_source"]["p50_ms"] == 1.0
+    assert result["intervals"]["render_pts_to_socket_queue"]["p50_ms"] == 7.5
     assert result["content_change_to_present"] == "NOT_MEASURED"
     print("PASS frame trace analyzer self-test")
 
