@@ -45,6 +45,7 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         m_stopped = false;
         m_viewers = 0;
+        m_capturesInFlight = 0;
         m_bootstrapFrameQueued = false;
         m_deliveryBackpressured = false;
         m_noViewerUpdateDemand = false;
@@ -152,6 +153,45 @@ public:
         m_changed.notify_all();
     }
 
+    // Qt 5.15 and Qt 6.8 both emit QQuickWindow::afterAnimating on the
+    // GUI thread before scenegraph synchronization. This is only an ACTIVITY
+    // hint, never trustworthy damage or proof of a different pixel.
+    //
+    // A public grabToImage() itself schedules a Qt update. Suppress render
+    // hints while a Core-authorized capture is outstanding or the grab would
+    // retrigger itself forever at 60fps on an otherwise static surface.
+    // A genuine UI change concurrent with a grab remains covered by the
+    // captured pixels or the existing bounded 250ms freshness probe.
+    void noteCaptureStarted()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_stopped)
+            ++m_capturesInFlight;
+    }
+
+    void noteCaptureCompleted()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_capturesInFlight != 0)
+            --m_capturesInFlight;
+    }
+
+    void noteQtRenderActivity()
+    {
+        bool changed = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            // Zero viewers and an internally generated grab must not
+            // rearm the idle gate. Delivery backpressure is NOT bypassed.
+            if (!m_stopped && m_viewers != 0 && m_capturesInFlight == 0) {
+                resetIdleLocked();
+                changed = true;
+            }
+        }
+        if (changed)
+            m_changed.notify_all();
+    }
+
     bool waitForViewer()
     {
         std::unique_lock<std::mutex> lock(m_mutex);
@@ -208,6 +248,7 @@ public:
             std::lock_guard<std::mutex> lock(m_mutex);
             m_stopped = true;
             m_viewers = 0;
+            m_capturesInFlight = 0;
             m_deliveryBackpressured = false;
             m_noViewerUpdateDemand = false;
             m_nextNoDemandProbe = {};
@@ -229,6 +270,7 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_changed;
     std::size_t m_viewers = 0;
+    std::size_t m_capturesInFlight = 0;
     std::size_t m_identicalFrames = 0;
     Clock::time_point m_nextStaticProbe{};
     bool m_bootstrapFrameQueued = false;
