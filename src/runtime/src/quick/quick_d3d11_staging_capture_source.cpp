@@ -438,6 +438,11 @@ private:
                 lost.swap(s->queued);
                 lost.insert(lost.end(), s->submitted.begin(), s->submitted.end());
                 s->submitted.clear();
+                // Conversion uses CPU-owned bytes but the pixels belong to
+                // the invalidated Surface. Cancel their delivery now; the
+                // worker still drains its memory before CaptureSource stop.
+                lost.insert(lost.end(), s->converting.begin(), s->converting.end());
+                s->converting.clear();
             }
             releaseNative(*s);
             s->cleanupRequested = false;
