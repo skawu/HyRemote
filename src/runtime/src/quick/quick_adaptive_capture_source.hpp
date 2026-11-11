@@ -4,6 +4,7 @@
 // unbounded cached frame queue. Only one of the two already-started backends
 // receives each Core request. A failed native route falls back one-way until
 // the next CaptureSource start (the next explicitly controlled epoch).
+#include <QDebug>
 #include <QMetaObject>
 #include <QPointer>
 #include <QQuickWindow>
@@ -17,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -34,6 +36,7 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
         std::uint64_t surfaceEpoch = 0;
         Route route = Route::Public;
         hyremote::TimePoint requestTime{};
+        std::uint64_t unavailableSerialAtIssue = 0;
     };
     struct State {
         std::mutex mutex;
@@ -44,6 +47,10 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
         bool active = false;
         bool nativeEnabled = false;
         unsigned int consecutiveNativeFailures = 0;
+        // Count provider failure EPISODES, not each request ID sharing a
+        // failed GPU readback (one event can complete many empty frames).
+        std::uint64_t nativeUnavailableSerial = 0;
+        std::string lastNativeUnavailableReason;
         hyremote::TimePoint newestContentPts{};
         std::unordered_map<hyremote::CaptureRequestId, Pending> pending;
         hyremote::FrameReadyHandler onFrame;
@@ -84,31 +91,35 @@ public:
             // These signals describe Qt's actual Surface, not a GPU model.
             // A callback can be queued on the GUI or render thread; only the
             // small epoch counter is shared with the capture scheduler.
-            auto bump = [state = m_state](bool nativeResourceInvalidated) {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                ++state->surfaceEpoch;
-                state->newestContentPts = {};
-                if (nativeResourceInvalidated && state->nativeEnabled) {
-                    // A new GPU device, render target or scenegraph must
-                    // requalify before native resources can be accessed.
-                    // No implicit re-arm during the same Core Session.
-                    state->nativeEnabled = false;
-                    HYREMOTE_P1_COUNT(QuickNativeFallback);
+            auto bump = [state = m_state](bool nativeResourceInvalidated,
+                                           const char *signalReason) {
+                bool disabled = false;
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    ++state->surfaceEpoch;
+                    state->newestContentPts = {};
+                    if (nativeResourceInvalidated && state->nativeEnabled) {
+                        state->nativeEnabled = false;
+                        HYREMOTE_P1_COUNT(QuickNativeFallback);
+                        disabled = true;
+                    }
+                    state->consecutiveNativeFailures = 0;
                 }
-                state->consecutiveNativeFailures = 0;
+                if (disabled)
+                    logNativeFallback(signalReason, {});
             };
             m_connections.push_back(QObject::connect(
                 window, &QWindow::widthChanged, window,
-                [bump](int) { bump(false); }, Qt::DirectConnection));
+                [bump](int) { bump(false, "window_size_changed"); }, Qt::DirectConnection));
             m_connections.push_back(QObject::connect(
                 window, &QWindow::heightChanged, window,
-                [bump](int) { bump(false); }, Qt::DirectConnection));
+                [bump](int) { bump(false, "window_size_changed"); }, Qt::DirectConnection));
             m_connections.push_back(QObject::connect(
                 window, &QWindow::screenChanged, window,
-                [bump](QScreen *) { bump(true); }, Qt::DirectConnection));
+                [bump](QScreen *) { bump(true, "screen_changed"); }, Qt::DirectConnection));
             m_connections.push_back(QObject::connect(
                 window, &QQuickWindow::sceneGraphInvalidated, window,
-                [bump] { bump(true); }, Qt::DirectConnection));
+                [bump] { bump(true, "scene_graph_invalidated"); }, Qt::DirectConnection));
         }
     }
 
@@ -136,6 +147,8 @@ public:
             state->active = true;
             state->nativeEnabled = false;
             state->consecutiveNativeFailures = 0;
+            state->nativeUnavailableSerial = 0;
+            state->lastNativeUnavailableReason.clear();
             state->newestContentPts = {};
             state->pending.clear();
             state->onFrame = std::move(onFrame);
@@ -166,8 +179,11 @@ public:
         } catch (...) {
             // A partial start still needs a deterministic stop before reuse.
         }
-        if (m_native && !nativeStarted)
+        if (m_native && !nativeStarted) {
             m_native->stop(); // failed/throwing start may have partial GPU state
+            if (publicStarted)
+                qWarning() << "HYREMOTE_QUICK_NATIVE_START_FALLBACK=provider_start_failed";
+        }
         if (!publicStarted) {
             m_public->stop();
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -224,7 +240,8 @@ public:
             route = state->nativeEnabled ? Route::Native : Route::Public;
             if (!state->pending.emplace(request.id,
                     Pending{generation, state->surfaceEpoch, route,
-                            request.requestTime}).second)
+                            request.requestTime,
+                            state->nativeUnavailableSerial}).second)
                 return false;
         }
         bool accepted = false;
@@ -235,12 +252,20 @@ public:
             accepted = false;
         }
         if (!accepted) {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            if (state->active && state->generation == generation) {
-                state->pending.erase(request.id);
-                if (route == Route::Native)
-                    countNativeFailure(*state);
+            bool fallback = false;
+            std::string providerReason;
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (state->active && state->generation == generation) {
+                    state->pending.erase(request.id);
+                    if (route == Route::Native) {
+                        fallback = countNativeFailure(*state);
+                        providerReason = state->lastNativeUnavailableReason;
+                    }
+                }
             }
+            if (fallback)
+                logNativeFallback("native_request_rejected_twice", providerReason);
         }
         return accepted;
     }
@@ -252,16 +277,27 @@ private:
         return state->generation;
     }
 
-    static void countNativeFailure(State &state)
+    // Caller holds State::mutex. Only an actual route transition is counted.
+    static bool countNativeFailure(State &state)
     {
         if (!state.nativeEnabled)
-            return;
+            return false;
         if (state.consecutiveNativeFailures < kFallbackAfterFailures)
             ++state.consecutiveNativeFailures;
-        if (state.consecutiveNativeFailures >= kFallbackAfterFailures) {
-            state.nativeEnabled = false; // one-way until next explicit start()
-            HYREMOTE_P1_COUNT(QuickNativeFallback);
-        }
+        if (state.consecutiveNativeFailures < kFallbackAfterFailures)
+            return false;
+        state.nativeEnabled = false; // one-way until a controlled restart
+        HYREMOTE_P1_COUNT(QuickNativeFallback);
+        return true;
+    }
+
+    static void logNativeFallback(const char *cause, const std::string &reason)
+    {
+        // One warning per real native-to-public route change, not per frame.
+        // Provider text is a bounded internal failure reason, never pixels.
+        qWarning().noquote() << "HYREMOTE_QUICK_NATIVE_FALLBACK_REASON="
+                             << cause << "PROVIDER_DETAIL="
+                             << QString::fromStdString(reason);
     }
 
     static void deliverEvent(const std::shared_ptr<State> &state,
@@ -271,28 +307,45 @@ private:
         hyremote::CaptureEventHandler callback;
         hyremote::CaptureEvent delivered = event;
         CallbackDrain drain{state};
+        bool fallback = false;
+        const char *fallbackCause = nullptr;
+        std::string reason;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active || state->generation != generation)
                 return;
-            callback = state->onEvent;
-            if (!callback)
-                return;
-            ++state->callbacksInFlight;
-            drain.admitted = true;
-            // A recoverable GPU-resource failure is not an unrecoverable
-            // product Session error when a public fallback is available.
+            // One provider TemporarilyUnavailable event describes one GPU
+            // failure episode, possibly terminating several accepted IDs.
+            if (route == Route::Native && event.recoverable
+                && event.code == hyremote::CaptureEventCode::TemporarilyUnavailable) {
+                ++state->nativeUnavailableSerial;
+                state->lastNativeUnavailableReason = event.message;
+                fallback = countNativeFailure(*state);
+                fallbackCause = "consecutive_native_unavailable_events";
+                reason = state->lastNativeUnavailableReason;
+            }
             if (route == Route::Native && !event.recoverable
                 && event.code == hyremote::CaptureEventCode::BackendFailure) {
-                if (state->nativeEnabled)
+                if (state->nativeEnabled) {
+                    state->nativeEnabled = false;
                     HYREMOTE_P1_COUNT(QuickNativeFallback);
-                state->nativeEnabled = false;
+                    fallback = true;
+                    fallbackCause = "native_backend_failure";
+                    reason = event.message;
+                }
+                // Public Qt route is already prepared. Surface TargetLost
+                // remains fatal; BackendFailure alone is recoverable.
                 delivered.recoverable = true;
                 delivered.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
             }
-            // TargetLost must remain fatal: the public Qt capture path
-            // cannot restore a destroyed QQuickWindow or deleted Surface.
+            callback = state->onEvent;
+            if (callback) {
+                ++state->callbacksInFlight;
+                drain.admitted = true;
+            }
         }
+        if (fallback)
+            logNativeFallback(fallbackCause, reason);
         if (callback) {
             try { callback(delivered); } catch (...) {}
         }
@@ -307,6 +360,9 @@ private:
         hyremote::FrameReadyHandler callback;
         CallbackDrain drain{state};
         bool dropPixels = false;
+        bool fallback = false;
+        const char *fallbackCause = nullptr;
+        std::string providerReason;
         const auto now = hyremote::Clock::now();
         {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -353,10 +409,22 @@ private:
             const bool nativeFailure = route == Route::Native
                 && !invalidEpoch && (!frame.storage || oldContent
                                       || invalidNativeFrame);
-            if (nativeFailure)
-                countNativeFailure(*state);
-            else if (route == Route::Native && frame.storage && !dropPixels)
+            // A provider event precedes every empty completion it produces.
+            // Multiple IDs from one shared GPU failure are one failure,
+            // not enough to force fallback by themselves.
+            const bool emptyFromCountedEvent = route == Route::Native
+                && !frame.storage
+                && state->nativeUnavailableSerial
+                   > it->second.unavailableSerialAtIssue;
+            if (nativeFailure && !emptyFromCountedEvent) {
+                fallback = countNativeFailure(*state);
+                fallbackCause = oldContent ? "native_content_too_old"
+                              : invalidNativeFrame ? "invalid_native_frame"
+                              : "native_empty_frame_without_event";
+                providerReason = state->lastNativeUnavailableReason;
+            } else if (route == Route::Native && frame.storage && !dropPixels) {
                 state->consecutiveNativeFailures = 0;
+            }
             if (!dropPixels && frame.storage && hasContentPts
                 && contentPts > state->newestContentPts)
                 state->newestContentPts = contentPts;
@@ -367,6 +435,8 @@ private:
             ++state->callbacksInFlight;
             drain.admitted = true;
         }
+        if (fallback)
+            logNativeFallback(fallbackCause, providerReason);
         if (dropPixels) {
             // One terminal outcome per admitted request. An empty completion
             // retires Core's in-flight slot without publishing stale pixels.
