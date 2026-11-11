@@ -610,6 +610,8 @@ private:
 #endif
         {
             HYREMOTE_P1_SCOPE(QuickGrabSubmit);
+            for (const auto &request : batch->requests)
+                HYREMOTE_P1_TRACE_REQUEST(QuickGrabSubmitted, request);
             grab->result = content->grabToImage(qtTargetSize);
         }
         if (grab->result.isNull()) {
