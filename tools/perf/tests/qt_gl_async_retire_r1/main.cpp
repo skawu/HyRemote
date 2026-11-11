@@ -352,6 +352,15 @@ int main(int argc, char **argv)
             failFromRender(11);
             return;
         }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        // Qt6 afterRendering is before endFrame/present. Raw OpenGL commands
+        // need explicit Qt RHI state isolation; close on every exit path.
+        window.beginExternalCommands();
+        struct ExternalCommandsGuard {
+            QQuickWindow &window;
+            ~ExternalCommandsGuard() { window.endExternalCommands(); }
+        } externalCommandsGuard{window};
+#endif
         auto *shared = new QOpenGLContext;
         shared->setFormat(render->format());
         shared->setShareContext(render);
@@ -442,7 +451,10 @@ int main(int argc, char **argv)
     };
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    QObject::connect(&window, &QQuickWindow::afterFrameEnd,
+    // Observe Qt6 scenegraph output before endFrame may swap/discard the
+    // window back buffer. A PASS here remains a non-product, driver-scoped
+    // proof; redirected/MSAA frame targets require separate qualification.
+    QObject::connect(&window, &QQuickWindow::afterRendering,
                      &window, onFrame, Qt::DirectConnection);
 #else
     QObject::connect(&window, &QQuickWindow::afterRendering,
