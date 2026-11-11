@@ -33,6 +33,7 @@
 namespace {
 using Clock = std::chrono::steady_clock;
 constexpr int kWidth = 320, kHeight = 180;
+constexpr int kFullHdWidth = 1920, kFullHdHeight = 1080;
 constexpr unsigned int kPackBuffer = 0x88EB;       // GL_PIXEL_PACK_BUFFER
 constexpr unsigned int kPackBinding = 0x88ED;      // GL_PIXEL_PACK_BUFFER_BINDING
 constexpr unsigned int kStreamRead = 0x88E1;       // GL_STREAM_READ
@@ -55,10 +56,11 @@ QColor colorFor(int quadrant)
 
 class RealScene final : public QQuickItem {
 public:
-    explicit RealScene(QQuickItem *parent): QQuickItem(parent)
+    RealScene(QQuickItem *parent, int width, int height)
+        : QQuickItem(parent), m_width(width), m_height(height)
     {
         setFlag(ItemHasContents, true);
-        setSize(QSizeF(kWidth, kHeight));
+        setSize(QSizeF(width, height));
     }
 protected:
     QSGNode *updatePaintNode(QSGNode *previous, UpdatePaintNodeData *) override
@@ -80,9 +82,9 @@ protected:
         auto *child = root->firstChild();
         for (int i = 0; i < 4; ++i) {
             auto *node = static_cast<QSGGeometryNode *>(child);
-            const QRectF rect((i % 2) * kWidth / 2.,
-                              (i / 2) * kHeight / 2.,
-                              kWidth / 2., kHeight / 2.);
+            const QRectF rect((i % 2) * m_width / 2.,
+                              (i / 2) * m_height / 2.,
+                              m_width / 2., m_height / 2.);
             QSGGeometry::updateRectGeometry(node->geometry(), rect);
             node->geometry()->markVertexDataDirty();
             node->markDirty(QSGNode::DirtyGeometry);
@@ -92,6 +94,9 @@ protected:
         }
         return root;
     }
+private:
+    const int m_width;
+    const int m_height;
 };
 
 bool qualifiedGl(QOpenGLContext *context)
@@ -122,6 +127,7 @@ public:
     std::vector<unsigned char> rgba;
     std::string reason = "NOT_STARTED";
     double gpuWaitMs = 0;
+    double cpuMapCopyMs = 0;
     bool contextWasCurrent = false;
 protected:
     void run() override
@@ -159,7 +165,8 @@ protected:
         const std::size_t stride = std::size_t(job.width) * 4;
         const std::size_t bytes = stride * std::size_t(job.height);
         if (signaled && job.width > 0 && job.height > 0
-            && bytes <= 8 * 1024 * 1024) {
+            && bytes <= 40 * 1024 * 1024) {
+            const auto copyStart = Clock::now();
             GLint oldPack = 0;
             gl->glGetIntegerv(kPackBinding, &oldPack);
             gl->glBindBuffer(kPackBuffer, job.pbo);
@@ -181,6 +188,8 @@ protected:
                 reason = "PBO_MAP_FAILED";
             }
             gl->glBindBuffer(kPackBuffer, GLuint(oldPack));
+            cpuMapCopyMs = std::chrono::duration<double, std::milli>(
+                Clock::now() - copyStart).count();
         } else if (reason == "NOT_STARTED") {
             reason = "GPU_FENCE_750MS_TIMEOUT_OR_BAD_SIZE";
         }
@@ -220,9 +229,12 @@ bool pixelTruth(const FenceWorker &worker)
 int main(int argc, char **argv)
 {
     bool cancelBeforeDelivery = false;
+    bool fullHd = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--cancel")
             cancelBeforeDelivery = true;
+        else if (std::string(argv[i]) == "--fullhd")
+            fullHd = true;
         else {
             std::cerr << "R953=BLOCKED_BAD_ARGUMENT\n";
             return 9;
@@ -251,12 +263,14 @@ int main(int argc, char **argv)
     QQuickWindow window;
     window.setFormat(fmt);
     window.setColor(Qt::black);
-    window.resize(kWidth, kHeight);
-    RealScene scene(window.contentItem());
+    const int expectedWidth = fullHd ? kFullHdWidth : kWidth;
+    const int expectedHeight = fullHd ? kFullHdHeight : kHeight;
+    window.resize(expectedWidth, expectedHeight);
+    RealScene scene(window.contentItem(), expectedWidth, expectedHeight);
     FenceWorker worker;
     std::atomic<unsigned> generation{1};
     std::atomic<int> submissions{0};
-    int extraWindowUpdates = 0; // this prototype makes NO update() calls
+    const int extraWindowUpdates = 0; // this prototype makes NO update() calls
     bool nativeQualified = false;
     std::atomic<const char *> error{"NO_NATURAL_FRAME"};
     double submissionMs = 0;
@@ -285,6 +299,9 @@ int main(int argc, char **argv)
                   << (worker.contextWasCurrent ? "true" : "false")
                   << ",\"gpu_wait_ms\":" << worker.gpuWaitMs
                   << ",\"submit_wall_ms\":" << submissionMs
+                  << ",\"cpu_map_copy_ms\":" << worker.cpuMapCopyMs
+                  << ",\"frame_width\":" << worker.job.width
+                  << ",\"frame_height\":" << worker.job.height
                   << ",\"natural_frame_submissions\":" << submissions.load()
                   << ",\"extra_window_updates\":" << extraWindowUpdates
                   << ",\"pixel_truth\":" << (imageValid ? "true" : "false")
@@ -323,7 +340,7 @@ int main(int argc, char **argv)
         const qreal dpr = window.devicePixelRatio();
         const int width = qRound(window.width() * dpr);
         const int height = qRound(window.height() * dpr);
-        if (width <= 0 || height <= 0 || width > 1024 || height > 1024) {
+        if (width <= 0 || height <= 0 || width > 3840 || height > 2160) {
             delete shared;
             error.store("INVALID_FRAME_GEOMETRY", std::memory_order_release);
             failFromRender(13);
