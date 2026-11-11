@@ -3,7 +3,7 @@
 // exact explicitly qualified Qt Kit; never exported to the public SDK.
 #include <memory>
 class QQuickWindow;
-namespace hyremote { class CaptureSource; }
+#include "hyremote/core/capture_source.hpp"
 namespace HyRemote::detail {
 std::unique_ptr<hyremote::CaptureSource>
 createExperimentalQuickD3d11StagingCaptureSource(QQuickWindow *window);
