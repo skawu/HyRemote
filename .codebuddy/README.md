@@ -64,9 +64,17 @@ The guard fails closed when:
 
 - the anchor, the workspace rule or the `script-planning` Skill is removed, or
   the anchor loses `alwaysApply: true` / the `tmp/` script gate;
-- any tracked executable script lives outside the planned directories
+- any executable script lives outside the planned directories
   (`tmp/`, the repository root and `.codebuddy/` are always rejected);
+- a new tracked script is not declared in
+  `tests/release-readiness/script_inventory.txt` (the planned register), or a
+  declared script no longer exists;
 - the guard is no longer registered in the grouped runner.
+
+`script_inventory.txt` is the planned register: declare a new script there
+during task planning, before creating it. It doubles as the archive-safe
+inventory, so a released source archive without `.git` runs the same
+facts-layout CTest without any Git dependency.
 
 `.github/scripts/resolve-ci-scope.py` turns governance on for any PR that adds
 or edits an executable script, changes `.codebuddy/` assets, or edits the guard
