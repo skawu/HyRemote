@@ -95,8 +95,15 @@ def main():
                         viewer.captureScreen(str(current))
                         with Image.open(current) as frame:
                             rgb = frame.convert("RGB")
-                            marker = rgb.getpixel((round(245 * args.scale_factor),
-                                                   round(140 * args.scale_factor)))
+                            marker_point = (round(245 * args.scale_factor),
+                                            round(140 * args.scale_factor))
+                            require(marker_point[0] < rgb.width
+                                    and marker_point[1] < rgb.height,
+                                    f"DPR capture produced undersized RFB image: "
+                                    f"scale={args.scale_factor} frame={rgb.size} "
+                                    f"expected={(round(460*args.scale_factor),round(190*args.scale_factor))} "
+                                    f"marker={marker_point}")
+                            marker = rgb.getpixel(marker_point)
                         red = (0xdf, 0x25, 0x34)
                         green = (0x25, 0xd2, 0x42)
                         if all(abs(x-y) <= 8 for x, y in zip(marker, red)):
