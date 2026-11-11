@@ -676,8 +676,12 @@ private:
                             s->reusableStaging = std::move(s->staging);
                             s->reusableDevice = s->stagingDevice;
                             s->reusableDesc = s->stagingDesc;
+                            #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+
                             for (const auto &request : s->submitted)
                                 HYREMOTE_P1_TRACE_REQUEST(GpuReadbackReady, request);
+
+                            #endif
                             s->converting.swap(s->submitted);
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
@@ -730,8 +734,12 @@ private:
                     s->capturedTarget.Reset();
                     s->forcedRenders = 0;
                     context->CopyResource(s->staging.Get(), rendered.Get());
+                    #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+
                     for (const auto &request : s->submitted)
                         HYREMOTE_P1_TRACE_REQUEST(GpuReadbackSubmitted, request);
+
+                    #endif
                     pump = true;
                 } else {
                     failed.swap(s->queued);
