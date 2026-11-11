@@ -47,6 +47,8 @@ enum class Stage : std::size_t {
     QuickGlExplicitRender,    // count: source-forced Qt update (not real frames)
     QuickGlRetirementRender,  // count: extra frame to retire a GL fence
     QuickGlGpuSubmit,         // count: GL PBO readback submissions
+    QuickNativeFallback,     // count: native provider switched to public Qt
+    QuickStaleDrop,          // count: epoch/age/reordered frame suppressed
     GenericCompose,
     WatermarkCompose,    // CPU copy+paint on RFB worker, one per real composition
     WatermarkReuse,      // count only: immutable-source cache hit
@@ -62,6 +64,7 @@ inline constexpr std::array<const char *, static_cast<std::size_t>(Stage::Count)
     "quick_buffer", "quick_copy",
     "quick_gl_render_callback", "quick_gl_gpu_map_copy", "quick_gl_cpu_repack",
     "quick_gl_explicit_render", "quick_gl_retirement_render", "quick_gl_gpu_submit",
+    "quick_native_fallback", "quick_stale_drop",
     "generic_compose", "watermark_compose",
     "watermark_reuse", "rfb_compare", "rfb_encode", "rfb_write"
 };
