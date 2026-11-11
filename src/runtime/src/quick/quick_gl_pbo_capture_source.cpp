@@ -14,6 +14,7 @@
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -146,6 +147,35 @@ public:
             if (!s->active || s->window.isNull())
                 return false;
             s->queued.push_back(req);
+            // A valid Core request must have exactly one terminal outcome.
+            // No render/frame-fence progress is possible for a hidden or
+            // continuously idle QQuickWindow, so NEVER allow an admitted
+            // request to stay queued/inFlight forever. This timer executes
+            // on the GUI thread without doing GL work; any later GPU
+            // completion observes that its request was already revoked.
+            const std::uint64_t requestGeneration = s->generation;
+            QTimer::singleShot(750, dispatcher, [s, requestGeneration, id = req.id] {
+                std::vector<hyremote::CaptureRequest> expired;
+                {
+                    std::lock_guard<std::mutex> lock(s->mutex);
+                    if (!s->active || s->generation != requestGeneration)
+                        return;
+                    auto take = [&](std::vector<hyremote::CaptureRequest> &v) {
+                        auto it = std::remove_if(v.begin(), v.end(),
+                            [&](const hyremote::CaptureRequest &pending) {
+                                if (pending.id != id) return false;
+                                expired.push_back(pending);
+                                return true;
+                            });
+                        v.erase(it, v.end());
+                    };
+                    take(s->queued);
+                    take(s->inFlight);
+                }
+                if (!expired.empty())
+                    reportUnavailable(s, requestGeneration, std::move(expired),
+                                      "GL PBO capture request did not complete within 750ms");
+            });
             if (s->kickPosted)
                 return true;
             s->kickPosted = true;
