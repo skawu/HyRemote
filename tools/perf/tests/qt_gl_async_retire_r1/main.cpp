@@ -288,6 +288,9 @@ int main(int argc, char **argv)
     bool nativeQualified = false;
     std::atomic<const char *> error{"NO_NATURAL_FRAME"};
     double submissionMs = 0;
+    std::string glVendor;
+    std::string glRenderer;
+    std::string glVersion;
 
     // Qt render callbacks can execute on the scenegraph's dedicated thread.
     // QCoreApplication::exit() is NOT thread-safe; always post the exit onto
@@ -300,6 +303,9 @@ int main(int argc, char **argv)
     QObject::connect(&worker, &QThread::finished, &app, [&] {
         worker.wait(); // synchronize ownership before inspecting its data
         const bool imageValid = pixelTruth(worker);
+        std::cout << "R953_GL_VENDOR=" << glVendor
+                  << " R953_GL_RENDERER=" << glRenderer
+                  << " R953_GL_VERSION=" << glVersion << '\n';
         const bool delivered = generation.load() == 1
             && !cancelBeforeDelivery && !hideAfterSubmit;
         const bool correct = (cancelBeforeDelivery || imageValid)
@@ -368,6 +374,17 @@ int main(int argc, char **argv)
 
         auto *gl = render->extraFunctions();
         gl->initializeOpenGLFunctions();
+        // The actual GL renderer is authoritative for multi-adapter hosts.
+        // Qt backend selection and the machine's GPU marketing name alone
+        // cannot prove which device executed the readback.
+        const auto glString = [gl](GLenum token) {
+            const auto *bytes = gl->glGetString(token);
+            return bytes ? std::string(reinterpret_cast<const char *>(bytes))
+                         : std::string("UNKNOWN");
+        };
+        glVendor = glString(GL_VENDOR);
+        glRenderer = glString(GL_RENDERER);
+        glVersion = glString(GL_VERSION);
         GLint oldPack = 0;
         GLint oldAlign = 4;
         gl->glGetIntegerv(kPackBinding, &oldPack);
