@@ -85,6 +85,14 @@ void testQuickRendererCapabilityRouting()
         const auto selection = selectQuickCaptureRoute(scenario.api);
         CHECK(selection.backend == scenario.backend);
         CHECK(selection.route == QuickCaptureRoute::PublicQtGrabToImage);
+        // An opt-in backend must never turn other render APIs into a PBO
+        // route. Qualifying the provider is a Kit/build concern, not an
+        // implicit promise that every Qt version or GL driver supports it.
+        const auto armed = selectQuickCaptureRoute(scenario.api, true);
+        CHECK(armed.route ==
+              (scenario.backend == QuickCaptureBackend::OpenGL
+               ? QuickCaptureRoute::ExperimentalOpenGlPbo
+               : QuickCaptureRoute::PublicQtGrabToImage));
     }
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_QUICK_OPENGL")) {
         // The dedicated Linux Xvfb/Mesa lane must exercise a REAL OpenGL
