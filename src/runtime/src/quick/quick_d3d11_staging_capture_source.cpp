@@ -5,6 +5,7 @@
 // Qualification for product requires fixed-SHA Windows Viewer A/B.
 #include "quick/quick_d3d11_staging_capture_source.hpp"
 #include "quick/quick_readback_timing.hpp"
+#include "quick/quick_readback_batch.hpp"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -218,18 +219,12 @@ public:
                         std::lock_guard<std::mutex> lock(s->mutex);
                         if (!s->active || s->generation != generation)
                             return;
-                        auto remove = [&](std::vector<hyremote::CaptureRequest> &v) {
-                            auto it = std::remove_if(v.begin(), v.end(),
-                                [&](const hyremote::CaptureRequest &r) {
-                                    if (r.id != id) return false;
-                                    expired.push_back(r);
-                                    return true;
-                                });
-                            v.erase(it, v.end());
-                        };
-                        remove(s->queued);
-                        remove(s->submitted);
-                        remove(s->converting);
+                        // A single D3D11 CopyResource may own many Core IDs.
+                        // One stalled GPU batch is ONE failure episode, not
+                        // one failure per request/timer (plus no duplicates).
+                        if (!retireTimedOutReadbackBatch(s->submitted, id, expired)
+                            && !retireTimedOutReadbackBatch(s->converting, id, expired))
+                            retireTimedOutReadbackBatch(s->queued, id, expired);
                     }
                     if (!expired.empty())
                         deliver(s, generation, std::move(expired), {},
