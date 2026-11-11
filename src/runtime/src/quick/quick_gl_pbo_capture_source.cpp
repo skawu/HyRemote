@@ -672,6 +672,12 @@ private:
                 releaseGl(*s, gl);
                 s->cleanupRequested = false;
             }
+            // The earliest 750ms deadline may have retired every request
+            // attached to this GPU readback. Do not retain an orphaned
+            // fence/PBO indefinitely or map pixels with no Core consumer.
+            // All GL deletion remains on the owning render Context.
+            if (s->gpuPending && s->inFlight.empty())
+                releaseGl(*s, gl);
             if (!s->active) {
                 // stop() intentionally kept the render connection alive
                 // only until its GPU objects could be destroyed on the
