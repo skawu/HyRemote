@@ -154,7 +154,7 @@ public:
             // on the GUI thread without doing GL work; any later GPU
             // completion observes that its request was already revoked.
             const std::uint64_t requestGeneration = s->generation;
-            QTimer::singleShot(750, dispatcher, [s, requestGeneration, id = req.id] {
+            QTimer::singleShot(750, QCoreApplication::instance(), [s, requestGeneration, id = req.id] {
                 std::vector<hyremote::CaptureRequest> expired;
                 {
                     std::lock_guard<std::mutex> lock(s->mutex);
