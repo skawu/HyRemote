@@ -498,10 +498,36 @@ public:
                 if (observe)
                     observe();
             };
-        const bool started = m_source->start(std::move(onFrame), reportEvent);
+        // Wrap the actual source completion so Qt's own grab-induced
+        // QQuickWindow::afterAnimating signals cannot create an endless
+        // feedback loop in a static scene. One logical request is retired
+        // exactly once by the source's existing lifetime contract.
+        auto captureCompleted = [demand = m_demand,
+                                 onFrame = std::move(onFrame)](
+                                    hyremote::RemoteFrame frame) mutable {
+            demand->noteCaptureCompleted();
+            if (onFrame)
+                onFrame(std::move(frame));
+        };
+        const bool started = m_source->start(std::move(captureCompleted), reportEvent);
         if (!started)
             return false;
         m_demand->start();
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+        // Public, cross-Qt5/Qt6 signal: emitted on the GUI thread before
+        // scenegraph sync. NOT damage or proof of visual pixel change.
+        // Own grabs also cause this signal, hence noteCaptureStarted /
+        // noteCaptureCompleted suppress self-induced capture loops.
+        if (auto *quick = qobject_cast<QQuickWindow *>(m_target.data())) {
+            const std::weak_ptr<ViewerCaptureDemand> weak(m_demand);
+            m_quickActivityConnection = QObject::connect(
+                quick, &QQuickWindow::afterAnimating, &m_targetEventReceiver,
+                [weak] {
+                    if (auto demand = weak.lock())
+                        demand->noteQtRenderActivity();
+                }, Qt::DirectConnection);
+        }
+#endif
 
         // Target adapters normally detect TargetLost while requestFrame runs.
         // The zero-viewer demand gate intentionally stops those requests, so
@@ -535,6 +561,10 @@ public:
         if (m_targetLossGate)
             m_targetLossGate->closeAndDrain();
         QObject::disconnect(m_targetDestroyedConnection);
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+        QObject::disconnect(m_quickActivityConnection);
+        m_quickActivityConnection = {};
+#endif
         m_demand->stop();
         m_source->stop();
     }
@@ -543,7 +573,17 @@ public:
     {
         if (!m_demand->waitForViewer())
             return false;
-        return m_source->requestFrame(request);
+        m_demand->noteCaptureStarted();
+        bool accepted = false;
+        try {
+            accepted = m_source->requestFrame(request);
+        } catch (...) {
+            m_demand->noteCaptureCompleted();
+            throw;
+        }
+        if (!accepted)
+            m_demand->noteCaptureCompleted();
+        return accepted;
     }
 
 private:
@@ -553,6 +593,9 @@ private:
     // thread and never moved to the source/transport worker threads.
     QObject m_targetEventReceiver;
     QMetaObject::Connection m_targetDestroyedConnection;
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+    QMetaObject::Connection m_quickActivityConnection;
+#endif
     std::shared_ptr<TargetLossCallbackGate> m_targetLossGate;
     std::shared_ptr<std::atomic<bool>> m_runActive;
     std::shared_ptr<ViewerCaptureDemand> m_demand;
