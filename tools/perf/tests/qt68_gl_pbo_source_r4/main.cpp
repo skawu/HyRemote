@@ -190,7 +190,7 @@ int main(int argc, char **argv)
             source->stop();
             QTimer::singleShot(250, &app, [&] {
                 const bool valid = errors == 0 && staleCallbacks == 0
-                    && completed == kPhases && restarts == 1
+                    && completed == kPhases && restarts == 2
                     && seenRequestIds.size() == kPhases;
                 std::cout << "R4_RESULT_JSON={"
                     << "\"qt\":\"" << QT_VERSION_STR << "\","
@@ -200,6 +200,8 @@ int main(int argc, char **argv)
                     << "\"owned_frames_validated\":" << completed << ","
                     << "\"unique_request_ids\":" << seenRequestIds.size() << ","
                     << "\"stop_restart_cycles\":" << restarts << ","
+                    << "\"abandoned_predispatch_request_isolated\":"
+                    << (seenRequestIds.count(999) == 0 ? "true" : "false") << ","
                     << "\"late_callbacks_after_stop\":" << staleCallbacks << ","
                     << "\"errors\":" << errors << ","
                     << "\"qualified_for_product\":false"
@@ -210,7 +212,7 @@ int main(int argc, char **argv)
             });
             return;
         }
-        if (completed == 6 && restarts == 0) {
+        if (completed == 6 && restarts == 1) {
             intentionallyStopped = true;
             source->stop();
             ++restarts;
@@ -242,6 +244,22 @@ int main(int argc, char **argv)
     });
 
     QTimer::singleShot(250, &app, [&] {
+        startSource();
+        // Explicitly stop before the queued GUI dispatcher has executed.
+        // A stale posted-token must NOT suppress the next generation's
+        // first real CaptureRequest. Any old ID=999 frame is forbidden.
+        hyremote::CaptureRequest abandoned;
+        abandoned.id = 999;
+        abandoned.requestTime = hyremote::Clock::now();
+        if (!source->requestFrame(abandoned)) {
+            ++errors;
+            app.exit(28);
+            return;
+        }
+        intentionallyStopped = true;
+        source->stop();
+        ++restarts;
+        intentionallyStopped = false;
         startSource();
         dispatchNext();
     });
