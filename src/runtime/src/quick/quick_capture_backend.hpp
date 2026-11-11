@@ -1,9 +1,10 @@
 #pragma once
 
-// Qt Quick capture-route policy, not a hardware/OS whitelist. All Qt 6
-// scenegraph APIs are served by Qt's public QQuickItem::grabToImage contract.
-// A graphics API name is diagnostic context only: it never grants permission
-// to use an unqualified private QRhi readback experiment.
+// Qt5.15+ compatible internal capture-route policy; graphics APIs are data,
+// never a hardware/OS whitelist or permission to access private Qt resources.
+// The default public route is identical across Qt LTS versions. The provider
+// is selected only when its exact Kit/build was explicitly qualified and armed.
+// A Qt6-specific provider must not be mistaken for the product architecture.
 #include <QtQuick/QSGRendererInterface>
 
 #include <cstddef>
@@ -15,7 +16,8 @@ enum class QuickCaptureBackend : std::size_t {
 };
 
 enum class QuickCaptureRoute {
-    PublicQtGrabToImage
+    PublicQtGrabToImage,
+    ExperimentalOpenGlPbo
 };
 
 struct QuickCaptureSelection {
@@ -24,7 +26,8 @@ struct QuickCaptureSelection {
 };
 
 inline QuickCaptureSelection selectQuickCaptureRoute(
-    QSGRendererInterface::GraphicsApi api) noexcept
+    QSGRendererInterface::GraphicsApi api,
+    bool qualifiedOpenGlProviderEnabled = false) noexcept
 {
     QuickCaptureBackend backend = QuickCaptureBackend::Other;
     switch (api) {
@@ -52,6 +55,13 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
     default:
         break;
     }
+    // The caller owns the version/Kit capability gate. The route selector
+    // never consults a chipset/OS name and never grants private QRhi access.
+    // Current OpenGL PBO provider is research-only, enabled solely by the
+    // exact Qt6.8.3 experimental CMake switch. Qt5.15 remains public until
+    // its own render-phase/GL context capability is qualified.
+    if (backend == QuickCaptureBackend::OpenGL && qualifiedOpenGlProviderEnabled)
+        return {backend, QuickCaptureRoute::ExperimentalOpenGlPbo};
     return {backend, QuickCaptureRoute::PublicQtGrabToImage};
 }
 
