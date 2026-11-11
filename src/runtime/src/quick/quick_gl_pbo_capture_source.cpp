@@ -500,8 +500,8 @@ private:
         // Neither Qt's render thread nor the GUI thread flips the image rows.
         HYREMOTE_P1_SCOPE(QuickGlCpuRepack);
         const auto stride = static_cast<std::size_t>(width) * 4u;
-        const auto storage = raw ? copyReadbackFrameStorage(
-            raw.get(), stride * static_cast<std::size_t>(height), stride, stride,
+        const auto storage = raw ? adoptReadbackFrameStorage(
+            raw, stride * static_cast<std::size_t>(height), stride, stride,
             static_cast<std::size_t>(height), ReadbackRowOrder::BottomUp)
             : std::shared_ptr<const hyremote::FrameStorage>{};
 
