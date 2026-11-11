@@ -205,6 +205,49 @@ void testQuickOpaqueRgbxCpuStorageIsZeroCopy()
     }
 }
 
+// Both native providers hand their already-owned CPU readback buffer to
+// FrameStorage. This prevents a second full-frame allocation/copy and proves
+// D3D RowPitch/GL row-order normalization retains the same buffer lifetime.
+void testAdoptReadbackStorageNoSecondFullFrame()
+{
+    using HyRemote::detail::ReadbackRowOrder;
+    using HyRemote::detail::ReadbackPixelOrder;
+    using HyRemote::detail::adoptReadbackFrameStorage;
+
+    std::shared_ptr<std::byte> pixels(
+        new std::byte[24], std::default_delete<std::byte[]>());
+    for (std::size_t i = 0; i < 24; ++i)
+        pixels.get()[i] = std::byte{0};
+    // 2x2 BGRA pixels with 4-byte per-row padding. Row 0 is green, row 1 red.
+    pixels.get()[0] = std::byte{0}; pixels.get()[1] = std::byte{200};
+    pixels.get()[2] = std::byte{0}; pixels.get()[3] = std::byte{255};
+    pixels.get()[12] = std::byte{0}; pixels.get()[13] = std::byte{0};
+    pixels.get()[14] = std::byte{222}; pixels.get()[15] = std::byte{255};
+    const auto *original = pixels.get();
+    auto storage = adoptReadbackFrameStorage(
+        pixels, 24, 12, 8, 2, ReadbackRowOrder::BottomUp,
+        ReadbackPixelOrder::Bgra8888);
+    CHECK(storage != nullptr);
+    pixels.reset(); // storage must keep original allocation alive alone
+    if (!storage)
+        return;
+    const auto view = storage->mapRead(0);
+    CHECK(view && view->data == original && view->stride == 12
+          && view->bytes == 24);
+    if (view && view->data) {
+        CHECK(view->data[0] == std::byte{222}); // red, from bottom row
+        CHECK(view->data[1] == std::byte{0});
+        CHECK(view->data[2] == std::byte{0});
+        CHECK(view->data[3] == std::byte{255});
+        CHECK(view->data[12] == std::byte{0}); // green, from top row
+        CHECK(view->data[13] == std::byte{200});
+        CHECK(view->data[14] == std::byte{0});
+    }
+    auto invalid = adoptReadbackFrameStorage(
+        std::shared_ptr<std::byte>{}, 24, 12, 8, 2, ReadbackRowOrder::TopDown);
+    CHECK(!invalid);
+}
+
 void testReadbackFrameStorageRowOrderAndPitch()
 {
     using HyRemote::detail::ReadbackRowOrder;
@@ -1667,6 +1710,7 @@ int main(int argc, char **argv)
 
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
     testQuickOpaqueRgbxCpuStorageIsZeroCopy();
+    testAdoptReadbackStorageNoSecondFullFrame();
     testReadbackFrameStorageRowOrderAndPitch();
     testQuickRendererCapabilityRouting();
     testQuickFactoryAndOwnedFrame();
