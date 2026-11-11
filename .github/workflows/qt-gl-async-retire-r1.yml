@@ -16,7 +16,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        qt: ['6.8.3', '5.15.2']
+        # Exact Qt5.15.2 Linux gcc_64 archive currently lacks qt_base
+        # metadata for aqtinstall; fail closed on that qualification rather
+        # than substituting system Qt5.15.3 and mislabelling it 5.15.2.
+        # Qt5.15.2 is separately compiled with its real Windows MSVC Kit.
+        qt: ['6.8.3']
         loop: [basic, threaded]
     steps:
       - uses: actions/checkout@v4
