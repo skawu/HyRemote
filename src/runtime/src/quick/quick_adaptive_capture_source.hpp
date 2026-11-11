@@ -281,12 +281,19 @@ private:
             // reparented to a screen or invalidated by Qt's scene graph.
             const bool invalidEpoch = it->second.surfaceEpoch != state->surfaceEpoch;
             const bool renderPts = frame.timing.ptsSource == hyremote::PtsSource::Render;
-            const bool oldContent = renderPts
-                && frame.timing.pts != hyremote::TimePoint{}
-                && ((now > frame.timing.pts
-                     && now - frame.timing.pts > kMaxRenderFrameAge)
+            // Public grabToImage reports Completion time as its best-known
+            // content timestamp. Native readback has the stronger Render PTS.
+            // Compare both in the same monotonic domain to prevent an old
+            // native readback from replacing a newer public fallback frame.
+            const auto contentPts = frame.timing.ptsSource
+                == hyremote::PtsSource::Completion && frame.timing.completionTime
+                ? *frame.timing.completionTime : frame.timing.pts;
+            const bool hasContentPts = contentPts != hyremote::TimePoint{};
+            const bool oldContent = hasContentPts
+                && ((renderPts && now > contentPts
+                     && now - contentPts > kMaxRenderFrameAge)
                     || (state->newestContentPts != hyremote::TimePoint{}
-                        && frame.timing.pts < state->newestContentPts));
+                        && contentPts < state->newestContentPts));
             dropPixels = invalidEpoch || oldContent;
             if (dropPixels)
                 HYREMOTE_P1_COUNT(QuickStaleDrop);
@@ -296,9 +303,9 @@ private:
                 countNativeFailure(*state);
             else if (route == Route::Native && frame.storage && !dropPixels)
                 state->consecutiveNativeFailures = 0;
-            if (!dropPixels && frame.storage && renderPts
-                && frame.timing.pts > state->newestContentPts)
-                state->newestContentPts = frame.timing.pts;
+            if (!dropPixels && frame.storage && hasContentPts
+                && contentPts > state->newestContentPts)
+                state->newestContentPts = contentPts;
             callback = state->onFrame;
             state->pending.erase(it);
         }
