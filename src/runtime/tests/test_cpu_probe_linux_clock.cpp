@@ -35,8 +35,11 @@ int main(int argc, char **argv)
     std::cerr << "requires opt-in Linux probe compilation\n";
     return 1;
 #else
-    if (argc != 2 || setenv("HYREMOTE_CPU_PROBE_FILE", argv[1], 1) != 0
-        || setenv("HYREMOTE_FRAME_TRACE", "1", 1) != 0)
+    if (argc != 2)
+        return 2;
+    const std::string tracePath = std::string(argv[1]) + ".frames.jsonl";
+    if (setenv("HYREMOTE_CPU_PROBE_FILE", argv[1], 1) != 0
+        || setenv("HYREMOTE_FRAME_TRACE_FILE", tracePath.c_str(), 1) != 0)
         return 2;
 
     using namespace HyRemote::detail::p1perf;
@@ -107,10 +110,16 @@ int main(int argc, char **argv)
                   "CPU stage samples missing"))
         return 7;
 
+    // Legacy CPU parser still sees ONLY schema=2 rows. Frame records
+    // must be in their own file and not appended to that old format.
+    if (!check(!static_cast<bool>(std::getline(stream, json)),
+               "frame steps unexpectedly contaminated aggregate CPU JSONL"))
+        return 8;
+    std::ifstream frameStream(tracePath);
     std::string trace;
     std::size_t traceEvents = 0;
     bool sawViewer = false;
-    while (std::getline(stream, trace)) {
+    while (std::getline(frameStream, trace)) {
         if (trace.find("\"type\":\"frame_step\"") == std::string::npos)
             continue;
         ++traceEvents;

@@ -78,8 +78,8 @@ jobs:
           set -euo pipefail
           mkdir -p tmp/r4-rfb
           arm="${{ matrix.arm }}"
-          export HYREMOTE_CPU_PROBE_FILE="$PWD/tmp/r4-rfb/$arm-frame-trace.jsonl"
-          export HYREMOTE_FRAME_TRACE=1
+          export HYREMOTE_CPU_PROBE_FILE="$PWD/tmp/r4-rfb/$arm-cpu-probe.jsonl"
+          export HYREMOTE_FRAME_TRACE_FILE="$PWD/tmp/r4-rfb/$arm-frame-trace.jsonl"
           build="build-r4-rfb-$arm"
           export LD_LIBRARY_PATH="$QT_PREFIX/lib:$(pwd)/$build/install/lib:$(pwd)/$build/install/bin:$LD_LIBRARY_PATH"
           timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' \
@@ -93,7 +93,7 @@ jobs:
             python tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py \
             --exe "$build/install/bin/hyremote-learning-03-quick" \
             --arm "$arm" --scale-factor 1.5 --out "tmp/r4-rfb/$arm-dpr15.json"
-          python tools/perf/analyze_frame_trace.py --input "$HYREMOTE_CPU_PROBE_FILE" \
+          python tools/perf/analyze_frame_trace.py --input "$HYREMOTE_FRAME_TRACE_FILE" \
             --output "tmp/r4-rfb/$arm-frame-budget.json"
           python - "tmp/r4-rfb/$arm-frame-budget.json" <<'PY'
           import json, sys

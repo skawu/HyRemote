@@ -311,8 +311,14 @@ private:
             return;
         m_path = value;
         m_enabled = true;
-        const char *trace = std::getenv("HYREMOTE_FRAME_TRACE");
-        m_traceEnabled = trace && trace[0] == '1' && trace[1] == '\0';
+        // Keep legacy aggregate CPU JSONL untouched. Per-frame records
+        // use a separate opt-in file so existing Windows/local-owner parsers
+        // never encounter an unexpected schema-3 event line.
+        const char *trace = std::getenv("HYREMOTE_FRAME_TRACE_FILE");
+        if (trace && *trace) {
+            m_tracePath = trace;
+            m_traceEnabled = true;
+        }
         m_start = Clock::now();
         (void)processCpuNs(m_startCpuNs);
     }
@@ -375,7 +381,7 @@ private:
         }
         if (count == 0 && dropped == 0)
             return;
-        std::FILE *file = std::fopen(m_path.c_str(), "ab");
+        std::FILE *file = std::fopen(m_tracePath.c_str(), "ab");
         if (!file)
             return;
         for (std::size_t i = 0; i < count; ++i) {
@@ -410,6 +416,7 @@ private:
     bool m_enabled = false;
     bool m_traceEnabled = false;
     std::string m_path;
+    std::string m_tracePath;
     Clock::time_point m_start{};
     std::uint64_t m_startCpuNs = 0;
     std::int64_t m_lastReportMs = -1000;

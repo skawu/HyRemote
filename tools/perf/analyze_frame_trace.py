@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Analyze optional HyRemote host frame-step telemetry (schema=3 JSONL).
 
-Input: HYREMOTE_CPU_PROBE_FILE with HYREMOTE_FRAME_TRACE=1 and
-HYREMOTE_ENABLE_CPU_PROBE=ON. Times are monotonic HOST timestamps.
+Input: HYREMOTE_FRAME_TRACE_FILE with HYREMOTE_ENABLE_CPU_PROBE=ON.
+The legacy HYREMOTE_CPU_PROBE_FILE remains separate and schema=2 only.
+Times are monotonic HOST timestamps.
 The RFB socket-queued event is NOT a network ACK, Viewer decode, or present.
 A QQuickWindow afterAnimating event is a HINT, not content change.
 Never match request IDs across overlapping sessions/restarts in one process.
@@ -183,7 +184,7 @@ def self_test():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, help="HYREMOTE_CPU_PROBE_FILE JSONL")
+    parser.add_argument("--input", type=Path, help="HYREMOTE_FRAME_TRACE_FILE JSONL")
     parser.add_argument("--output", type=Path, help="optional summary JSON")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
