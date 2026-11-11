@@ -119,6 +119,7 @@ struct Job {
     GLsync fence = nullptr;
     int width = 0;
     int height = 0;
+    bool holdBeforeCurrentForHide = false;
 };
 
 class FenceWorker final : public QThread {
@@ -135,6 +136,11 @@ protected:
         // QOpenGLContext must be owned by this QThread; QOffscreenSurface is
         // only created/destroyed on GUI thread, then used here for makeCurrent.
         QOpenGLContext *context = job.shared;
+        // Lifecycle stress only (NEVER a performance sample): permit the
+        // GUI to hide/release its QQuickWindow while this independent shared
+        // context owns the PBO/fence, before any GPU synchronization.
+        if (job.holdBeforeCurrentForHide)
+            QThread::msleep(40);
         if (!context || !job.surface || context->thread() != QThread::currentThread()
             || !context->makeCurrent(job.surface)) {
             reason = "SHARED_CONTEXT_MAKE_CURRENT_FAILED";
@@ -229,10 +235,13 @@ bool pixelTruth(const FenceWorker &worker)
 int main(int argc, char **argv)
 {
     bool cancelBeforeDelivery = false;
+    bool hideAfterSubmit = false;
     bool fullHd = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--cancel")
             cancelBeforeDelivery = true;
+        else if (std::string(argv[i]) == "--hide")
+            hideAfterSubmit = true;
         else if (std::string(argv[i]) == "--fullhd")
             fullHd = true;
         else {
@@ -270,6 +279,11 @@ int main(int argc, char **argv)
     FenceWorker worker;
     std::atomic<unsigned> generation{1};
     std::atomic<int> submissions{0};
+    std::atomic<int> sceneGraphInvalidations{0};
+    QObject::connect(&window, &QQuickWindow::sceneGraphInvalidated,
+                     &window, [&sceneGraphInvalidations] {
+                         ++sceneGraphInvalidations;
+                     }, Qt::DirectConnection);
     const int extraWindowUpdates = 0; // this prototype makes NO update() calls
     bool nativeQualified = false;
     std::atomic<const char *> error{"NO_NATURAL_FRAME"};
@@ -286,12 +300,13 @@ int main(int argc, char **argv)
     QObject::connect(&worker, &QThread::finished, &app, [&] {
         worker.wait(); // synchronize ownership before inspecting its data
         const bool imageValid = pixelTruth(worker);
-        const bool delivered = generation.load() == 1 && !cancelBeforeDelivery;
+        const bool delivered = generation.load() == 1
+            && !cancelBeforeDelivery && !hideAfterSubmit;
         const bool correct = (cancelBeforeDelivery || imageValid)
             && nativeQualified && worker.contextWasCurrent
             && worker.reason == "OK" && submissions.load() == 1
             && extraWindowUpdates == 0;
-        const bool suppressed = cancelBeforeDelivery && !delivered;
+        const bool suppressed = (cancelBeforeDelivery || hideAfterSubmit) && !delivered;
         std::cout << "R953_RESULT_JSON={\"qt\":\"" << QT_VERSION_STR
                   << "\",\"graphics_api\":\"OpenGL\",\"shared_context\":"
                   << (nativeQualified ? "true" : "false")
@@ -307,9 +322,13 @@ int main(int argc, char **argv)
                   << ",\"pixel_truth\":" << (imageValid ? "true" : "false")
                   << ",\"cancel_suppressed_delivery\":"
                   << (suppressed ? "true" : "false")
+                  << ",\"hide_requested\":" << (hideAfterSubmit ? "true" : "false")
+                  << ",\"window_hidden\":" << (!window.isVisible() ? "true" : "false")
+                  << ",\"scene_graph_invalidations\":" << sceneGraphInvalidations.load()
                   << ",\"reason\":\"" << worker.reason
                   << "\",\"qualified_for_product\":false}" << std::endl;
-        if (correct && (!cancelBeforeDelivery || suppressed)) {
+        if (correct && (!(cancelBeforeDelivery || hideAfterSubmit) || suppressed)
+            && (!hideAfterSubmit || !window.isVisible())) {
             std::cout << "R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE\n";
             app.exit(0);
         } else {
@@ -387,14 +406,21 @@ int main(int argc, char **argv)
             failFromRender(15);
             return;
         }
-        worker.job = {shared, &surface, pbo, fence, width, height};
+        worker.job = {shared, &surface, pbo, fence, width, height,
+                      hideAfterSubmit};
         nativeQualified = true;
         submissions.fetch_add(1);
         // Even in cancellation, the worker must retire the GL resources
         // before any Surface/context destruction or module unload.
-        if (cancelBeforeDelivery)
+        if (cancelBeforeDelivery || hideAfterSubmit)
             generation.fetch_add(1);
         worker.start();
+        if (hideAfterSubmit) {
+            QMetaObject::invokeMethod(&app, [&window] {
+                window.hide();
+                window.releaseResources(); // public Qt5/Qt6 lifecycle API
+            }, Qt::QueuedConnection);
+        }
         // No window->update(), timer-poll-on-render or extra Qt frame.
     };
 
