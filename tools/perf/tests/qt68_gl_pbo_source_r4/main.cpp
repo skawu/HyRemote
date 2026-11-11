@@ -144,10 +144,28 @@ int main(int argc, char **argv)
     int restarts = 0;
     bool intentionallyStopped = false;
     bool fullyStopped = false;
+    bool hiddenRequestPending = false;
+    int hiddenUnavailableEvents = 0;
+    int hiddenTerminalFrames = 0;
     std::set<std::uint64_t> seenRequestIds;
 
     std::function<void()> dispatchNext;
+    std::function<void()> finishCase;
     const auto onFrame = [&](hyremote::RemoteFrame frame) {
+        if (hiddenRequestPending && frame.requestId && *frame.requestId == 777) {
+            if (hiddenUnavailableEvents != 1 || frame.storage
+                || !frame.timing.requestTime || !frame.timing.completionTime
+                || *frame.timing.completionTime < *frame.timing.requestTime) {
+                ++errors;
+                std::cerr << "R4=FAIL_HIDDEN_TERMINAL_FRAME_CONTRACT\n";
+                app.exit(29);
+                return;
+            }
+            ++hiddenTerminalFrames;
+            hiddenRequestPending = false;
+            finishCase();
+            return;
+        }
         if (fullyStopped || intentionallyStopped) {
             ++staleCallbacks;
             return;
@@ -169,6 +187,12 @@ int main(int argc, char **argv)
     };
 
     const auto onEvent = [&](const hyremote::CaptureEvent &event) {
+        if (hiddenRequestPending
+            && event.code == hyremote::CaptureEventCode::TemporarilyUnavailable
+            && event.recoverable) {
+            ++hiddenUnavailableEvents;
+            return;
+        }
         ++errors;
         std::cerr << "R4=FAIL_CAPTURE_EVENT code="
                   << static_cast<int>(event.code) << " reason="
@@ -184,14 +208,14 @@ int main(int argc, char **argv)
         }
     };
 
-    dispatchNext = [&] {
-        if (completed >= kPhases) {
-            fullyStopped = true;
-            source->stop();
-            QTimer::singleShot(250, &app, [&] {
+    finishCase = [&] {
+        fullyStopped = true;
+        source->stop();
+        QTimer::singleShot(250, &app, [&] {
                 const bool valid = errors == 0 && staleCallbacks == 0
                     && completed == kPhases && restarts == 2
-                    && seenRequestIds.size() == kPhases;
+                    && seenRequestIds.size() == kPhases
+                    && hiddenUnavailableEvents == 1 && hiddenTerminalFrames == 1;
                 std::cout << "R4_RESULT_JSON={"
                     << "\"qt\":\"" << QT_VERSION_STR << "\","
                     << "\"backend\":\"Qt6_RHI_OpenGL\","
@@ -202,6 +226,8 @@ int main(int argc, char **argv)
                     << "\"stop_restart_cycles\":" << restarts << ","
                     << "\"abandoned_predispatch_request_isolated\":"
                     << (seenRequestIds.count(999) == 0 ? "true" : "false") << ","
+                    << "\"hidden_unavailable_events\":" << hiddenUnavailableEvents << ","
+                    << "\"hidden_terminal_remote_frames\":" << hiddenTerminalFrames << ","
                     << "\"late_callbacks_after_stop\":" << staleCallbacks << ","
                     << "\"errors\":" << errors << ","
                     << "\"qualified_for_product\":false"
@@ -209,6 +235,23 @@ int main(int argc, char **argv)
                     << (valid ? "PASS_SCOPED_CAPTURE_SOURCE"
                               : "FAIL_SOURCE_LIFECYCLE_OR_PIXELS") << '\n';
                 app.exit(valid ? 0 : 25);
+            });
+    };
+
+    dispatchNext = [&] {
+        if (completed >= kPhases) {
+            if (hiddenRequestPending || hiddenTerminalFrames)
+                return;
+            hiddenRequestPending = true;
+            window.hide();
+            QTimer::singleShot(80, &app, [&] {
+                hyremote::CaptureRequest hidden;
+                hidden.id = 777;
+                hidden.requestTime = hyremote::Clock::now();
+                if (!source->requestFrame(hidden)) {
+                    ++errors;
+                    app.exit(30);
+                }
             });
             return;
         }
