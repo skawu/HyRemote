@@ -220,8 +220,27 @@ public:
                 }
                 target->update(); // bounded source request: first render
             }, Qt::QueuedConnection)) {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            if (s->generation == generation) s->kickPosted = false;
+            // A failed GUI dispatch means this request was *rejected*:
+            // Core will retry it. Remove its ID so a later dispatch cannot
+            // also complete it. Other threads may already have received
+            // 'true' while kickPosted was set; those requests MUST still
+            // receive one terminal result instead of remaining stranded.
+            std::vector<hyremote::CaptureRequest> acceptedButUnscheduled;
+            {
+                std::lock_guard<std::mutex> guard(s->mutex);
+                if (s->generation == generation && s->active) {
+                    s->kickPosted = false;
+                    for (const auto &pending : s->queued) {
+                        if (pending.id != req.id)
+                            acceptedButUnscheduled.push_back(pending);
+                    }
+                    s->queued.clear();
+                }
+            }
+            if (!acceptedButUnscheduled.empty())
+                reportUnavailable(s, generation,
+                                  std::move(acceptedButUnscheduled),
+                                  "GL PBO GUI dispatch could not be scheduled");
             return false;
         }
         return true;
@@ -397,8 +416,24 @@ private:
                 releaseGl(*s, gl);
                 s->cleanupRequested = false;
             }
-            if (!s->active) return;
+            if (!s->active) {
+                // stop() intentionally kept the render connection alive
+                // only until its GPU objects could be destroyed on the
+                // owning GL thread. Release it now: otherwise each restart
+                // or source destruction retains another shared State and
+                // an unnecessary render callback until window destruction.
+                if (s->connected) {
+                    QObject::disconnect(s->frameConnection);
+                    QObject::disconnect(s->invalidatedConnection);
+                    s->frameConnection = {};
+                    s->invalidatedConnection = {};
+                    s->connected = false;
+                }
+                return;
+            }
             gen = s->generation;
+            if (!s->gpuPending && s->queued.empty())
+                return; // NO demand: no PBO allocation or readback GL work.
             if (!s->pbo)
                 gl->glGenBuffers(1, &s->pbo);
             if (!s->pbo) {
