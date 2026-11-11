@@ -82,12 +82,23 @@ def analyze(records):
             if not starts or not ends:
                 continue
             first = min(int(x["at_ns"]) for x in starts)
+            per_viewer = {int(x.get("viewer_id", 0)): int(x["at_ns"])
+                          for x in starts} if earlier == "rfb_encoded" else {}
             for event in ends:
+                # One frame may be encoded independently for 2+ viewers.
+                # Do not combine one viewer's encode with another's write.
+                if earlier == "rfb_encoded":
+                    viewer = int(event.get("viewer_id", 0))
+                    if viewer not in per_viewer:
+                        continue
+                    earlier_ns = per_viewer[viewer]
+                else:
+                    earlier_ns = first
                 last = int(event["at_ns"])
-                if last < first:
+                if last < earlier_ns:
                     impossible += 1
                     continue
-                out[metric].append((last - first) / 1_000_000.0)
+                out[metric].append((last - earlier_ns) / 1_000_000.0)
 
         hints = sorted(activity[pid])
         initial = int(steps["capture_request"][0]["at_ns"])
@@ -139,6 +150,7 @@ def self_test():
     assert result["intervals"]["capture_request_to_socket_queue"]["n"] == 2
     assert result["intervals"]["capture_request_to_socket_queue"]["p50_ms"] == 14.5
     assert result["intervals"]["qt_activity_hint_to_request"]["p50_ms"] == 1.0
+    assert result["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 2.25
     assert result["content_change_to_present"] == "NOT_MEASURED"
     print("PASS frame trace analyzer self-test")
 
