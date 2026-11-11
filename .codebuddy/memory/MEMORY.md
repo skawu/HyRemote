@@ -1,5 +1,6 @@
 - [#410 V0.3.0.0 实机交互延迟门禁状态](project_q410_latency_gate.md) — 有线参考 LAN 下 PASS（P50 75.5/P95 206.1ms，n=40）；根因 CAPTURE_PACING；测前必须重新标定控件坐标
 - [本机实机任务的脚本与长驻进程约束](feedback_agent_scripting_in_this_env.md) — ASCII .ps1 + `-File`、WMI 创建长驻进程、PrintWindow 抓窗口、ALT+AttachThreadInput 置前
+- [本机 #949/Qt 采集夹具与环境要点](feedback_win949_local_harness.md) — 免 vcvars、Ninja/Qt Kit 路径、必须开 HYREMOTE_ENABLE_CPU_PROBE、Qt5 走 C++ API、消费安装树包、IPv4 绑定
 - [HyRemoteTool 重新定义为远端连接/调试客户端](project_hyremote_tool_scope.md) — 已随 V0.3.0.0 发布；客户端侧调试与监测；管理面后续
 - [V0.3.0.0 已发布](project_v030_release.md) — tag v0.3.0.0 / main eba04f6 / release 35bae71 / L2 39232134597 PASS / backmerge 5853aa96
 - [工程健康里程碑进度](project_engineering_health.md) — 状态一律查 AGENTS.md/路线图，勿从记忆推断；含 G6 假红(已修)与三条定案教训
@@ -11,9 +12,11 @@
 - [每轮结束保持本地工作区干净](feedback_workspace_cleanliness.md) — 只允许主工作区，禁止 worktree；任务结束/异常退出后检查 status、main/develop 与 origin 同步
 - [不要用固定长 sleep 等 CI](feedback_ci_waiting.md) — 用 `gh pr checks --watch --interval 10` / `gh run watch`，完成即退出
 - [只允许一个仓库内 build 目录](feedback_single_build_dir.md) — 红线：唯一工作空间是 `F:\workspace\hyremote\HyRemote`，只用其 `build`，禁止并行 build 目录
-- [禁止操作工作空间外目录](feedback_no_outside_workspace.md) — 红线：工作空间外路径（含清理）一律不得访问；只有该具体路径经用户明确授权才例外
+- [工作空间边界：内部全允许，外部仅只读](feedback_no_outside_workspace.md) — 内部任意子目录无需询问；外部只读可查，写/改/删/建一律拒绝（hook 强制）
 - [无 Human 决策时不得停下](feedback_do_not_stop_without_decision.md) — 长任务红线：没有产品/版本/安全/管理员决策或真实外部阻塞时，必须继续实现、测试、提 PR、合并
 - [长命令静默时主动检查并回报进度](feedback_no_hung_steps.md) — 60 秒是汇报间隔不是构建超时；先查进程/日志，勿杀合法 build.cmd/CTest
 - [禁止对挂起进程调用 PrintWindow](feedback_printwindow_suspended_hang.md) — 根因：NtSuspendProcess 后截图无界阻塞；必须 try/finally 恢复并加超时
 - [CodeBuddy 项目级 Skill 发现入口实测](project_codebuddy_skill_discovery.md) — 只发现 `.codebuddy/skills`（无需重载），`.agents/skills` 返回 not found；升级须指定为前者
 - [测试事前治理：逐项论证 + Human 确认后才执行](feedback_test_preapproval.md) — 五项必要性说明；禁止自行扩矩阵/重复全套件/无限复测；代码审查与设计仍自主
+- [沟通风格：简洁大白话](feedback_communication_style.md) — 回复要短、先结论后细节，别堆术语和长表格
+- [本机 #949/Qt 验证夹具与环境要点](feedback_win949_local_harness.md) — MSVC14.44/cl 直用、Ninja/CMake 入 PATH、Qt Kit、HYREMOTE_ENABLE_CPU_PROBE、Qt6 Gui/Qt5 API、IPv4 监听
