@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
 import sys
 import tempfile
@@ -38,14 +39,69 @@ FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 SHELL_TOOLS = {"Bash", "Shell", "run_terminal_cmd", "execute_command"}
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# A shell command that writes a script under tmp/ must also be denied, otherwise
-# the file tools can simply be bypassed through the shell.
-_TMP_TARGET = r"""(?is)(?:^|[\s"'(=])tmp[\\/](?:[^\s"'`;|&<>]*[\\/])?([^\s"'`;|&<>]+?\.(?:py|ps1|cmd|bat|sh|pyw|vbs))\b"""
-_WRITE_HINT = re.compile(
-    r"(?is)(?:>>?|tee\b|set-content\b|add-content\b|out-file\b|copy-item\b|move-item\b|"
-    r"new-item\b|cp\s|mv\s|copy\s|rename\b|open\s*\([^)]*['\"]w|\bwritetext\b|writes\b)"
+# Shell commands must be judged by their write DESTINATION, not by any script
+# name appearing anywhere in the string: `python tmp/probe.py > tmp/out.log`
+# reads a script and writes a log, which is allowed, while
+# `cp template.ps1 tmp/run.ps1` writes a script, which is denied.
+_REDIRECT = re.compile(r"""(?is)>>?\s*("[^"]+"|'[^']+'|[^\s"'|&;<>()]+)""")
+_CMDLET_WRITE = re.compile(
+    r"(?is)\b(set-content|add-content|out-file|new-item|tee-object|tee|copy-item|"
+    r"move-item|cp|mv|copy|rename)\b([^|;]*)"
 )
-_TMP_SCRIPT = re.compile(_TMP_TARGET)
+_OPEN_WRITE = re.compile(
+    r"""(?is)open\s*\(\s*([^,)]+?)\s*,\s*["'](?:w|a|w\+|a\+|wb|ab)"""
+)
+_OPTION_FLAG = re.compile(r"^-\w")
+
+
+def _is_tmp_script(candidate: str, repo_root: str = REPO_ROOT) -> bool:
+    """True when candidate resolves under <repo>/tmp/ and names a script."""
+    raw = candidate.strip().strip("\"'")
+    if not raw:
+        return False
+    lowered = raw.replace("\\", "/").lower()
+    if not lowered.endswith(SCRIPT_SUFFIXES):
+        return False
+
+    root = _norm(repo_root).replace("\\", "/").lower().rstrip("/")
+    so_far = root + "/tmp"
+    if lowered.startswith(so_far + "/"):
+        return True
+
+    # Absolute path that names a tmp/ segment (e.g. /srv/repo/tmp or F:/x/tmp).
+    is_absolute = lowered.startswith("/") or bool(re.match(r"^[a-z]:/", lowered))
+    if is_absolute:
+        return "/tmp/" in lowered
+
+    # Relative to the repository root: normalise . and .. segments first so
+    # ./tmp/a.py and tmp/sub/../a.py are both caught.
+    normalised = posixpath.normpath(lowered)
+    return normalised.startswith("tmp/")
+
+
+def _extract_shell_targets(command: str) -> list[str]:
+    """Return every path this command writes to. Best effort, never raises."""
+    targets: list[str] = []
+    for match in _REDIRECT.finditer(command):
+        targets.append(match.group(1))
+    for match in _CMDLET_WRITE.finditer(command):
+        args = match.group(2) or ""
+        positional = [
+            token
+            for token in re.findall(r""""[^"]+"|'[^']+'|[^\s"']+""", args)
+            if token and not _OPTION_FLAG.match(token) and not token.startswith(("-", "/"))
+        ]
+        if positional:
+            # Copy/move style verbs write to the last argument; writers such as
+            # Set-Content/Out-File write to the first path-like argument.
+            verb = match.group(1).lower()
+            chosen = positional[-1] if verb in {
+                "copy-item", "move-item", "cp", "mv", "copy", "rename", "tee", "tee-object",
+            } else positional[0]
+            targets.append(chosen)
+    for match in _OPEN_WRITE.finditer(command):
+        targets.append(match.group(1))
+    return targets
 
 
 def _norm(path: str) -> str:
@@ -69,16 +125,17 @@ def classify(tool_name: str, file_path: str, repo_root: str = REPO_ROOT) -> str:
 
 
 def classify_shell(command: str, repo_root: str = REPO_ROOT) -> str:
-    """Deny a shell command that writes a script file under tmp/. Pure."""
+    """Deny a shell command whose write destination is a script under tmp/. Pure."""
     if not command:
         return "allow"
-    if not _TMP_SCRIPT.search(command):
+    try:
+        targets = _extract_shell_targets(command)
+    except Exception:
         return "allow"
-    if not _WRITE_HINT.search(command):
-        return "allow"
-    # Resolving the raw token is not required: any write-hinted command that
-    # names a tmp/ script is denied regardless of how the path is spelled.
-    return "deny"
+    for target in targets:
+        if _is_tmp_script(target, repo_root):
+            return "deny"
+    return "allow"
 
 
 def _read_stdin(timeout: float = 3.0) -> str:
@@ -160,7 +217,18 @@ def main(argv: list[str]) -> int:
             ("python -c \"open('tmp/b.py','w').write('x')\"", "deny"),
             ("cp template.ps1 tmp/run.ps1", "deny"),
             ("powershell -c \"Set-Content tmp/c.cmd 'x'\"", "deny"),
+            # Relative prefixes and absolute destinations must not bypass.
+            ("echo x > ./tmp/a.py", "deny"),
+            ("echo x > ./tmp/nested/a.py", "deny"),
+            ("echo x > tmp/sub/../a.py", "deny"),
+            ("echo x > /srv/HyRemote/tmp/a.py", "deny"),
+            ("echo x > C:/work/HyRemote/tmp/a.py", "deny"),
+            ("Set-Content -Path tmp/d.ps1 -Value x", "deny"),
+            ("Move-Item template.py tmp/e.py", "deny"),
+            # Reading a script and writing a non-script output stays allowed.
+            ("python tmp/sem/observer.py --once > tmp/observer.log", "allow"),
             ("python tmp/sem/observer.py --once", "allow"),
+            ("cp tmp/sem/observer.py tools/local-owner/observer.py", "allow"),
             ("python tools/perf/aggregate_cpu_probe.py tmp/data.json", "allow"),
             ("Get-ChildItem tmp -Recurse", "allow"),
             ("rm -rf tmp/old", "allow"),
