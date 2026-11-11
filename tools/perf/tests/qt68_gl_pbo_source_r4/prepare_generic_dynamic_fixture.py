@@ -39,7 +39,7 @@ def main():
         raise RuntimeError("Unexpected base learning example: fail source lock")
     # Pure Qt attached Screen property; confirms requested test scale
     # actually reaches the QQuickWindow rather than trusting the environment.
-    source = source.replace("import QtQuick\\n", "import QtQuick\\nimport QtQuick.Window\\n", 1)
+    source = source.replace("import QtQuick\n", "import QtQuick\nimport QtQuick.Window\n", 1)
     target = source.rstrip()
     target = target[:-1] + MARKER + "}\n"
     QML.write_text(target, encoding="utf-8")
