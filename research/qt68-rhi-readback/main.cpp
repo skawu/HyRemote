@@ -94,10 +94,9 @@ int main(int argc, char **argv)
             state->flags.store(static_cast<int>(swapchain->flags()));
             state->sampleCount.store(swapchain->sampleCount());
 
-            // A Qt-owned swapchain must not be retrofitted with transfer flags.
-            // Multisampled sources are also prohibited by the QRhi readback contract.
-            if (!swapchain->flags().testFlag(QRhiSwapChain::UsedAsTransferSource)
-                || swapchain->sampleCount() != 1) {
+            // Do not retrofit a Qt-owned swapchain with transfer flags.
+            // Qt 6.8 permits multisampled swapchain readback (unlike MSAA textures).
+            if (!swapchain->flags().testFlag(QRhiSwapChain::UsedAsTransferSource)) {
                 state->reason.store(3);
                 return;
             }
