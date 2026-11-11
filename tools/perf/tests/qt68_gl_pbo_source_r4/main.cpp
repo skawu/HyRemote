@@ -105,6 +105,9 @@ bool validateFrame(const hyremote::RemoteFrame &frame, int phase, int expectedW,
         || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
         || frame.geometry.planeCount != 1 || !frame.requestId
         || !frame.timing.requestTime || !frame.timing.completionTime
+        || frame.timing.ptsSource != hyremote::PtsSource::Render
+        || frame.timing.pts == hyremote::TimePoint{}
+        || frame.timing.pts > *frame.timing.completionTime
         || *frame.timing.completionTime < *frame.timing.requestTime)
         return false;
     auto pixels = frame.storage->mapRead(0);
