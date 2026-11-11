@@ -49,6 +49,7 @@
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
+#include "quick/quick_grab_geometry.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -139,6 +140,41 @@ public:
             callback(std::move(frame));
     }
 };
+
+void testUpstreamQtGrabTargetDprVersionContract()
+{
+    // Confirm exact Qt5.15/Qt6.8 upstream implementation difference:
+    // Qt5 textureSize == grabToImage(targetSize), while Qt6 multiplies
+    // textureSize by QQuickWindow::effectiveDevicePixelRatio().
+    const QSize logicalWindow{1920, 1080};
+    const QSize nativePixels{2880, 1620};
+    const QSize compositePixels{1920, 1080};
+    const auto direct = HyRemote::detail::quickGrabTargetForOutput(
+        nativePixels, logicalWindow, 1.5, false);
+    const auto composite = HyRemote::detail::quickGrabTargetForOutput(
+        compositePixels, logicalWindow, 1.5, true);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    CHECK(direct == logicalWindow);
+    CHECK(composite == QSize(1280, 720));
+    CHECK(QSize(qRound(direct.width() * 1.5),
+                qRound(direct.height() * 1.5)) == nativePixels);
+    CHECK(QSize(qRound(composite.width() * 1.5),
+                qRound(composite.height() * 1.5)) == compositePixels);
+    // 125% screens may introduce one rounding pixel: composite must handle
+    // that as an output resize, never request the full physical grid twice.
+    const auto fractional = HyRemote::detail::quickGrabTargetForOutput(
+        QSize(641, 361), QSize(641, 361), 1.25, true);
+    CHECK(std::abs(qRound(fractional.width() * 1.25) - 641) <= 1);
+    CHECK(std::abs(qRound(fractional.height() * 1.25) - 361) <= 1);
+#else
+    CHECK(direct == nativePixels);
+    CHECK(composite == compositePixels);
+#endif
+    CHECK(HyRemote::detail::quickGrabTargetForOutput(
+        compositePixels, logicalWindow, 0.0, true).isEmpty());
+    CHECK(HyRemote::detail::quickGrabTargetForOutput(
+        {}, logicalWindow, 1.5, true).isEmpty());
+}
 
 void testAdaptiveQuickSceneGraphInvalidationFailClosed()
 {
@@ -1986,6 +2022,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testUpstreamQtGrabTargetDprVersionContract();
     testAdaptiveQuickSceneGraphInvalidationFailClosed();
     testNativeReadbackBatchTimeoutIsOneFailure();
     testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
