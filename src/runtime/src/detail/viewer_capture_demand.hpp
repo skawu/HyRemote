@@ -17,6 +17,17 @@ namespace HyRemote::detail {
 class ViewerCaptureDemand final
 {
 public:
+    // An afterAnimating signal is merely a Qt render-loop ACTIVITY hint.
+    // Recording a reason here prevents a fake "hint-to-request latency"
+    // from being reported as actual scheduler wakeup gain.
+    enum class ActivityResult {
+        Stopped,
+        NoViewer,
+        CaptureInFlight,
+        DeliveryBackpressure,
+        AlreadyActive,
+        ReleasedStaticWait
+    };
     // A local-only Qt Quick page change still becomes visible through the next bounded probe.
     // Do not rely solely on QQuickWindow rendering signals: offscreen grabs can generate them.
     // #789: matched 1080p A/B/A static tests showed about half the capture
@@ -176,21 +187,29 @@ public:
             --m_capturesInFlight;
     }
 
-    bool noteQtRenderActivity()
+    ActivityResult noteQtRenderActivity()
     {
-        bool changed = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            // Zero viewers and an internally generated grab must not
-            // rearm the idle gate. Delivery backpressure is NOT bypassed.
-            if (!m_stopped && m_viewers != 0 && m_capturesInFlight == 0) {
-                resetIdleLocked();
-                changed = true;
-            }
+            if (m_stopped)
+                return ActivityResult::Stopped;
+            if (m_viewers == 0)
+                return ActivityResult::NoViewer;
+            if (m_capturesInFlight != 0)
+                return ActivityResult::CaptureInFlight;
+            // A render hint is NOT an explicit Viewer refresh request.
+            // It must never spend the single-use backpressure escape.
+            if (m_deliveryBackpressured)
+                return ActivityResult::DeliveryBackpressure;
+            // Already-active capture should not be rearmed by the Qt
+            // render loop itself; this was causing even unchanged scenes
+            // to stay in the 60fps mode just because Qt kept rendering.
+            if (m_identicalFrames < kConsecutiveUnchangedFrames)
+                return ActivityResult::AlreadyActive;
+            resetIdleLocked();
         }
-        if (changed)
-            m_changed.notify_all();
-        return changed;
+        m_changed.notify_all();
+        return ActivityResult::ReleasedStaticWait;
     }
 
     bool waitForViewer()
