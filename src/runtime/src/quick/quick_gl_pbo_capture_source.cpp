@@ -89,6 +89,7 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         GLuint pbo = 0;
         GLsync fence = nullptr;
         bool gpuPending = false;
+        std::size_t pboCapacityBytes = 0; // render-thread-only under State mutex
         hyremote::TimePoint readbackRenderTime{};
         // One outstanding CPU conversion per source, independent of the GL fence.
         bool cpuConversionPending = false;
@@ -359,6 +360,7 @@ private:
             s.pbo = 0;
         }
         s.gpuPending = false;
+        s.pboCapacityBytes = 0;
         s.pixelWidth = 0;
         s.pixelHeight = 0;
         s.forcedRenders = 0;
@@ -391,6 +393,7 @@ private:
                 s->pbo = 0;
                 s->fence = nullptr;
                 s->gpuPending = false;
+                s->pboCapacityBytes = 0;
             }
             s->cleanupRequested = false;
             // A hidden/destroyed Scene Graph may never produce the stop
@@ -714,15 +717,32 @@ private:
                         std::numeric_limits<std::size_t>::max() / (4u*std::size_t(h))) {
                         GLint framebuffer = 0;
                         gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+                        const auto wantedBytes =
+                            std::size_t(w) * std::size_t(h) * 4u;
                         gl->glBindBuffer(kPackTarget, s->pbo);
-                        gl->glBufferData(kPackTarget, GLsizeiptr(
-                            std::size_t(w)*std::size_t(h)*4u), nullptr, kStreamRead);
+                        // A completed GPU fence and unmapped buffer permit
+                        // safe reuse. Only allocate on growth or major
+                        // downsizing (>4x capacity waste).
+                        const bool resizePbo =
+                            s->pboCapacityBytes < wantedBytes
+                            || s->pboCapacityBytes / 4u >= wantedBytes;
+                        if (resizePbo) {
+                            gl->glBufferData(kPackTarget,
+                                             GLsizeiptr(wantedBytes),
+                                             nullptr, kStreamRead);
+                        }
                         gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
                         gl->glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
                         HYREMOTE_P1_COUNT(QuickGlGpuSubmit);
                         s->fence = gl->glFenceSync(kFenceGpu, 0);
                         const bool valid = s->fence && gl->glGetError() == GL_NO_ERROR;
                         if (valid) {
+                            if (resizePbo) {
+                                s->pboCapacityBytes = wantedBytes;
+                                HYREMOTE_P1_COUNT(QuickGlPboResize);
+                            } else {
+                                HYREMOTE_P1_COUNT(QuickGlPboReuse);
+                            }
                             gl->glFlush();
                             s->pixelWidth = w;
                             s->pixelHeight = h;
