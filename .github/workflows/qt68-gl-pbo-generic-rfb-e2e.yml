@@ -9,6 +9,10 @@ on:
       - tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
       - src/runtime/src/quick/quick_gl_pbo_capture_source.cpp
       - src/runtime/src/quick/quick_target.cpp
+      - src/runtime/src/access_instance.cpp
+      - src/runtime/src/detail/viewer_capture_demand.hpp
+      - src/runtime/src/detail/perf_probe.hpp
+      - tools/perf/analyze_frame_trace.py
       - src/runtime/CMakeLists.txt
   workflow_dispatch:
 
@@ -58,8 +62,10 @@ jobs:
           arm="${{ matrix.arm }}"
           build="build-r4-rfb-$arm"
           python tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
-          sh ./build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm"
+          sh ./build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_ENABLE_CPU_PROBE=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
           grep -F "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=$arm" "$build/CMakeCache.txt"
+          grep -F "HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE:BOOL=ON" "$build/CMakeCache.txt"
+          grep -F "HYREMOTE_ENABLE_CPU_PROBE:BOOL=ON" "$build/CMakeCache.txt"
           test -x "$build/install/bin/hyremote-learning-03-quick"
           find "$build/install" -iname '*qhyremote*' -print
       - name: Verify actual loopback RFB handshake, server pixels and runtime mode
@@ -72,6 +78,8 @@ jobs:
           set -euo pipefail
           mkdir -p tmp/r4-rfb
           arm="${{ matrix.arm }}"
+          export HYREMOTE_CPU_PROBE_FILE="$PWD/tmp/r4-rfb/$arm-frame-trace.jsonl"
+          export HYREMOTE_FRAME_TRACE=1
           build="build-r4-rfb-$arm"
           export LD_LIBRARY_PATH="$QT_PREFIX/lib:$(pwd)/$build/install/lib:$(pwd)/$build/install/bin:$LD_LIBRARY_PATH"
           timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' \
@@ -85,6 +93,19 @@ jobs:
             python tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py \
             --exe "$build/install/bin/hyremote-learning-03-quick" \
             --arm "$arm" --scale-factor 1.5 --out "tmp/r4-rfb/$arm-dpr15.json"
+          python tools/perf/analyze_frame_trace.py --input "$HYREMOTE_CPU_PROBE_FILE" \
+            --output "tmp/r4-rfb/$arm-frame-budget.json"
+          python - "tmp/r4-rfb/$arm-frame-budget.json" <<'PY'
+          import json, sys
+          report = json.load(open(sys.argv[1], encoding="utf-8"))
+          stages = report["steps"]
+          for required in ("capture_request", "source_completed", "core_frame_queued",
+                           "rfb_observed", "rfb_encoded", "rfb_socket_queued"):
+              assert stages.get(required, 0) > 0, (required, stages)
+          assert report["trace_events_dropped"] == 0, report
+          assert report["content_change_to_present"] == "NOT_MEASURED"
+          print("HOST_FRAME_TRACE=PASS", stages)
+          PY
       - name: Publish only JSON and host logs, never installer
         if: always()
         uses: actions/upload-artifact@v4
