@@ -583,11 +583,34 @@ private:
     static void onRender(const std::shared_ptr<State> &s, QQuickWindow *window)
     {
         auto *ctx = QOpenGLContext::currentContext();
-        if (!ctx || !window->rendererInterface()
-            || window->rendererInterface()->graphicsApi()
-                   != QSGRendererInterface::OpenGL
-            || ctx->format().majorVersion() < 3)
+        // The provider was qualified by Qt's declared graphics API, but
+        // actual GL/ES context capabilities are only authoritative here on
+        // Qt's render thread. An unsupported context is a terminal native
+        // failure NOW, not a 750ms dead-end followed by another timeout.
+        auto *renderer = window->rendererInterface();
+        if (!ctx || !renderer
+            || renderer->graphicsApi() != QSGRendererInterface::OpenGL
+            || ctx->format().majorVersion() < 3) {
+            std::vector<hyremote::CaptureRequest> unsupported;
+            std::uint64_t generation = 0;
+            {
+                std::lock_guard<std::mutex> guard(s->mutex);
+                if (!s->active)
+                    return;
+                generation = s->generation;
+                unsupported.swap(s->queued);
+                unsupported.insert(unsupported.end(),
+                                   s->inFlight.begin(), s->inFlight.end());
+                s->inFlight.clear();
+                // No GL resource operations are safe without the qualified
+                // context. Qt sceneGraphInvalidated owns their cleanup.
+                s->gpuPending = false;
+            }
+            if (!unsupported.empty())
+                reportUnavailable(s, generation, std::move(unsupported),
+                                  "Qt OpenGL/ES 3+ render context unavailable");
             return;
+        }
         auto *gl = ctx->extraFunctions();
         HYREMOTE_P1_SCOPE(QuickGlRenderCallback);
         std::vector<hyremote::CaptureRequest> failed;
