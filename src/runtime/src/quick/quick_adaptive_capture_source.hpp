@@ -139,9 +139,9 @@ public:
         } catch (...) {
             // A partial start still needs a deterministic stop before reuse.
         }
+        if (m_native && !nativeStarted)
+            m_native->stop(); // failed/throwing start may have partial GPU state
         if (!publicStarted) {
-            if (m_native)
-                m_native->stop();
             m_public->stop();
             std::lock_guard<std::mutex> lock(state->mutex);
             state->active = false;
