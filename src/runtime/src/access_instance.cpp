@@ -17,6 +17,7 @@
 #endif
 #include <QThread>
 #include <QTimer>
+#include <QtGlobal>
 #include <QObject>
 #include <QPointer>
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
@@ -520,15 +521,24 @@ public:
         // Own grabs also cause this signal, hence noteCaptureStarted /
         // noteCaptureCompleted suppress self-induced capture loops.
         if (auto *quick = qobject_cast<QQuickWindow *>(m_target.data())) {
-            const std::weak_ptr<ViewerCaptureDemand> weak(m_demand);
-            m_quickActivityConnection = QObject::connect(
-                quick, &QQuickWindow::afterAnimating, &m_targetEventReceiver,
-                [weak] {
-                    if (auto demand = weak.lock()) {
-                        if (demand->noteQtRenderActivity())
-                            HYREMOTE_P1_TRACE_HINT(QtActivityHint);
-                    }
-                }, Qt::DirectConnection);
+            // One binary can run A1/B/A2 without recompiling Runtime, Qt,
+            // or the fixture. Compilation only grants experimental capability;
+            // the public-Qt product behavior remains OFF unless opt-in=1.
+            const bool enableActivityWake =
+                qEnvironmentVariableIntValue("HYREMOTE_QUICK_ACTIVITY_WAKE") == 1;
+            qInfo() << "HYREMOTE_QUICK_ACTIVITY_WAKE="
+                    << (enableActivityWake ? "ON" : "OFF");
+            if (enableActivityWake) {
+                const std::weak_ptr<ViewerCaptureDemand> weak(m_demand);
+                m_quickActivityConnection = QObject::connect(
+                    quick, &QQuickWindow::afterAnimating, &m_targetEventReceiver,
+                    [weak] {
+                        if (auto demand = weak.lock()) {
+                            if (demand->noteQtRenderActivity())
+                                HYREMOTE_P1_TRACE_HINT(QtActivityHint);
+                        }
+                    }, Qt::DirectConnection);
+            }
         }
 #endif
 
