@@ -457,6 +457,21 @@ private:
                 if (s->gpuPending && s->fence) {
                     const GLenum signaled = gl->glClientWaitSync(s->fence, 0, 0);
                     if (signaled == kAlready || signaled == kSatisfied) {
+                        // A GPU copy submitted for the old Surface generation
+                        // must never be relabelled with the resized window's
+                        // current geometry. The public CaptureSource contract
+                        // can recover with a new request once the target
+                        // scene graph has synchronized its new dimensions.
+                        const qreal currentDpr = window->effectiveDevicePixelRatio();
+                        const int currentW = qRound(window->width() * currentDpr);
+                        const int currentH = qRound(window->height() * currentDpr);
+                        const bool geometryMatches =
+                            currentW == s->pixelWidth && currentH == s->pixelHeight
+                            && std::abs(double(currentDpr) - double(s->dpr)) < 0.0001;
+                        if (!geometryMatches) {
+                            failed.swap(s->inFlight);
+                            failureReason = "GL PBO source resized before readback retirement";
+                        } else {
                         gl->glBindBuffer(kPackTarget, s->pbo);
                         const std::size_t stride =
                             static_cast<std::size_t>(s->pixelWidth) * 4u;
@@ -483,6 +498,7 @@ private:
                             failureReason = "GL PBO could not map owned CPU frame";
                         }
                         if (mapped) gl->glUnmapBuffer(kPackTarget);
+                        } // geometryMatches
                         gl->glDeleteSync(s->fence);
                         s->fence = nullptr;
                         s->gpuPending = false;
