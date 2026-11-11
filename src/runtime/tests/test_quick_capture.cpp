@@ -139,6 +139,51 @@ public:
     }
 };
 
+void testAdaptiveQuickMalformedNativeFramesTriggerFallback()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    std::vector<hyremote::RemoteFrame> frames;
+    CHECK(source.start([&](hyremote::RemoteFrame f) {
+        frames.push_back(std::move(f));
+    }, [](const hyremote::CaptureEvent &) {}));
+
+    auto nativeFrame = [](hyremote::CaptureRequestId id) {
+        hyremote::RemoteFrame frame;
+        frame.requestId = id;
+        frame.storage = hyremote::CpuFrameStorage::createSinglePlane(4, 1);
+        frame.geometry.size = {1, 1};
+        frame.geometry.planeCount = 1;
+        frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+        frame.timing.ptsSource = hyremote::PtsSource::Render;
+        frame.timing.completionTime = hyremote::Clock::now();
+        frame.timing.pts = *frame.timing.completionTime;
+        return frame;
+    };
+
+    CHECK(source.requestFrame({71, hyremote::Clock::now()}));
+    auto malformed = nativeFrame(71);
+    malformed.geometry.pixelFormat = hyremote::PixelFormat::Unknown;
+    primary->onFrame(std::move(malformed));
+    CHECK(frames.size() == 1 && !frames.back().storage);
+
+    CHECK(source.requestFrame({72, hyremote::Clock::now()}));
+    malformed = nativeFrame(72);
+    malformed.timing.pts += std::chrono::seconds(1);
+    primary->onFrame(std::move(malformed));
+    CHECK(frames.size() == 2 && !frames.back().storage);
+
+    CHECK(source.requestFrame({73, hyremote::Clock::now()}));
+    CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 73);
+    backup->complete(73, true);
+    CHECK(frames.size() == 3 && frames.back().storage);
+    source.stop();
+}
+
 void testAdaptiveQuickStopDrainsForwardedCoreCallback()
 {
     auto native = std::make_unique<ControlledQuickSource>();
@@ -1835,6 +1880,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testAdaptiveQuickMalformedNativeFramesTriggerFallback();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
     testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();
