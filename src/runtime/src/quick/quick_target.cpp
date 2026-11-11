@@ -404,8 +404,20 @@ private:
         // An asynchronous grab may finish after a DPR change or resize.
         // Never publish old-size pixels under a new RFB Surface identity.
         const auto *window = state->target.data();
+        // A direct Quick session promises native physical RFB dimensions;
+        // that path MUST match the requested render target exactly.
+        // Composite instead owns a logical output canvas and scales child
+        // QImages into their destination rectangles. On high-DPI Qt Quick,
+        // grabToImage() may return a native-sized image even when given a
+        // logical targetSize. Rejecting that valid child solely because its
+        // QImage pixel count differs would leave a blank composite and, after
+        // repeated failures, could fault the parent capture Session.
+        const bool acceptableImageGrid = state->logicalPixelsForComposite
+            ? grabbed.width() > 0 && grabbed.height() > 0
+              && grabbed.width() <= 65535 && grabbed.height() <= 65535
+            : grabbed.size() == expectedPixelSize;
         if (!window || expectedPixelSize.isEmpty()
-            || grabbed.size() != expectedPixelSize
+            || !acceptableImageGrid
             || quickOutputPixelSize(window, state->logicalPixelsForComposite)
                    != expectedPixelSize
             || std::abs(quickWindowDpr(window) - expectedWindowDpr) > 0.0001) {
@@ -503,7 +515,11 @@ private:
         // This is the OUTPUT pixel-grid ratio, not an arbitrary image/monitor
         // tag: Automatic composite children use DPR=1 (#806), direct Quick
         // uses the real physical Qt window DPR.
-        prototype.geometry.devicePixelRatio = static_cast<float>(expectedDpr);
+        prototype.geometry.devicePixelRatio = static_cast<float>(
+            state->logicalPixelsForComposite
+                ? static_cast<qreal>(image.width())
+                    / static_cast<qreal>(window->width())
+                : expectedDpr);
         prototype.storage = std::move(storage);
         prototype.timing.ptsSource = hyremote::PtsSource::Completion;
         prototype.timing.completionTime = completion;
