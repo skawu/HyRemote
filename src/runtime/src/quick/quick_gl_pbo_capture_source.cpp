@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "detail/readback_frame_storage.hpp"
 #include "hyremote/core/storage.hpp"
 
 namespace HyRemote::detail {
@@ -445,22 +446,11 @@ private:
     {
         // Pool worker only: the PBO is unmapped and the bytes are CPU-owned.
         // Neither Qt's render thread nor the GUI thread flips the image rows.
-        std::shared_ptr<const hyremote::FrameStorage> storage;
-        try {
-            const auto stride = static_cast<std::size_t>(width) * 4u;
-            auto owned = hyremote::CpuFrameStorage::createSinglePlane(
-                stride, static_cast<std::size_t>(height));
-            std::byte *dst = owned ? owned->mutablePlane(0) : nullptr;
-            if (dst && raw && raw->size() == stride * static_cast<std::size_t>(height)) {
-                for (int y = 0; y < height; ++y)
-                    std::memcpy(dst + static_cast<std::size_t>(y) * stride,
-                                raw->data() + static_cast<std::size_t>(height - y - 1) * stride,
-                                stride);
-                storage = std::move(owned);
-            }
-        } catch (...) {
-            // A failed allocation must not escape a pool worker.
-        }
+        const auto stride = static_cast<std::size_t>(width) * 4u;
+        const auto storage = raw ? copyReadbackFrameStorage(
+            raw->data(), raw->size(), stride, stride,
+            static_cast<std::size_t>(height), ReadbackRowOrder::BottomUp)
+            : std::shared_ptr<const hyremote::FrameStorage>{};
 
         std::vector<hyremote::CaptureRequest> requests;
         {
