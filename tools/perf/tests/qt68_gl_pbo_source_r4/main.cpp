@@ -25,10 +25,12 @@
 #include <functional>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace {
 constexpr int kW = 640, kH = 360, kPhases = 12;
+constexpr int kResizedW = 800, kResizedH = 450;
 
 QColor colorFor(int phase)
 {
@@ -50,6 +52,13 @@ public:
         m_phase = phase;
         update();
     }
+    void setSceneSize(int width, int height) {
+        m_sceneW = width;
+        m_sceneH = height;
+        setWidth(width);
+        setHeight(height);
+        update();
+    }
 protected:
     QSGNode *updatePaintNode(QSGNode *old, UpdatePaintNodeData *) override {
         QSGNode *root = old;
@@ -69,10 +78,10 @@ protected:
         }
         auto *rect = root->firstChild();
         for (int q = 0; q < 4; ++q) {
-            const double x = (q % 2) * kW / 2.0;
-            const double y = (q / 2) * kH / 2.0;
+            const double x = (q % 2) * m_sceneW / 2.0;
+            const double y = (q / 2) * m_sceneH / 2.0;
             auto *r = static_cast<QSGGeometryNode *>(rect);
-            QSGGeometry::updateRectGeometry(r->geometry(), QRectF(x, y, kW / 2.0, kH / 2.0));
+            QSGGeometry::updateRectGeometry(r->geometry(), QRectF(x, y, m_sceneW / 2.0, m_sceneH / 2.0));
             r->geometry()->markVertexDataDirty();
             r->markDirty(QSGNode::DirtyGeometry);
             auto *material = static_cast<QSGFlatColorMaterial *>(r->material());
@@ -84,25 +93,27 @@ protected:
     }
 private:
     int m_phase = 0;
+    int m_sceneW = kW;
+    int m_sceneH = kH;
 };
 
-bool validateFrame(const hyremote::RemoteFrame &frame, int phase)
+bool validateFrame(const hyremote::RemoteFrame &frame, int phase, int expectedW, int expectedH)
 {
     if (!hyremote::validateFrame(frame).ok || !frame.storage
-        || frame.geometry.size.width != kW
-        || frame.geometry.size.height != kH
+        || frame.geometry.size.width != static_cast<std::uint32_t>(expectedW)
+        || frame.geometry.size.height != static_cast<std::uint32_t>(expectedH)
         || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
         || frame.geometry.planeCount != 1 || !frame.requestId
         || !frame.timing.requestTime || !frame.timing.completionTime
         || *frame.timing.completionTime < *frame.timing.requestTime)
         return false;
     auto pixels = frame.storage->mapRead(0);
-    if (!pixels || !pixels->data || pixels->stride < kW * 4
-        || pixels->bytes < pixels->stride * kH)
+    if (!pixels || !pixels->data || pixels->stride < static_cast<std::size_t>(expectedW) * 4
+        || pixels->bytes < pixels->stride * static_cast<std::size_t>(expectedH))
         return false;
     for (int q = 0; q < 4; ++q) {
-        const int x = (q % 2) ? kW * 3 / 4 : kW / 4;
-        const int y = (q / 2) ? kH * 3 / 4 : kH / 4;
+        const int x = (q % 2) ? expectedW * 3 / 4 : expectedW / 4;
+        const int y = (q / 2) ? expectedH * 3 / 4 : expectedH / 4;
         const auto *p = reinterpret_cast<const unsigned char *>(
             pixels->data + std::size_t(y) * pixels->stride + std::size_t(x * 4));
         const QColor expected = colorFor(phase + q);
@@ -119,6 +130,15 @@ bool validateFrame(const hyremote::RemoteFrame &frame, int phase)
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    bool resizeScenario = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--resize")
+            resizeScenario = true;
+        else {
+            std::cerr << "R4=BLOCKED_UNKNOWN_ARGUMENT\n";
+            return 9;
+        }
+    }
     if (qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("opengl")) {
         std::cerr << "R4=BLOCKED_NOT_OPENGL_RHI\n";
         return 10;
@@ -148,6 +168,9 @@ int main(int argc, char **argv)
     int hiddenUnavailableEvents = 0;
     int hiddenTerminalFrames = 0;
     std::set<std::uint64_t> seenRequestIds;
+    int currentW = kW;
+    int currentH = kH;
+    bool resized = false;
 
     std::function<void()> dispatchNext;
     std::function<void()> finishCase;
@@ -173,7 +196,7 @@ int main(int argc, char **argv)
             ++staleCallbacks;
             return;
         }
-        if (!validateFrame(frame, desired)) {
+        if (!validateFrame(frame, desired, currentW, currentH)) {
             ++errors;
             std::cerr << "R4=FAIL_WRONG_OWNED_PIXELS_OR_FRAME_METADATA phase="
                       << desired << '\n';
@@ -230,6 +253,10 @@ int main(int argc, char **argv)
                     << "\"abandoned_predispatch_request_isolated\":"
                     << (seenRequestIds.count(999) == 0 ? "true" : "false") << ","
                     << "\"hidden_unavailable_events\":" << hiddenUnavailableEvents << ","
+                    << "\"resize_scenario\":" << (resizeScenario ? "true" : "false") << ","
+                    << "\"resize_verified\":" << (resized ? "true" : "false") << ","
+                    << "\"final_pixel_size\":[" << currentW << "," << currentH << "],"
+
                     << "\"hidden_terminal_remote_frames\":" << hiddenTerminalFrames << ","
                     << "\"late_callbacks_after_stop\":" << staleCallbacks << ","
                     << "\"errors\":" << errors << ","
@@ -267,6 +294,18 @@ int main(int argc, char **argv)
                 startSource();
                 QTimer::singleShot(50, &app, dispatchNext);
             });
+            return;
+        }
+        if (resizeScenario && !resized && completed == 9) {
+            resized = true;
+            currentW = kResizedW;
+            currentH = kResizedH;
+            // Both the QQuickWindow swapchain and QSG content must be
+            // updated. Capture of a previous framebuffer size must fail,
+            // rather than being published as the new Surface generation.
+            window.resize(currentW, currentH);
+            scene.setSceneSize(currentW, currentH);
+            QTimer::singleShot(110, &app, dispatchNext);
             return;
         }
         desired = completed;
