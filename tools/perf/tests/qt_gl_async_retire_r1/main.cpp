@@ -36,6 +36,7 @@ constexpr int kWidth = 320, kHeight = 180;
 constexpr int kFullHdWidth = 1920, kFullHdHeight = 1080;
 constexpr unsigned int kPackBuffer = 0x88EB;       // GL_PIXEL_PACK_BUFFER
 constexpr unsigned int kPackBinding = 0x88ED;      // GL_PIXEL_PACK_BUFFER_BINDING
+constexpr unsigned int kReadFramebufferBinding = 0x8CAA; // GL_READ_FRAMEBUFFER_BINDING
 constexpr unsigned int kStreamRead = 0x88E1;       // GL_STREAM_READ
 constexpr unsigned int kMapRead = 0x0001;          // GL_MAP_READ_BIT
 constexpr unsigned int kSyncGpu = 0x9117;          // GL_SYNC_GPU_COMMANDS_COMPLETE
@@ -288,6 +289,8 @@ int main(int argc, char **argv)
     bool nativeQualified = false;
     std::atomic<const char *> error{"NO_NATURAL_FRAME"};
     double submissionMs = 0;
+    GLint readFramebufferBinding = -1;
+    GLint sampleBuffers = -1;
     std::string glVendor;
     std::string glRenderer;
     std::string glVersion;
@@ -320,6 +323,8 @@ int main(int argc, char **argv)
                   << (worker.contextWasCurrent ? "true" : "false")
                   << ",\"gpu_wait_ms\":" << worker.gpuWaitMs
                   << ",\"submit_wall_ms\":" << submissionMs
+                  << ",\"read_framebuffer_binding\":" << readFramebufferBinding
+                  << ",\"sample_buffers\":" << sampleBuffers
                   << ",\"cpu_map_copy_ms\":" << worker.cpuMapCopyMs
                   << ",\"frame_width\":" << worker.job.width
                   << ",\"frame_height\":" << worker.job.height
@@ -394,6 +399,10 @@ int main(int argc, char **argv)
         glVendor = glString(GL_VENDOR);
         glRenderer = glString(GL_RENDERER);
         glVersion = glString(GL_VERSION);
+        // Record actual read target and multisample state. A pixel PASS on
+        // one implicit framebuffer is not a proof for redirected/MSAA output.
+        gl->glGetIntegerv(kReadFramebufferBinding, &readFramebufferBinding);
+        gl->glGetIntegerv(GL_SAMPLE_BUFFERS, &sampleBuffers);
         GLint oldPack = 0;
         GLint oldAlign = 4;
         gl->glGetIntegerv(kPackBinding, &oldPack);
