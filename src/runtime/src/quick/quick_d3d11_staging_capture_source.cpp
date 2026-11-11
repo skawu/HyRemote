@@ -593,6 +593,14 @@ private:
                 releaseNative(*s);
                 s->cleanupRequested = false;
             }
+            // Deadline completion may have retired an entire submitted
+            // batch before the GPU made the staging texture mappable.
+            // Discard the orphaned readback on Qt's render thread instead
+            // of delaying the next Viewer request or copying unused bytes.
+            if (s->staging && s->submitted.empty())
+                releaseActiveReadback(*s);
+            if (!s->staging && s->queued.empty())
+                s->capturedTarget.Reset();
             if (!s->active) {
                 if (s->connected) {
                     QObject::disconnect(s->passConnection);
