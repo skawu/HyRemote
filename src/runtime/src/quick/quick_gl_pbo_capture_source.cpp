@@ -73,6 +73,7 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         GLuint pbo = 0;
         GLsync fence = nullptr;
         bool gpuPending = false;
+        hyremote::TimePoint readbackRenderTime{};
         // One outstanding CPU conversion per source, independent of the GL fence.
         bool cpuConversionPending = false;
         std::vector<hyremote::CaptureRequest> converting;
@@ -395,13 +396,14 @@ private:
                             std::uint64_t generation,
                             std::vector<hyremote::CaptureRequest> requests,
                             std::shared_ptr<const hyremote::FrameStorage> storage,
-                            int width, int height, float dpr)
+                            int width, int height, float dpr,
+                            hyremote::TimePoint renderTime)
     {
         QObject *dispatcher = QCoreApplication::instance();
         if (!dispatcher) return;
         QMetaObject::invokeMethod(dispatcher,
             [s, generation, requests = std::move(requests),
-             storage = std::move(storage), width, height, dpr] {
+             storage = std::move(storage), width, height, dpr, renderTime] {
                 hyremote::FrameReadyHandler callback;
                 {
                     std::lock_guard<std::mutex> guard(s->mutex);
@@ -420,7 +422,11 @@ private:
                     prototype.geometry.devicePixelRatio = dpr;
                     prototype.damage = hyremote::Damage::fullFrame();
                     prototype.storage = storage;
-                    prototype.timing.ptsSource = hyremote::PtsSource::Completion;
+                    // The content was produced during the actual Qt render,
+                    // NOT when the GPU->CPU result arrived. Frame age must
+                    // include fence retirement and worker conversion time.
+                    prototype.timing.pts = renderTime;
+                    prototype.timing.ptsSource = hyremote::PtsSource::Render;
                     prototype.timing.completionTime = hyremote::Clock::now();
                     for (const auto &req : requests) {
                         try {
@@ -443,7 +449,8 @@ private:
         const std::shared_ptr<State> &s,
         std::uint64_t generation,
         const std::shared_ptr<std::byte> &raw,
-        int width, int height, float dpr)
+        int width, int height, float dpr,
+        hyremote::TimePoint renderTime)
     {
         // Pool worker only: the PBO is unmapped and the bytes are CPU-owned.
         // Neither Qt's render thread nor the GUI thread flips the image rows.
@@ -464,7 +471,7 @@ private:
         if (!requests.empty()) {
             if (storage)
                 reportFrame(s, generation, std::move(requests),
-                            std::move(storage), width, height, dpr);
+                            std::move(storage), width, height, dpr, renderTime);
             else
                 reportUnavailable(s, generation, std::move(requests),
                                   "GL PBO CPU frame conversion failed");
@@ -517,6 +524,7 @@ private:
         std::uint64_t gen = 0;
         int frameWidth = 0, frameHeight = 0;
         float frameDpr = 1.f;
+        hyremote::TimePoint frameRenderTime{};
         bool pumpAgain = false;
         bool kickAgain = false;
         const char *failureReason = "GL PBO frame readback unavailable";
@@ -601,6 +609,7 @@ private:
                             frameWidth = s->pixelWidth;
                             frameHeight = s->pixelHeight;
                             frameDpr = s->dpr;
+                            frameRenderTime = s->readbackRenderTime;
                             s->converting.swap(s->inFlight);
                             s->cpuConversionPending = true;
                         } else {
@@ -646,6 +655,7 @@ private:
                             s->pixelHeight = h;
                             s->dpr = static_cast<float>(dpr);
                             s->gpuPending = true;
+                            s->readbackRenderTime = hyremote::Clock::now();
                             s->forcedRenders = 0;
                             s->inFlight.swap(s->queued);
                             pumpAgain = true;
@@ -669,9 +679,10 @@ private:
             // nonblocking and CPU row inversion never blocks Scene Graph.
             QThreadPool::globalInstance()->start(
                 [s, gen, raw = std::move(conversionData),
-                 frameWidth, frameHeight, frameDpr] {
+                 frameWidth, frameHeight, frameDpr, frameRenderTime] {
                     finishCpuConversion(s, gen, raw,
-                                        frameWidth, frameHeight, frameDpr);
+                                        frameWidth, frameHeight, frameDpr,
+                                        frameRenderTime);
                 });
         }
         if (!failed.empty())
