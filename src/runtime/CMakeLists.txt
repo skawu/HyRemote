@@ -183,6 +183,8 @@ endif()
 # is not enabled in releases and NEVER extends QtGuiPrivate permissions.
 option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
     "TEST ONLY: enable Qt6.8.3 public OpenGL RHI PBO CaptureSource" OFF)
+option(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING
+    "TEST ONLY: enable Windows Qt6.8.3 public-native D3D11 staging CaptureSource" OFF)
 
 set(HYREMOTE_REMOTEACCESS_WITH_QUICK FALSE CACHE INTERNAL
     "Common runtime was built with the Qt Quick target adapter" FORCE)
@@ -208,6 +210,19 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
                 HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=1)
             message(WARNING
                 "TEST ONLY Qt6 OpenGL PBO CaptureSource is ON; not approved for release/EGLFS")
+        endif()
+        if(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+            if(NOT WIN32 OR NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
+                message(FATAL_ERROR
+                    "Experimental native D3D11 staging source requires Windows + exact Qt 6.8.3")
+            endif()
+            target_sources(hyremote-remoteaccess PRIVATE
+                src/quick/quick_d3d11_staging_capture_source.cpp)
+            target_link_libraries(hyremote-remoteaccess PRIVATE d3d11 dxgi)
+            target_compile_definitions(hyremote-remoteaccess PRIVATE
+                HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=1)
+            message(WARNING
+                "TEST ONLY Qt6 D3D11 native staging CaptureSource is ON; not approved for release")
         endif()
         set(HYREMOTE_REMOTEACCESS_WITH_QUICK TRUE CACHE INTERNAL
             "Common runtime was built with the Qt Quick target adapter" FORCE)
