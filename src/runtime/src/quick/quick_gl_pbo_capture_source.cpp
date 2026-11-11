@@ -368,25 +368,44 @@ private:
     {
         // If Qt has already destroyed the GL context, its objects are
         // reclaimed by context destruction. Do not touch an invalid context.
-        std::lock_guard<std::mutex> guard(s->mutex);
-        auto *ctx = QOpenGLContext::currentContext();
-        if (ctx) releaseGl(*s, ctx->extraFunctions());
-        else {
-            s->pbo = 0;
-            s->fence = nullptr;
-            s->gpuPending = false;
+        std::vector<hyremote::CaptureRequest> revoked;
+        std::uint64_t generation = 0;
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            generation = s->generation;
+            if (s->active) {
+                // A Scene Graph rebuild is a hard source-pixel epoch
+                // boundary. Do not carry an already queued/mapped request
+                // into a newly created GL context or wait 750ms to retire it.
+                revoked.swap(s->queued);
+                revoked.insert(revoked.end(),
+                               s->inFlight.begin(), s->inFlight.end());
+                s->inFlight.clear();
+                revoked.insert(revoked.end(),
+                               s->converting.begin(), s->converting.end());
+                s->converting.clear();
+            }
+            auto *ctx = QOpenGLContext::currentContext();
+            if (ctx) releaseGl(*s, ctx->extraFunctions());
+            else {
+                s->pbo = 0;
+                s->fence = nullptr;
+                s->gpuPending = false;
+            }
+            s->cleanupRequested = false;
+            // A hidden/destroyed Scene Graph may never produce the stop
+            // retirement frame. Qt has already reclaimed GL resources.
+            if (!s->active && s->connected) {
+                QObject::disconnect(s->frameConnection);
+                QObject::disconnect(s->invalidatedConnection);
+                s->frameConnection = {};
+                s->invalidatedConnection = {};
+                s->connected = false;
+            }
         }
-        s->cleanupRequested = false;
-        // A hidden/destroyed Scene Graph may never produce the retirement
-        // afterFrameEnd requested by stop(). Invalidating the graph already
-        // releases its GL context; revoke subscription references here.
-        if (!s->active && s->connected) {
-            QObject::disconnect(s->frameConnection);
-            QObject::disconnect(s->invalidatedConnection);
-            s->frameConnection = {};
-            s->invalidatedConnection = {};
-            s->connected = false;
-        }
+        if (!revoked.empty())
+            reportUnavailable(s, generation, std::move(revoked),
+                              "Qt GL Scene Graph surface invalidated");
     }
 
     static void reportUnavailable(const std::shared_ptr<State> &s,
