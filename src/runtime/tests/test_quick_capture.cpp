@@ -18,6 +18,7 @@
 #include <QSysInfo>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -39,6 +40,7 @@
 #include <vector>
 
 #include "detail/component_factories.hpp"
+#include "detail/readback_frame_storage.hpp"
 #include "detail/cursor_mapping.hpp"
 #include "quick/quick_capture_backend.hpp"
 #include "quick/quick_capture_single_flight.hpp"
@@ -56,6 +58,49 @@ int failures = 0;
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
+
+// A single Qt-free CPU normalization contract is used by the GL provider and
+// can also handle pitched D3D staging and Qt5 source rows without QtPrivate.
+// These fixtures deliberately avoid any GPU or platform dependency.
+void testReadbackFrameStorageRowOrderAndPitch()
+{
+    using HyRemote::detail::ReadbackRowOrder;
+    using HyRemote::detail::copyReadbackFrameStorage;
+    std::array<std::byte, 24> raw{};
+    for (std::size_t x = 0; x < 8; ++x) {
+        raw[x] = std::byte{static_cast<unsigned char>(x + 1)};
+        raw[12 + x] = std::byte{static_cast<unsigned char>(x + 11)};
+    }
+    for (std::size_t x = 8; x < 12; ++x)
+        raw[x] = std::byte{0xff}; // deliberate padding that must not leak
+
+    const auto check = [&](ReadbackRowOrder order, bool flipped) {
+        auto storage = copyReadbackFrameStorage(
+            raw.data(), raw.size(), 12, 8, 2, order);
+        CHECK(storage != nullptr);
+        if (!storage)
+            return;
+        const auto mapped = storage->mapRead(0);
+        CHECK(mapped && mapped->data && mapped->stride == 8
+              && mapped->bytes >= 16);
+        if (!mapped || !mapped->data || mapped->bytes < 16)
+            return;
+        for (std::size_t x = 0; x < 8; ++x) {
+            const auto first = flipped ? x + 11 : x + 1;
+            const auto second = flipped ? x + 1 : x + 11;
+            CHECK(mapped->data[x] == std::byte{static_cast<unsigned char>(first)});
+            CHECK(mapped->data[8 + x] == std::byte{static_cast<unsigned char>(second)});
+        }
+    };
+    check(ReadbackRowOrder::TopDown, false);
+    check(ReadbackRowOrder::BottomUp, true);
+    CHECK(!copyReadbackFrameStorage(
+        raw.data(), 19, 12, 8, 2, ReadbackRowOrder::BottomUp));
+    CHECK(!copyReadbackFrameStorage(
+        raw.data(), raw.size(), 7, 8, 2, ReadbackRowOrder::TopDown));
+    CHECK(!copyReadbackFrameStorage(
+        nullptr, raw.size(), 12, 8, 2, ReadbackRowOrder::TopDown));
+}
 
 // The backend is data, not permission to try QtPrivate QRhi readback.
 // This holds for a software-only Qt Quick plugin, RHI graphics APIs and
@@ -1431,6 +1476,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testReadbackFrameStorageRowOrderAndPitch();
     testQuickRendererCapabilityRouting();
     testQuickFactoryAndOwnedFrame();
     testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels();
