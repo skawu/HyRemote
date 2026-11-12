@@ -1,0 +1,174 @@
+name: Qt5/Qt6 shared OpenGL fence proof (NON-PRODUCT)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt-gl-async-retire-r1.yml
+      - tools/perf/tests/qt_gl_async_retire_r1/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-real-qt-quick:
+    name: Linux Qt${{ matrix.qt }} GL worker / ${{ matrix.loop }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        # Exact Qt5.15.2 Linux gcc_64 archive currently lacks qt_base
+        # metadata for aqtinstall; fail closed on that qualification rather
+        # than substituting system Qt5.15.3 and mislabelling it 5.15.2.
+        # Qt5.15.2 is separately compiled with its real Windows MSVC Kit.
+        qt: ['6.8.3']
+        loop: [basic, threaded]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-gl-shared-reader-linux-${{ matrix.qt }}-r1
+      - name: Prepare exact Qt SDK and Xvfb/Mesa
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          prefix="$RUNNER_TEMP/Qt/${{ matrix.qt }}/gcc_64"
+          if [ ! -d "$prefix/lib/cmake" ]; then
+            python -m aqt install-qt linux desktop "${{ matrix.qt }}" linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          test -d "$prefix/lib/cmake"
+          echo "QT_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+          echo "QT_QPA_PLATFORM_PLUGIN_PATH=$prefix/plugins/platforms" >> "$GITHUB_ENV"
+          echo "QT_PLUGIN_PATH=$prefix/plugins" >> "$GITHUB_ENV"
+      - name: Build public Qt only source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/perf/tests/qt_gl_async_retire_r1 -B build-r953 -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX"
+          cmake --build build-r953 --parallel 3
+      - name: Test natural-frame worker GPU readback and bounded cancellation
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          QSG_RENDER_LOOP: ${{ matrix.loop }}
+          QSG_RHI_BACKEND: opengl
+          QT_QPA_PLATFORM: xcb
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r953
+          for mode in default cancel fullhd hide lifecycle; do
+            args=()
+            if [ "$mode" = cancel ]; then args+=(--cancel); fi
+            if [ "$mode" = fullhd ]; then args+=(--fullhd); fi
+            if [ "$mode" = hide ]; then args+=(--hide); fi
+            if [ "$mode" = lifecycle ]; then
+              if [ "$QSG_RENDER_LOOP" = basic ]; then args+=(--replace-window); else args+=(--rebuild); fi
+            fi
+            timeout 25s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r953/hyremote-qt-gl-async-retire-r1 "${args[@]}" | tee "tmp/r953/$mode.log"
+            grep -q '^R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE$' "tmp/r953/$mode.log"
+            grep -q '"extra_window_updates":0' "tmp/r953/$mode.log"
+            grep -q '"shared_context":true' "tmp/r953/$mode.log"
+            grep -q '"qualified_for_product":false' "tmp/r953/$mode.log"
+            python - "$mode" "tmp/r953/$mode.log" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          mode, log_path = sys.argv[1:]
+          lines = Path(log_path).read_text().splitlines()
+          results = [line.split("=", 1)[1] for line in lines if line.startswith("R953_RESULT_JSON=")]
+          verdicts = [line for line in lines if line.startswith("R953_VERDICT=")]
+          assert len(results) == 1 and verdicts == ["R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE"], (mode, verdicts, results)
+          result = json.loads(results[0])
+          assert isinstance(result.get("read_framebuffer_binding"), int) and result["read_framebuffer_binding"] >= 0, result
+          assert isinstance(result.get("sample_buffers"), int) and result["sample_buffers"] >= 0, result
+          assert result["qualified_for_product"] is False, result
+          if mode == "lifecycle":
+              assert result["rebuild_verified"] is True, result
+              assert result["natural_frame_submissions"] == 2, result
+              assert result["stale_completions"] == 1, result
+              assert result["scene_graph_invalidations"] >= 1, result
+              assert result["scene_graph_initializations"] >= 2, result
+              assert result["window_replaced"] == (os.environ["QSG_RENDER_LOOP"] == "basic"), result
+          print("R953_TARGET_OBSERVED=YES", mode, result["read_framebuffer_binding"], result["sample_buffers"])
+          PY
+            if [ "$mode" != cancel ]; then grep -q '"pixel_truth":true' "tmp/r953/$mode.log"; fi
+            if [ "$mode" = fullhd ]; then
+              grep -q '"frame_width":1920' "tmp/r953/$mode.log"
+              grep -q '"frame_height":1080' "tmp/r953/$mode.log"
+            fi
+            if [ "$mode" = cancel ]; then grep -q '"cancel_suppressed_delivery":true' "tmp/r953/$mode.log"; fi
+            if [ "$mode" = hide ]; then
+              grep -q '"hide_requested":true' "tmp/r953/$mode.log"
+              grep -q '"window_hidden":true' "tmp/r953/$mode.log"
+              grep -q '"cancel_suppressed_delivery":true' "tmp/r953/$mode.log"
+            fi
+          done
+      - name: Preserve non-product proof output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r953-linux-${{ matrix.qt }}-${{ matrix.loop }}
+          path: tmp/r953/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  windows-public-qt-compile:
+    name: Windows Qt${{ matrix.qt }} MSVC public-only compile
+    runs-on: windows-2022
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - qt: '6.8.3'
+            arch: win64_msvc2022_64
+            kit: msvc2022_64
+          - qt: '5.15.2'
+            arch: win64_msvc2019_64
+            kit: msvc2019_64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-gl-shared-reader-win-${{ matrix.qt }}-${{ matrix.kit }}-r1
+      - name: Prepare Windows Qt Quick Kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/${{ matrix.qt }}/${{ matrix.kit }}'
+          if (!(Test-Path (Join-Path $prefix 'lib/cmake'))) {
+            python -m aqt install-qt windows desktop '${{ matrix.qt }}' '${{ matrix.arch }}' --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'lib/cmake'))) { throw 'Qt kit missing' }
+          "QT_PREFIX=$prefix" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile with MSVC and real Qt5/Qt6 public API
+        shell: pwsh
+        run: |
+          cmake -S tools/perf/tests/qt_gl_async_retire_r1 -B build-r953 -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-r953 --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path build-r953/hyremote-qt-gl-async-retire-r1.exe)) { throw 'Missing executable' }
