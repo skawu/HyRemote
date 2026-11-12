@@ -10,6 +10,34 @@ add_test(NAME hyremote-runtime-listener-binding-test
          COMMAND hyremote-runtime-listener-binding-test)
 set_tests_properties(hyremote-runtime-listener-binding-test PROPERTIES TIMEOUT 15)
 
+if(WIN32 AND HYREMOTE_BUILD_CPP_API AND HYREMOTE_WITH_VNC
+   AND HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
+   AND Qt6Core_VERSION VERSION_EQUAL 6.8.3
+   AND TARGET Qt6::Quick)
+    target_sources(hyremote-remoteaccess PRIVATE dll_lifecycle_bridge.cpp)
+    add_executable(hyremote-runtime-dll-lifecycle-test test_dll_lifecycle.cpp)
+    target_compile_features(hyremote-runtime-dll-lifecycle-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-runtime-dll-lifecycle-test PRIVATE
+        Qt6::Quick Qt6::Network)
+    add_dependencies(hyremote-runtime-dll-lifecycle-test hyremote-remoteaccess)
+    add_test(NAME hyremote-runtime-dll-lifecycle-test
+             COMMAND hyremote-runtime-dll-lifecycle-test $<TARGET_FILE:hyremote-remoteaccess>)
+    set_tests_properties(hyremote-runtime-dll-lifecycle-test PROPERTIES
+        TIMEOUT 45
+        PASS_REGULAR_EXPRESSION "SDK_DLL_TWO_CYCLES=PASS"
+        ENVIRONMENT "QSG_RHI_BACKEND=opengl;QSG_RENDER_LOOP=threaded"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    if(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+        add_test(NAME hyremote-runtime-dll-d3d11-lifecycle-test
+                 COMMAND hyremote-runtime-dll-lifecycle-test $<TARGET_FILE:hyremote-remoteaccess>)
+        set_tests_properties(hyremote-runtime-dll-d3d11-lifecycle-test PROPERTIES
+            TIMEOUT 45
+            PASS_REGULAR_EXPRESSION "SDK_DLL_TWO_CYCLES=PASS"
+            ENVIRONMENT "QSG_RHI_BACKEND=d3d11;QSG_RENDER_LOOP=threaded"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()
+
 # Application-level automatic access controller tests plus the private notification seam. These were
 # only ever reachable because the whole tests directory used to be entered behind
 # HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE, so they keep that same effective guard here: freeing the
@@ -465,10 +493,26 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
             Qt6::Quick
     )
     target_include_directories(hyremote-quick-capture-test PRIVATE ../src)
+    if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+        # The GL PBO session hooks only exist when the experimental provider
+        # is compiled; never reference them from a default-off build.
+        target_compile_definitions(hyremote-quick-capture-test PRIVATE HYREMOTE_TEST_QUICK_GL_PBO=1)
+    endif()
     add_test(NAME hyremote-quick-capture-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
+    if(UNIX AND NOT APPLE)
+        # #962 review B1/B2: the offscreen QPA cannot create a desktop GL
+        # context, so the PBO-reuse/invalidation-recovery self-test would be
+        # skipped. Run the same binary on the native xcb platform (CI starts
+        # Xvfb) so the regression actually executes.
+        add_test(NAME hyremote-quick-gl-pbo-session-test COMMAND hyremote-quick-capture-test)
+        set_tests_properties(hyremote-quick-gl-pbo-session-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=xcb;QT_QUICK_BACKEND=software;HYREMOTE_EXPECT_GL_PBO_SESSION=1"
+            TIMEOUT 60
+        )
+    endif()
     add_test(NAME hyremote-quick-capture-forced-dpr-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-forced-dpr-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"

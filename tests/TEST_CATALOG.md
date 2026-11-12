@@ -52,6 +52,8 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | CTest identity | Guard / semantic owner | Necessity and failure meaning |
 | --- | --- | --- |
 | `hyremote-runtime-listener-binding-test` | Runtime | Deterministic IPv4 bind-mode/interface/locality decisions from injected interface facts. Failure invalidates listener policy independently of real sockets. |
+| `hyremote-runtime-dll-lifecycle-test` | Runtime (Windows OpenGL experiment) | A process without a Runtime import loads the DLL, uses the public C++ facade and verifies real RFB pixels, stops with the viewer attached, checks GL resource retirement, unloads, dispatches GUI work, and repeats. |
+| `hyremote-runtime-dll-d3d11-lifecycle-test` | Runtime (Windows D3D11 experiment) | Reuses the dynamic SDK host with D3D11, requiring native staging pixels and no public fallback before stopping, unloading, dispatching GUI work, and repeating. |
 | `hyremote-runtime-automatic-surface-model-test` | automatic Runtime available | Automatic surface discovery/model contract. |
 | `hyremote-runtime-automatic-composite-capture-test` | automatic Runtime available | Composite geometry/capture contract. |
 | `hyremote-runtime-automatic-composite-input-test` | automatic Runtime available | Composite input routing contract. |
@@ -81,6 +83,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | `hyremote-linux-cpu-probe-test` | Runtime (Linux, developer CPU-probe build only) | #609/#789: compiled and registered only with `HYREMOTE_ENABLE_CPU_PROBE=ON`; validates unprivileged process/thread CPU clocks, schema-2 aggregate counters and privacy-safe JSON. Not a release capability or Qt Quick native-frame gate. |
 | `hyremote-quick-image-storage-test` | Quick | #609 A1: immutable QImage-backed FrameStorage; verifies exact RGBA premultiplied format admission, implicit sharing without full-frame copy, safe source release, const cross-thread read and alpha/stride contract. Failure invalidates Qt Quick zero-extra-copy frame lifetime. |
 | `hyremote-quick-capture-test` | Quick | Ordinary Qt Quick capture/lifetime/resize/target-loss contract. |
+| `hyremote-quick-gl-pbo-session-test` | Quick (Linux xcb/Xvfb) | #962 B1/B2: a real offscreen GL session reuses one PBO across two requests, retires/recreates the shared-context worker after invalidation and verifies second-generation pixels. Registered only on Linux because the offscreen QPA cannot create a desktop GL context; CI supplies Xvfb. |
 | `hyremote-quick-capture-forced-dpr-test` | Quick | Executes the same Quick capture contract at deterministic DPR=1.5/software backend. Closes TG-002. |
 | `hyremote-quick-capture-dpr2-test` | Quick | Executes the same Quick capture and cursor-coordinate contract at deterministic DPR=2/software backend. |
 | `hyremote-quick-input-routing-test` | Quick | Qt Quick input delivery/local coexistence. |

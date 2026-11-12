@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <condition_variable>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -35,7 +36,18 @@
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_backend.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+#  include "quick/quick_gl_pbo_capture_source.hpp"
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+#  include "quick/quick_d3d11_staging_capture_source.hpp"
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO) || defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+#  include "quick/quick_adaptive_capture_source.hpp"
+#  include <QDebug>
+#endif
 #include "quick/quick_capture_single_flight.hpp"
+#include "quick/quick_grab_geometry.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -44,13 +56,54 @@
 namespace HyRemote::detail {
 namespace {
 
+// Qt Quick output frame geometry is expressed in pixels, while grabToImage's
+// targetSize is NOT the same pixel contract across Qt versions: Qt5 takes it
+// literally, Qt6 multiplies it by the window's effective device pixel ratio.
+// See tagged qtdeclarative qquickitemgrabresult.cpp and quick_grab_geometry.hpp.
+// Direct Quick exports physical pixels; Automatic composite exports 1x logical.
+inline qreal quickWindowDpr(const QQuickWindow *window) noexcept
+{
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    return window->devicePixelRatio();
+#else
+    return window->effectiveDevicePixelRatio();
+#endif
+}
+
+inline QSize quickPhysicalSize(const QQuickWindow *window) noexcept
+{
+    const qreal dpr = quickWindowDpr(window);
+    if (!std::isfinite(dpr) || dpr <= 0.0)
+        return {};
+    const qreal width = static_cast<qreal>(window->width()) * dpr;
+    const qreal height = static_cast<qreal>(window->height()) * dpr;
+    if (!std::isfinite(width) || !std::isfinite(height)
+        || width < 1.0 || height < 1.0
+        || width > 65535.0 || height > 65535.0)
+        return {};
+    return QSize(qRound(width), qRound(height));
+}
+
+inline QSize quickOutputPixelSize(
+    const QQuickWindow *window, bool logicalPixelsForComposite) noexcept
+{
+    if (logicalPixelsForComposite) {
+        if (window->width() <= 0 || window->height() <= 0
+            || window->width() > 65535 || window->height() > 65535)
+            return {};
+        return QSize(window->width(), window->height());
+    }
+    return quickPhysicalSize(window);
+}
+
 class QuickCaptureSource final : public hyremote::CaptureSource
 {
 public:
-    explicit QuickCaptureSource(QQuickWindow *target)
+    explicit QuickCaptureSource(QQuickWindow *target, bool logicalPixelsForComposite)
         : m_state(std::make_shared<State>())
     {
         m_state->target = target;
+        m_state->logicalPixelsForComposite = logicalPixelsForComposite;
     }
 
     hyremote::CaptureCapabilities capabilities() const override
@@ -144,6 +197,7 @@ private:
         std::mutex mutex;
         std::condition_variable callbacksDrained;
         QPointer<QQuickWindow> target;
+        bool logicalPixelsForComposite = false; // immutable source identity
         bool active = false;
         std::uint64_t generation = 0;
         std::size_t callbacksInFlight = 0;
@@ -164,6 +218,9 @@ private:
     {
         bool finished = false;
         QSharedPointer<QQuickItemGrabResult> result;
+        QSize requestedPixelSize;
+        qreal requestedDpr = 1.0; // output pixel-grid metadata
+        qreal windowDpr = 1.0; // actual Qt DPR to check async staleness
         QMetaObject::Connection readyConnection;
         QPointer<QTimer> timeoutTimer; // GUI-thread-only, cancelled when ready
 #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
@@ -328,7 +385,10 @@ private:
     static void publishImage(const std::shared_ptr<State> &state,
                              const GrabBatchPtr &batch,
                              unsigned int attempt,
-                             const QImage &grabbed)
+                             const QImage &grabbed,
+                             const QSize &expectedPixelSize,
+                             qreal expectedDpr,
+                             qreal expectedWindowDpr)
     {
         if (!isActive(state, batch->generation))
             return;
@@ -343,6 +403,29 @@ private:
             retryLater(state, batch, attempt, 100);
             return;
         }
+        // An asynchronous grab may finish after a DPR change or resize.
+        // Never publish old-size pixels under a new RFB Surface identity.
+        const auto *window = state->target.data();
+        // A direct Quick session promises native physical RFB dimensions;
+        // that path MUST match the requested render target exactly.
+        // Composite instead owns a logical output canvas and scales child
+        // QImages into their destination rectangles. On high-DPI Qt Quick,
+        // grabToImage() may return a native-sized image even when given a
+        // logical targetSize. Rejecting that valid child solely because its
+        // QImage pixel count differs would leave a blank composite and, after
+        // repeated failures, could fault the parent capture Session.
+        const bool acceptableImageGrid = state->logicalPixelsForComposite
+            ? grabbed.width() > 0 && grabbed.height() > 0
+              && grabbed.width() <= 65535 && grabbed.height() <= 65535
+            : grabbed.size() == expectedPixelSize;
+        if (!window || expectedPixelSize.isEmpty()
+            || !acceptableImageGrid
+            || quickOutputPixelSize(window, state->logicalPixelsForComposite)
+                   != expectedPixelSize
+            || std::abs(quickWindowDpr(window) - expectedWindowDpr) > 0.0001) {
+            retryLater(state, batch, attempt, 100);
+            return;
+        }
 
         QImage image;
         {
@@ -350,9 +433,15 @@ private:
             // Qt 6 may already return the Core's exact premultiplied RGBA
             // layout. Qt 5's ARGB32_Premultiplied has a different byte order
             // and must still be converted before publication.
-            image = grabbed.format() == QImage::Format_RGBA8888_Premultiplied
-                        ? grabbed
-                        : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+            // Qt5 OpenGL/ES readbacks commonly produce RGBX8888 for
+            // opaque scenes. Qt guarantees its X byte is 255, so this format
+            // is already byte-for-byte equivalent to premultiplied RGBA and
+            // can share the QImage CPU buffer with no full-frame conversion.
+            const auto format = grabbed.format();
+            image = (format == QImage::Format_RGBA8888_Premultiplied
+                     || format == QImage::Format_RGBX8888)
+                ? grabbed
+                : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
         }
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
             retryLater(state, batch, attempt, 100);
@@ -373,7 +462,8 @@ private:
             // after checking all source row accesses.
             const std::size_t width = static_cast<std::size_t>(image.width());
             const std::size_t height = static_cast<std::size_t>(image.height());
-            if (image.format() != QImage::Format_RGBA8888_Premultiplied
+            if ((image.format() != QImage::Format_RGBA8888_Premultiplied
+                 && image.format() != QImage::Format_RGBX8888)
                 || width > std::numeric_limits<std::size_t>::max() / 4U
                 || image.bytesPerLine() <= 0 || image.sizeInBytes() <= 0
                 || !image.constBits()) {
@@ -424,8 +514,10 @@ private:
         prototype.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         prototype.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         prototype.geometry.planeCount = 1;
-        prototype.geometry.devicePixelRatio =
-            image.devicePixelRatio() > 0.0 ? static_cast<float>(image.devicePixelRatio()) : 1.0F;
+        // Metadata describes the owned OUTPUT canvas contract. The Qt6
+        // offscreen texture may round fractional DPR into +/-1 buffer pixel;
+        // that rounding does not change the logical Composite canvas DPR.
+        prototype.geometry.devicePixelRatio = static_cast<float>(expectedDpr);
         prototype.storage = std::move(storage);
         prototype.timing.ptsSource = hyremote::PtsSource::Completion;
         prototype.timing.completionTime = completion;
@@ -475,10 +567,27 @@ private:
             return;
         }
 
-        // grabToImage() takes logical item dimensions and applies DPR itself.
-        const QSize logicalSize(qMax(1, qCeil(window->width())),
-                                qMax(1, qCeil(window->height())));
+        // Direct Quick captures its physical grid, but the frozen Automatic
+        // canvas is logical 1x. Preserve both contracts without duplicating
+        // the shared CaptureSource or performing a redundant 2.25x readback.
+        const QSize pixelSize = quickOutputPixelSize(
+            window, state->logicalPixelsForComposite);
+        if (pixelSize.isEmpty()) {
+            retryLater(state, batch, attempt, 100);
+            return;
+        }
         const auto grab = std::make_shared<GrabAttempt>();
+        grab->requestedPixelSize = pixelSize;
+        grab->windowDpr = quickWindowDpr(window);
+        const QSize qtTargetSize = quickGrabTargetForOutput(
+            pixelSize, window->size(), grab->windowDpr,
+            state->logicalPixelsForComposite);
+        if (qtTargetSize.isEmpty()) {
+            retryLater(state, batch, attempt, 100);
+            return;
+        }
+        grab->requestedDpr = state->logicalPixelsForComposite
+            ? 1.0 : grab->windowDpr;
         // RendererInterface is Qt's public backend identity, not evidence
         // of permission for a private GPU readback implementation. Public
         // Qt capture is the selected route on software/GL/D3D/Vulkan/Metal,
@@ -501,7 +610,13 @@ private:
 #endif
         {
             HYREMOTE_P1_SCOPE(QuickGrabSubmit);
-            grab->result = content->grabToImage(logicalSize);
+            #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+
+            for (const auto &request : batch->requests)
+                HYREMOTE_P1_TRACE_REQUEST(QuickGrabSubmitted, request);
+
+            #endif
+            grab->result = content->grabToImage(qtTargetSize);
         }
         if (grab->result.isNull()) {
             retryLater(state, batch, attempt, 100);
@@ -538,7 +653,9 @@ private:
 #endif
                 const QImage image = grab->result ? grab->result->image() : QImage();
                 grab->result.clear();
-                publishImage(state, batch, attempt, image);
+                publishImage(state, batch, attempt, image,
+                             grab->requestedPixelSize, grab->requestedDpr,
+                             grab->windowDpr);
             });
 
         // The deadline is owned by the GUI dispatcher and uses Qt's normal
@@ -888,7 +1005,8 @@ private:
 
 }  // namespace
 
-TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEnabled)
+TargetComponents createQuickTargetComponents(
+    QObject *target, bool remoteInputEnabled, bool logicalPixelsForComposite)
 {
     TargetComponents result;
     auto *window = qobject_cast<QQuickWindow *>(target);
@@ -896,7 +1014,53 @@ TargetComponents createQuickTargetComponents(QObject *target, bool remoteInputEn
         return result;
 
     result.supported = true;
-    result.capture = std::make_unique<QuickCaptureSource>(window);
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO) || defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+    const auto *ri = window->rendererInterface();
+    const auto selection = selectQuickCaptureRoute(
+        ri ? ri->graphicsApi() : QSGRendererInterface::Unknown,
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+        true,
+#else
+        false,
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+        true,
+#else
+        false,
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+        true
+#else
+        false
+#endif
+    );
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+    if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
+        result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
+            window, createExperimentalQuickGlPboCaptureSource(window),
+            std::make_unique<QuickCaptureSource>(
+                window, logicalPixelsForComposite));
+    }
+#endif
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+    if (selection.route == QuickCaptureRoute::ExperimentalD3d11Staging) {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=D3D11_STAGING_SOURCE";
+        result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
+            window, createExperimentalQuickD3d11StagingCaptureSource(window),
+            std::make_unique<QuickCaptureSource>(
+                window, logicalPixelsForComposite));
+    }
+#endif
+    if (!result.capture) {
+        qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_QT_FALLBACK";
+        result.capture = std::make_unique<QuickCaptureSource>(
+            window, logicalPixelsForComposite);
+    }
+#else
+    result.capture = std::make_unique<QuickCaptureSource>(
+        window, logicalPixelsForComposite);
+#endif
     if (remoteInputEnabled)
         result.input = std::make_shared<QuickInputSink>(window);
     return result;

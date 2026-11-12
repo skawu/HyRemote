@@ -10,6 +10,7 @@ on:
       - src/runtime/CMakeLists.txt
       - src/runtime/tests/test_cpu_probe_linux_clock.cpp
       - tools/perf/aggregate_cpu_probe.py
+      - tools/perf/analyze_frame_trace.py
   workflow_dispatch:
 
 permissions:
@@ -36,4 +37,10 @@ jobs:
           set -euo pipefail
           /tmp/hyremote-linux-cpu-probe-test "$RUNNER_TEMP/cpu-probe.jsonl"
           python3 tools/perf/aggregate_cpu_probe.py --self-test
+          python3 tools/perf/analyze_frame_trace.py --self-test
+          python3 tools/perf/analyze_frame_trace.py --input "$RUNNER_TEMP/cpu-probe.jsonl.frames.jsonl" \
+            --output "$RUNNER_TEMP/frame-budget.json"
           grep -q '"process_cpu_valid":true' "$RUNNER_TEMP/cpu-probe.jsonl"
+          grep -q '"request_id":17' "$RUNNER_TEMP/cpu-probe.jsonl.frames.jsonl"
+          grep -q '"viewer_id":2' "$RUNNER_TEMP/cpu-probe.jsonl.frames.jsonl"
+          ! grep -q '"type":"frame_step"' "$RUNNER_TEMP/cpu-probe.jsonl"

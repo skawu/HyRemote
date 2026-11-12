@@ -62,6 +62,94 @@ bool expectRemoteInputWakeFromStaticWait(Gate &gate)
                  "remote input did not wake the real blocked static capture");
 }
 
+bool expectQtActivityWakeFromStaticWait(Gate &gate)
+{
+    std::promise<void> waiting;
+    auto entered = waiting.get_future();
+    gate.armStaticWaitObserverForTest([&] { waiting.set_value(); });
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool armed = entered.wait_for(2s) == std::future_status::ready;
+    if (armed)
+        gate.noteQtRenderActivity();
+    else
+        gate.stop();
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    return check(armed && woke && result.get(),
+                 "independent Qt GUI activity did not wake a static capture");
+}
+
+bool expectOwnGrabDoesNotWakeStaticWait(Gate &gate)
+{
+    // A public grabToImage itself triggers a QQuickWindow render. The signal
+    // must NOT produce a new capture until the existing request completes.
+    gate.noteCaptureStarted();
+    std::promise<void> waiting;
+    auto entered = waiting.get_future();
+    gate.armStaticWaitObserverForTest([&] { waiting.set_value(); });
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool armed = entered.wait_for(2s) == std::future_status::ready;
+    if (armed)
+        gate.noteQtRenderActivity(); // triggered by our own in-flight grab
+    const bool suppressed = result.wait_for(60ms) == std::future_status::timeout;
+    gate.noteCaptureCompleted();
+    gate.noteQtRenderActivity(); // independent next render event
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    return check(armed && suppressed && woke && result.get(),
+                 "self-induced Qt grab update retriggered static capture");
+}
+
+bool testQtActivityClassification()
+{
+    // This is the exact semantic distinction absent in #952's first
+    // Windows A1/B/A2: most Qt render signals do NOT release idle gating.
+    // afterAnimating may originate from grabToImage() itself.
+    Gate gate;
+    using Reason = Gate::ActivityResult;
+    if (!check(gate.noteQtRenderActivity() == Reason::Stopped,
+               "stopped session accepted Qt render activity"))
+        return false;
+    gate.start();
+    if (!check(gate.noteQtRenderActivity() == Reason::NoViewer,
+               "zero-viewer activity bypassed capture admission"))
+        return false;
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    if (!check(gate.noteQtRenderActivity() == Reason::AlreadyActive,
+               "already-active capture was rearmed unnecessarily"))
+        return false;
+    for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i)
+        gate.noteFrameChange(false);
+    gate.noteCaptureStarted();
+    if (!check(gate.noteQtRenderActivity() == Reason::CaptureInFlight,
+               "our own in-flight grab unexpectedly rearmed idle capture"))
+        return false;
+    gate.noteCaptureCompleted();
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.noteQtRenderActivity() == Reason::DeliveryBackpressure,
+               "Qt activity bypassed transport backpressure"))
+        return false;
+    gate.noteDeliveryBackpressure(false);
+    if (!check(gate.noteQtRenderActivity() == Reason::ReleasedStaticWait,
+               "idle-ready Qt activity failed to release bounded static probe"))
+        return false;
+    if (!check(gate.noteQtRenderActivity() == Reason::AlreadyActive,
+               "same Qt update repeatedly reset active frame counting"))
+        return false;
+    gate.stop();
+    return check(gate.noteQtRenderActivity() == Reason::Stopped,
+                 "Qt activity still accepted after stop");
+}
+
 void enterStaticGate(Gate &gate)
 {
     gate.start();
@@ -75,6 +163,8 @@ void enterStaticGate(Gate &gate)
 
 int main()
 {
+    if (!testQtActivityClassification())
+        return 18;
     Gate gate;
     enterStaticGate(gate);
     if (!check(Gate::kStaticProbeInterval == 250ms,
@@ -89,6 +179,21 @@ int main()
     // The input resets the idle counter; entering idle again must be safe.
     for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i)
         gate.noteFrameChange(false);
+
+    // Source-activity hints are optional and only trigger when the Qt host
+    // independently renders while no capture is outstanding. They are NOT
+    // trusted as pixel damage and do not change the 60fps Core limit.
+    enterStaticGate(gate);
+    if (!expectQtActivityWakeFromStaticWait(gate))
+        return 13;
+    gate.stop();
+    enterStaticGate(gate);
+    if (!expectOwnGrabDoesNotWakeStaticWait(gate))
+        return 14;
+    gate.stop();
+    // This next scenario belongs to a fresh live Session, not the gate
+    // stopped by the preceding independent activity-gating test.
+    enterStaticGate(gate);
 
     // Removing the last viewer must NOT make capture run. It remains sleeping
     // until a subsequent real connection; reconnect then requires full init.
@@ -198,7 +303,62 @@ int main()
         return 12;
     gate.stop();
 
-    std::cout << "PASS 250ms bounded probe, remote input prompt wake, "
-                 "disconnect/reconnect, delivery backpressure, no-demand freshness and stop\n";
+    // Qt render notifications must not escape socket backpressure or
+    // wake a 0-viewer Source. This is independent of real Qt render-loop
+    // timing and uses strict blocked futures (rather than sleeps as a
+    // substitute for acquisition).
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    gate.noteDeliveryBackpressure(true);
+    if (!check(gate.waitForViewer(), "initial capture escape was lost"))
+        return 15;
+    std::promise<bool> activityBlockedPromise;
+    auto activityBlocked = activityBlockedPromise.get_future();
+    std::thread activityBlockedThread([&] {
+        activityBlockedPromise.set_value(gate.waitForViewer());
+    });
+    const bool wasBlockedForNetwork =
+        activityBlocked.wait_for(40ms) == std::future_status::timeout;
+    gate.noteQtRenderActivity();
+    const bool stayedBlockedForNetwork =
+        activityBlocked.wait_for(60ms) == std::future_status::timeout;
+    gate.noteDeliveryBackpressure(false);
+    const bool networkDrainWoke =
+        activityBlocked.wait_for(2s) == std::future_status::ready;
+    if (!networkDrainWoke)
+        gate.stop();
+    activityBlockedThread.join();
+    if (!check(wasBlockedForNetwork && stayedBlockedForNetwork
+                   && networkDrainWoke && activityBlocked.get(),
+               "Qt activity bypassed socket backpressure"))
+        return 16;
+    gate.stop();
+
+    gate.start();
+    gate.frameQueued(true);
+    gate.setViewerCount(0);
+    std::promise<bool> zeroActivityPromise;
+    auto zeroActivity = zeroActivityPromise.get_future();
+    std::thread zeroActivityThread([&] {
+        zeroActivityPromise.set_value(gate.waitForViewer());
+    });
+    const bool zeroWasBlocked =
+        zeroActivity.wait_for(40ms) == std::future_status::timeout;
+    gate.noteQtRenderActivity();
+    const bool zeroStayedBlocked =
+        zeroActivity.wait_for(60ms) == std::future_status::timeout;
+    gate.stop();
+    const bool zeroStopWoke =
+        zeroActivity.wait_for(2s) == std::future_status::ready;
+    zeroActivityThread.join();
+    if (!check(zeroWasBlocked && zeroStayedBlocked && zeroStopWoke
+                   && !zeroActivity.get(),
+               "Qt render activity forced capture with zero viewers"))
+        return 17;
+
+    std::cout << "PASS 250ms bounded probe, Qt GUI activity wake and self-grab suppression, "
+                 "remote input prompt wake, disconnect/reconnect, delivery backpressure, "
+                 "no-demand freshness and stop\n";
     return 0;
 }

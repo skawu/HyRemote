@@ -1,0 +1,235 @@
+name: R4 Qt6.8.3 OpenGL PBO CaptureSource native compile gates (TEST ONLY)
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt68-gl-pbo-source-r4.yml
+      - src/runtime/CMakeLists.txt
+      - src/runtime/src/quick/quick_target.cpp
+      - src/runtime/src/quick/quick_gl_pbo_capture_source.*
+      - src/runtime/src/quick/quick_d3d11_staging_capture_source.*
+      - src/runtime/src/quick/quick_capture_backend.hpp
+      - src/runtime/src/detail/readback_frame_storage.hpp
+      - tools/perf/tests/qt68_gl_pbo_source_r4/**
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-runtime:
+    name: Windows MSVC Qt6.8.3 Runtime+Generic flag=${{ matrix.arm }}
+    runs-on: windows-2022
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Prepare exact Qt6.8.3 MSVC Quick kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual Qt Quick Runtime and Generic integration (no packages)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arm = '${{ matrix.arm }}'
+          $build = 'build-r4-' + $arm.ToLowerInvariant()
+          if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
+          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($option in @('HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO', 'HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING')) {
+            $expected = "$($option):BOOL=$arm"
+            $setting = @(Get-Content "$build/CMakeCache.txt" | Where-Object {
+              $_ -match "^$($option):BOOL="
+            })
+            if ($setting.Count -ne 1 -or $setting[0] -ne $expected) {
+              throw "Incorrect actual CMake option $($option): $($setting -join ',')"
+            }
+          }
+          $runtime = Get-ChildItem -Path $build -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
+          if (!$runtime) { throw 'Native Runtime DLL absent' }
+          Write-Host "R4_RUNTIME_COMPILE=PASS ${{ matrix.arm }}=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Real Qt6.8.3 D3D11 staging CaptureSource four-quadrant pixels and lifecycle
+        if: matrix.arm == 'ON'
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S tools/perf/tests/qt68_gl_pbo_source_r4 -B build-r4-d3d11-native -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build-r4-d3d11-native --target hyremote-qt68-d3d11-staging-source-r4 --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = '.\\build-r4-d3d11-native\\hyremote-qt68-d3d11-staging-source-r4.exe'
+          foreach ($scenario in @('default', 'resize')) {
+            $args = @()
+            if ($scenario -eq 'resize') { $args += '--resize' }
+            $output = & $exe @args 2>&1
+            $exit = $LASTEXITCODE
+            $output | ForEach-Object { Write-Host $_ }
+            if ($exit -ne 0 -or !($output -match 'R4_VERDICT=PASS_SCOPED_CAPTURE_SOURCE')) {
+              throw "D3D11 native real-pixel CaptureSource $scenario failed with exit=$exit"
+            }
+            $dataLine = @($output | Where-Object { $_ -match '^R4_RESULT_JSON=' })
+            if ($dataLine.Count -ne 1) { throw 'Missing unique D3D11 result JSON' }
+            $result = (($dataLine[0] -replace '^R4_RESULT_JSON=', '') | ConvertFrom-Json)
+            if ($result.backend -ne 'Qt6_RHI_Direct3D11' -or $result.owned_frames_validated -ne 12 -or
+                $result.errors -ne 0 -or $result.late_callbacks_after_stop -ne 0 -or
+                $result.qualified_for_product -ne $false) {
+              throw "Unexpected D3D11 real-pixel outcome: $($dataLine[0])"
+            }
+          }
+
+  qt5-windows-quick-gl:
+    name: Windows MSVC Qt5.15.2 direct-GL Quick opt-in compile (NON-PRODUCT)
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt5
+          key: qt5-5.15.2-windows-msvc2019-quick-direct-pbo-v1
+      - name: Prepare exact Qt5.15.2 Quick Kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt5/5.15.2/msvc2019_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt5Quick.dll'))) {
+            python -m aqt install-qt windows desktop 5.15.2 win64_msvc2019_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt5')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt5Quick.dll'))) { throw 'Qt5 Quick Kit missing' }
+          "QT5_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual Qt5 direct GL CaptureSource + shared Runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
+          & .\build.cmd build --integrations=cpp "--qt-prefix=$env:QT5_PREFIX" --build-type=Release --build-dir=build-qt515-pbo --no-tests --clean -j4 "--cmake=HYREMOTE_QT5_ENABLE_QUICK=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=OFF" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $cache = Get-Content 'build-qt515-pbo/CMakeCache.txt'
+          if (!($cache -contains 'HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO:BOOL=ON')) { throw 'Qt5 GL PBO flag did not bind' }
+          if (!($cache -contains 'HYREMOTE_QT5_ENABLE_QUICK:BOOL=ON')) { throw 'Qt5 Quick flag did not bind' }
+          $runtime = Get-ChildItem -Path build-qt515-pbo -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
+          if (!$runtime) { throw 'Qt5 Runtime DLL missing' }
+          Write-Host "QT5_DIRECT_GL_BACKEND_COMPILE=PASS SHA=${{ github.event.pull_request.head.sha || github.sha }}"
+
+  linux-qt68-real-capture-source:
+    name: Qt6.8.3 GL-RHI real CaptureSource pixels/lifetime / ${{ matrix.loop }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        loop: [basic, threaded]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt6-6.8.3-linux-gcc64-openGL-rhi-eligibility-v1
+      - name: Restore exact Qt6.8.3 Linux OpenGL Quick Kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-xinput0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1 libxkbcommon0
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64"
+          if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          test -f "$prefix/lib/libQt6Quick.so"
+          echo "QT_PREFIX=$prefix" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/lib" >> "$GITHUB_ENV"
+          echo "QT_QPA_PLATFORM_PLUGIN_PATH=$prefix/plugins/platforms" >> "$GITHUB_ENV"
+          echo "QT_PLUGIN_PATH=$prefix/plugins" >> "$GITHUB_ENV"
+      - name: Compile actual public GL PBO CaptureSource, Core and visible QSG test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/perf/tests/qt68_gl_pbo_source_r4 -B build-r4-gl-source -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX"
+          cmake --build build-r4-gl-source --parallel 2
+      - name: Real 4-quadrant GPU PBO to Core FrameStorage frames, stop and restart
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          QSG_RHI_BACKEND: opengl
+          QSG_RENDER_LOOP: ${{ matrix.loop }}
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r4-source
+          for scenario in default resize; do
+            args=()
+            if [ "$scenario" = resize ]; then args+=(--resize); fi
+            timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 "${args[@]}" | tee "tmp/r4-source/$QSG_RENDER_LOOP-$scenario.jsonl"
+          done
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          for scenario in ("default", "resize"):
+              log = Path("tmp/r4-source/" + os.environ["QSG_RENDER_LOOP"] + "-" + scenario + ".jsonl").read_text()
+              assert "R4_VERDICT=PASS_SCOPED_CAPTURE_SOURCE" in log, log
+              rows = [x.partition("=")[2] for x in log.splitlines() if x.startswith("R4_RESULT_JSON=")]
+              assert len(rows) == 1, rows
+              r = json.loads(rows[0])
+              assert r["qt"] == "6.8.3" and r["backend"] == "Qt6_RHI_OpenGL", r
+              assert r["phases_expected"] == r["owned_frames_validated"] == r["unique_request_ids"] == 12, r
+              assert r["stop_restart_cycles"] == 2 and r["abandoned_predispatch_request_isolated"] is True and r["late_callbacks_after_stop"] == r["errors"] == 0, r
+              assert r["hidden_unavailable_events"] == 1 and r["hidden_terminal_remote_frames"] == 1, r
+              assert r["resize_scenario"] is (scenario == "resize"), r
+              assert r["resize_verified"] is (scenario == "resize"), r
+              assert r["final_pixel_size"] == ([800,450] if scenario == "resize" else [640,360]), r
+              assert r["qualified_for_product"] is False, r
+              print("R4_CAPTURE_SOURCE_RUNTIME_PIXEL_RESIZE_AND_LIFETIME=PASS_SCOPED", scenario, r)
+          PY
+      - name: Publish only source test JSON, not installation files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r4-qt68-gl-real-source-${{ matrix.loop }}
+          path: tmp/r4-source/*.jsonl
+          if-no-files-found: warn
+          retention-days: 10

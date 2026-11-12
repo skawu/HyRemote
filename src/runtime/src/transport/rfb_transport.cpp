@@ -431,6 +431,8 @@ enum class ClientEncoding {
 struct ClientState
 {
     QPointer<QTcpSocket> socket;
+    std::uint64_t traceViewerId = 0; // local per-listener connection identity
+    std::uint64_t traceUpdateSeq = 0; // local sequence, never transmitted
     ClientPhase phase = ClientPhase::AwaitVersion;
     QByteArray input;
     // The fresh random challenge this connection was given, kept only until its response is verified.
@@ -589,6 +591,7 @@ public:
         const auto frame = latestFrame();
         if (!frame)
             return;
+        HYREMOTE_P1_TRACE_FRAME(RfbObserved, *frame, 0);
         // Last valid frame geometry survives even if its raw pixel storage does not.
         if (frame->geometry.size.width > 0 && frame->geometry.size.height > 0
             && frame->geometry.size.width <= std::numeric_limits<std::uint16_t>::max()
@@ -663,6 +666,8 @@ public:
         // a performance hint only, never a claim that Qt content is unchanged.
         m_lastComparedFrameUnchanged = hasNormalClient && !geometryChanged
                                       && damage && damage->empty();
+        if (hasNormalClient)
+            HYREMOTE_P1_TRACE_FRAME(RfbCompared, *served, 0);
 
         // Exact served-pixel equality is already computed for damage; feed it back to the
         // producer's bounded idle gate without introducing a second full-frame comparison.
@@ -803,6 +808,7 @@ private:
             socket->setReadBufferSize(kMaxClientInputBytes);
             auto client = std::make_unique<ClientState>();
             client->socket = socket;
+            client->traceViewerId = ++m_nextTraceViewerId;
             ClientState *clientPtr = client.get();
             m_clients.emplace(socket, std::move(client));
 
@@ -1948,6 +1954,9 @@ private:
             return;
         }
 
+        // A viewer can request the same Core FrameId multiple times. Trace
+        // each FBU separately; do not mispair one encode with another write.
+        const std::uint64_t traceUpdateId = client.traceUpdateSeq + 1;
         // Keep the GUI/Core capture scheduler out of an already saturated
         // single-viewer encoding interval; the worker itself is non-reentrant.
         m_encodingSocket = client.socket;
@@ -1976,6 +1985,8 @@ private:
             }
         }
         HYREMOTE_P1_BYTES(RfbEncode, update.size());
+        HYREMOTE_P1_TRACE_VIEWER_UPDATE(
+            RfbEncoded, *frame, client.traceViewerId, traceUpdateId);
 
         qint64 queued = 0;
         {
@@ -1991,6 +2002,11 @@ private:
             protocolFailure(client, "RFB socket write failed");
             return;
         }
+        // socket->write only queues local Qt bytes. This is not a network
+        // receipt, viewer decode or physical present timestamp.
+        HYREMOTE_P1_TRACE_VIEWER_UPDATE(
+            RfbSocketQueued, *frame, client.traceViewerId, traceUpdateId);
+        client.traceUpdateSeq = traceUpdateId;
         client.delivery.commitDelivered(selected);
         client.continuousRequestArmed = false;
         // A continuously enabled viewer keeps one outstanding incremental
@@ -2010,6 +2026,7 @@ private:
     QTcpServer *m_server = nullptr;
     QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
+    std::uint64_t m_nextTraceViewerId = 0;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
     bool m_lastComparedFrameUnchanged = false; // worker-thread-only static hint
     // #589: a decoration failure must remain fail-closed. The processed
@@ -2097,6 +2114,9 @@ public:
         std::lock_guard<std::mutex> lifecycleLock(m_lifecycleMutex);
         if (!m_worker || !m_thread)
             return;
+        // Only trace a genuinely live transport submission, not the frame
+        // discarded after stop(). Core assigned FrameId before this call.
+        HYREMOTE_P1_TRACE_FRAME(CoreFrameQueued, frame, 0);
 
         bool notify = false;
         {

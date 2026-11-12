@@ -252,6 +252,7 @@ private:
             ++state->parentCallbacksInFlight;
         }
 
+        HYREMOTE_P1_TRACE_FRAME(CompositeCompleted, frame, 0);
         try {
             callback(std::move(frame));
         } catch (...) {
