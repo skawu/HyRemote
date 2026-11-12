@@ -654,8 +654,8 @@ void CompositeTarget::upsertSurface(SurfaceId id,
     // replaced. Frames already accepted from the previous QObject may still
     // be waiting for another child; invalidate them before the new identity
     // becomes eligible, even if both windows are visible.
-    const QPointer<QObject> previous = m_targets.value(id);
-    const bool targetReplaced = previous && previous.data() != target;
+    const bool targetReplaced = m_targets.contains(id)
+                                && m_targets.value(id).data() != target;
     if (target)
         m_targets[id] = target;
     else
