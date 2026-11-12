@@ -21,6 +21,16 @@ The output is stable JSON with a `plan_hash`, selected existing CTest IDs,
 reasons, explicit non-qualification, and unclassified paths. An unknown path
 returns status `BLOCKED_UNMAPPED` and exit 2; a zero-file request or incomplete
 SHA fails rather than generating a false PASS.
+
+For a read-only capability audit, append `--ctest-build <configured-build>`
+and, when necessary, `--ctest <executable> --ctest-config <config>`. The
+audit checks the configured source checkout's clean HEAD, calls only
+`ctest --show-only=json-v1`, and reports registered, missing and disabled
+selected cases. Registration does not prove binaries were built from that
+SHA, an execution environment exists, or a case passed. CTest timeout is a
+configured limit, and measured duration remains unknown. A missing case
+blocks admission. Complete registration still requires the existing manual
+gate. The audit never launches a test or grants execution permission.
 The plan also identifies the registry content and Git base used. Rerunning
 the planner only regenerates advice and cannot rerun existing evidence.
 

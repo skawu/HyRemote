@@ -67,6 +67,69 @@ def matches(file: str, prefix: str) -> bool:
     return file.startswith(prefix) if prefix.endswith("/") else file == prefix
 
 
+def ctest_audit(build: Path, plan: dict, registry: dict, ctest: str,
+                config: str | None) -> dict:
+    cache_text = (build / "CMakeCache.txt").read_text(encoding="utf-8")
+    cache = dict(re.findall(r"^([^/#:\n][^:\n]*):[^=\n]+=(.*)$", cache_text, re.MULTILINE))
+    source = Path(cache["CMAKE_HOME_DIRECTORY"])
+    source_git = ["git", "-C", str(source)]
+    identity = subprocess.run(
+        [*source_git, "rev-parse", "HEAD"], capture_output=True, text=True,
+        check=True, timeout=30,
+    ).stdout.strip()
+    if identity != plan["source_sha"]:
+        raise ValueError("CTest source checkout HEAD differs from plan source SHA")
+    dirty = subprocess.run(
+        [*source_git, "status", "--porcelain", "--untracked-files=no"],
+        capture_output=True, text=True, check=True, timeout=30,
+    ).stdout
+    if dirty:
+        raise ValueError("CTest source checkout has tracked modifications")
+    command = [ctest, "--test-dir", str(build), "--show-only=json-v1"]
+    if config:
+        command.extend(["-C", config])
+    result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                            check=True, timeout=30)
+    discovery = json.loads(result.stdout)
+    if discovery.get("kind") != "ctestInfo" or not isinstance(discovery.get("tests"), list):
+        raise ValueError("Unexpected CTest JSON discovery format")
+    if not discovery["tests"]:
+        raise ValueError("CTest reported no registered tests")
+    selected = set(plan["case_ids"])
+    registered = {}
+    for case in discovery["tests"]:
+        name = case["name"]
+        if name in selected:
+            if name in registered:
+                raise ValueError("Duplicate selected CTest registration: " + name)
+            registered[name] = {p["name"]: p["value"] for p in case.get("properties", [])}
+
+    timeout = {name: props.get("TIMEOUT") for name, props in registered.items()}
+    missing = sorted(selected - registered.keys())
+    disabled = sorted(name for name, props in registered.items() if props.get("DISABLED"))
+    capabilities = {key: cache.get(key) for key in (
+        "CMAKE_GENERATOR", "CMAKE_BUILD_TYPE", "Qt5Core_DIR", "Qt6Core_DIR",
+        "HYREMOTE_BUILD_CPP_API", "HYREMOTE_BUILD_QML_API", "HYREMOTE_WITH_VNC",
+        "HYREMOTE_WITH_TRANSPORT_SECURITY", "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO",
+    )}
+    verdict = ("BLOCKED_UNMAPPED" if plan["unclassified_files"] else
+               "BLOCKED_CAPABILITY" if missing or disabled else "MANUAL_GATE_REQUIRED")
+    audit = {
+        "plan_hash": plan["plan_hash"], "source_checkout_sha": identity,
+        "cmake_cache_sha256": hashlib.sha256(cache_text.encode("utf-8")).hexdigest(),
+        "ctest_discovery_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+        "ctest_configuration": config, "capability_cache": capabilities,
+        "registered": sorted(registered), "missing": missing, "disabled": disabled,
+        "selected_case_guards": {name: guard for name, guard in
+                                 registry.get("case_guards", {}).items() if name in selected},
+        "configured_timeout_seconds": timeout, "measured_duration_seconds": None,
+        "admission": verdict, "execution_allowed": False, "qualification": "NOT_ACCEPTANCE",
+    }
+    audit["audit_hash"] = hashlib.sha256(json.dumps(
+        audit, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return audit
+
+
 def select(registry: dict, files: list[str], gate: str, source_sha: str, issue: str,
            base_sha: str | None = None, risks: list[str] | None = None) -> dict:
     if gate not in GATES:
@@ -183,6 +246,9 @@ def main() -> int:
     parser.add_argument("--gate", choices=GATES, default="G1")
     parser.add_argument("--risk", action="append", default=[],
                         help="Declared cross-cutting risk from registry; repeatable")
+    parser.add_argument("--ctest-build", type=Path, help="Read-only discovery in an existing build tree")
+    parser.add_argument("--ctest", default="ctest", help="CTest executable for discovery")
+    parser.add_argument("--ctest-config", help="CTest configuration for multi-config builds")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
@@ -209,9 +275,13 @@ def main() -> int:
             parser.error("No changed files supplied or discovered; zero-case plan is forbidden")
         result = select(registry, files, args.gate, source, args.issue, base,
                         risks=args.risk)
+        if args.ctest_build:
+            result["ctest_audit"] = ctest_audit(args.ctest_build, result, registry,
+                                                args.ctest, args.ctest_config)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
-        return 2 if result["status"] == "BLOCKED_UNMAPPED" else 0
-    except (ValueError, OSError, subprocess.SubprocessError) as exc:
+        blocked = result.get("ctest_audit", {}).get("admission", "").startswith("BLOCKED_")
+        return 2 if result["status"] == "BLOCKED_UNMAPPED" or blocked else 0
+    except (KeyError, ValueError, OSError, subprocess.SubprocessError) as exc:
         print("TEST_PLAN_ERROR: " + str(exc), file=sys.stderr)
         return 2
 
