@@ -405,14 +405,26 @@ int main(int argc, char **argv)
         gl->glGetIntegerv(GL_SAMPLE_BUFFERS, &sampleBuffers);
         GLint oldPack = 0;
         GLint oldAlign = 4;
+        GLint oldRowLength = 0;
+        GLint oldSkipRows = 0;
+        GLint oldSkipPixels = 0;
         gl->glGetIntegerv(kPackBinding, &oldPack);
         gl->glGetIntegerv(GL_PACK_ALIGNMENT, &oldAlign);
+        gl->glGetIntegerv(GL_PACK_ROW_LENGTH, &oldRowLength);
+        gl->glGetIntegerv(GL_PACK_SKIP_ROWS, &oldSkipRows);
+        gl->glGetIntegerv(GL_PACK_SKIP_PIXELS, &oldSkipPixels);
         GLuint pbo = 0;
         gl->glGenBuffers(1, &pbo);
         gl->glBindBuffer(kPackBuffer, pbo);
         const auto count = GLsizeiptr(std::size_t(width) * height * 4);
         gl->glBufferData(kPackBuffer, count, nullptr, kStreamRead);
+        // Qt owns the GL context; do not inherit an arbitrary row stride or
+        // skip offset from its prior renderer commands. PBO map assumes tight
+        // RGBA rows and exactly width * height * 4 bytes.
         gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        gl->glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+        gl->glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+        gl->glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
         const auto start = Clock::now();
         gl->glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         GLsync fence = gl->glFenceSync(kSyncGpu, 0);
@@ -422,6 +434,9 @@ int main(int argc, char **argv)
         const GLenum status = gl->glGetError();
         gl->glBindBuffer(kPackBuffer, GLuint(oldPack));
         gl->glPixelStorei(GL_PACK_ALIGNMENT, oldAlign);
+        gl->glPixelStorei(GL_PACK_ROW_LENGTH, oldRowLength);
+        gl->glPixelStorei(GL_PACK_SKIP_ROWS, oldSkipRows);
+        gl->glPixelStorei(GL_PACK_SKIP_PIXELS, oldSkipPixels);
         if (!pbo || !fence || status != GL_NO_ERROR) {
             if (fence) gl->glDeleteSync(fence);
             if (pbo) gl->glDeleteBuffers(1, &pbo);
