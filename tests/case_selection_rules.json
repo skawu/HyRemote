@@ -15,9 +15,22 @@
       ],
       "cases": [
         "hyremote-quick-capture-test",
+        "hyremote-quick-gl-pbo-session-test",
         "hyremote-runtime-dll-lifecycle-test"
       ],
       "reason": "Qt Quick native/public capture and GL worker lifecycle; DLL case is Windows capability-guarded"
+    },
+    {
+      "id": "quick-d3d11",
+      "prefixes": [
+        "src/runtime/src/quick/quick_d3d11_staging_capture_source.cpp",
+        "src/runtime/src/quick/quick_d3d11_staging_capture_source.hpp"
+      ],
+      "cases": [
+        "hyremote-quick-capture-test",
+        "hyremote-runtime-dll-d3d11-lifecycle-test"
+      ],
+      "reason": "D3D11 staging and guarded Windows DLL lifecycle"
     },
     {
       "id": "core",
@@ -28,7 +41,8 @@
         "hyremote-core-test-frame-lifetime",
         "hyremote-core-test-mailbox",
         "hyremote-core-test-transport-handoff",
-        "hyremote-core-test-session-lifecycle"
+        "hyremote-core-test-session-lifecycle",
+        "hyremote-cpp-installed-consumers"
       ],
       "reason": "Core owned frame, queue and session contracts"
     },
@@ -46,14 +60,43 @@
     {
       "id": "rfb",
       "prefixes": [
-        "src/integrations/cpp/tests/rfb_",
-        "src/runtime/src/rfb/"
+        "src/integrations/cpp/tests/rfb_test_server.cpp",
+        "src/integrations/cpp/tests/rfb_product_fit.py",
+        "src/runtime/src/transport/"
       ],
       "cases": [
         "hyremote-rfb-wire-robustness-test",
         "hyremote-rfb-multi-client-input-test"
       ],
-      "reason": "RFB wire and multi-viewer input correctness"
+      "reason": "RFB wire and multi-viewer input correctness; authentication sources also require the security-on contract"
+    },
+    {
+      "id": "rfb-authentication",
+      "prefixes": [
+        "src/runtime/src/transport/vnc_auth.cpp",
+        "src/runtime/src/transport/vnc_auth.hpp"
+      ],
+      "cases": [
+        "hyremote-rfb-wire-robustness-test",
+        "hyremote-rfb-vnc-auth-handshake-test",
+        "hyremote-vnc-auth-test"
+      ],
+      "reason": "VNC credential primitive and wire negotiation; authenticated cases are security-on only"
+    },
+    {
+      "id": "runtime-lifecycle",
+      "prefixes": [
+        "src/runtime/src/access_instance.cpp",
+        "src/runtime/src/access_instance.hpp"
+      ],
+      "cases": [
+        "hyremote-viewer-capture-demand-test",
+        "hyremote-runtime-diagnostics-test",
+        "hyremote-runtime-notifications-test",
+        "hyremote-remoteaccess-test",
+        "hyremote-cpp-installed-consumers"
+      ],
+      "reason": "Shared Runtime state and session lifecycle reach the installed facade"
     },
     {
       "id": "cpp-facade",
@@ -72,11 +115,14 @@
       "prefixes": [
         "cmake/",
         "build.cmd",
-        "CMakeLists.txt"
+        "CMakeLists.txt",
+        "src/runtime/CMakeLists.txt",
+        "src/runtime/tests/CMakeLists.txt"
       ],
       "cases": [
         "hyremote-build-authority-selftest",
-        "hyremote-release-readiness-facts-layout"
+        "hyremote-release-readiness-facts-layout",
+        "hyremote-cpp-installed-consumers"
       ],
       "reason": "Build/configure and repository authority; full gate may be required by existing manual"
     },
@@ -96,7 +142,8 @@
       "id": "docs",
       "prefixes": [
         "docs/",
-        "README.md"
+        "README.md",
+        "README_EN.md"
       ],
       "cases": [
         "hyremote-release-readiness-facts-layout"

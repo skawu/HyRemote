@@ -13,11 +13,16 @@ python tools/test/plan_tests.py --base <base-SHA> --head <head-SHA> --sha <head-
 ```
 
 For a pure file-list plan, pass `--file src/runtime/src/quick/quick_gl_pbo_capture_source.cpp`
-and `--sha <40-hex-source-SHA>`. Multiple `--file` values are supported.
+and `--sha <40-hex-source-SHA>`. Multiple `--file` values are supported;
+the plan records those paths as caller-declared. Git diff mode requires two
+existing full commit SHAs, binds `--sha` to `--head`, and includes deleted
+paths and both sides of renames. Paths are repository-relative and case-sensitive.
 The output is stable JSON with a `plan_hash`, selected existing CTest IDs,
 reasons, explicit non-qualification, and unclassified paths. An unknown path
 returns status `BLOCKED_UNMAPPED` and exit 2; a zero-file request or incomplete
 SHA fails rather than generating a false PASS.
+The plan also identifies the registry content and Git base used. Rerunning
+the planner only regenerates advice and cannot rerun existing evidence.
 
 **Important limitations**:
 
