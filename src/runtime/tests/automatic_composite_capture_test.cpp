@@ -5,8 +5,11 @@
 #include <QEventLoop>
 #include <QImage>
 
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "hyremote/core/capture_source.hpp"
@@ -91,6 +94,62 @@ private:
     float m_dpr;
     std::shared_ptr<const hyremote::FrameStorage> *m_observedStorage = nullptr;
     hyremote::FrameReadyHandler m_onFrame;
+};
+
+// Hold one child's completion while another child is removed. This exercises
+// a real accepted composite request, not a synthetic call to the model.
+class DeferredSolidCapture final : public hyremote::CaptureSource
+{
+public:
+    explicit DeferredSolidCapture(std::function<void()> *release)
+        : m_solid(qRgba(0, 0, 255, 128), 2, 2), m_release(release)
+    {
+        if (m_release)
+            *m_release = [this] { deliver(); };
+    }
+
+    ~DeferredSolidCapture() override
+    {
+        if (m_release)
+            *m_release = {};
+    }
+
+    hyremote::CaptureCapabilities capabilities() const override
+    {
+        return m_solid.capabilities();
+    }
+
+    bool start(hyremote::FrameReadyHandler onFrame,
+               hyremote::CaptureEventHandler onEvent) override
+    {
+        return m_solid.start(std::move(onFrame), std::move(onEvent));
+    }
+
+    void stop() noexcept override
+    {
+        m_request.reset();
+        m_solid.stop();
+    }
+
+    bool requestFrame(const hyremote::CaptureRequest &request) override
+    {
+        m_request = request;
+        return true;
+    }
+
+private:
+    void deliver()
+    {
+        if (!m_request)
+            return;
+        auto request = *m_request;
+        m_request.reset();
+        m_solid.requestFrame(request);
+    }
+
+    SolidCapture m_solid;
+    std::function<void()> *m_release;
+    std::optional<hyremote::CaptureRequest> m_request;
 };
 
 bool check(bool condition, const char *message)
@@ -385,6 +444,74 @@ int main(int argc, char **argv)
                   "new composition has new request identity"))
         return 18;
     layeredComponents.capture->stop();
+
+    // #958: base surface already returned pixels, popup still pending.
+    // Hiding base must invalidate the RECEIVED base frame before the popup
+    // completes; otherwise the compositor would render a stale red rectangle
+    // under a new request ID after the owner surface became invisible.
+    QObject asyncBase;
+    QObject asyncPopup;
+    CompositeTarget interrupted;
+    interrupted.upsertSurface(20, &asyncBase, QRect(0, 0, 4, 4), true);
+    interrupted.upsertSurface(21, &asyncPopup, QRect(1, 1, 2, 2), true);
+    std::function<void()> releasePopup;
+    const HyRemote::detail::BuiltinTargetResolver interruptedResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &asyncBase) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255), 4, 4);
+            } else if (target == &asyncPopup) {
+                result.supported = true;
+                result.capture = std::make_unique<DeferredSolidCapture>(&releasePopup);
+            }
+            return result;
+        };
+    auto interruptedComponents = interrupted.createTargetComponents(false, interruptedResolver);
+    std::vector<hyremote::RemoteFrame> interruptedFrames;
+    if (!check(interruptedComponents.supported && interruptedComponents.capture,
+               "interrupted composite capture available")
+        || !check(interruptedComponents.capture->start(
+                      [&](hyremote::RemoteFrame frame) {
+                          interruptedFrames.push_back(std::move(frame));
+                      },
+                      [](const hyremote::CaptureEvent &) {}),
+                  "interrupted capture starts")
+        || !check(interruptedComponents.capture->requestFrame({54, hyremote::Clock::now()}),
+                  "interrupted frame admitted"))
+        return 19;
+
+    // Pump until the deferred popup has accepted the request while the base
+    // child has already completed. No timing assumption is needed.
+    QElapsedTimer deferredTimer;
+    deferredTimer.start();
+    while (!releasePopup && deferredTimer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (!check(static_cast<bool>(releasePopup) && interruptedFrames.empty(),
+               "popup is deferred; base alone cannot publish a partial frame"))
+        return 20;
+    interrupted.setSurfaceVisible(20, false);
+    releasePopup();
+    if (!check(waitForFrame(interruptedFrames, 1),
+               "pending popup completion drains after base hide"))
+        return 21;
+    const QImage interruptedImage = imageView(interruptedFrames.front());
+    const QColor oldBaseCorner = interruptedImage.pixelColor(0, 0);
+    const QColor pendingPopupPixel = interruptedImage.pixelColor(1, 1);
+    if (!check(interruptedImage.size() == QSize(4, 4),
+               "in-flight request preserves admitted canvas dimensions")
+        || !check(oldBaseCorner.alpha() == 0,
+                  "hidden base's previously completed pixels must be discarded")
+        || !check(pendingPopupPixel.alpha() == 128
+                      && pendingPopupPixel.red() == 0
+                      && pendingPopupPixel.blue() == 255,
+                  "deferred popup remains valid after base is removed")
+        || !check(interruptedFrames.front().requestId == hyremote::CaptureRequestId{54},
+                  "interrupted composite completes exactly its admitted ID"))
+        return 22;
+    interruptedComponents.capture->stop();
     std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide output truth\n";
     return 0;
 }
