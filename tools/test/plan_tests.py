@@ -23,7 +23,7 @@ def load_rules(path: Path = REGISTRY) -> dict:
     ids = set()
     catalog = (ROOT / "tests" / "TEST_CATALOG.md").read_text(encoding="utf-8")
     catalog_ids = set(re.findall(r"^\| `(hyremote-[^ `]+)` \|", catalog, re.MULTILINE))
-    for rule in obj["rules"]:
+    for rule in obj["rules"] + obj.get("risk_rules", []):
         if not rule.get("id") or rule["id"] in ids:
             raise ValueError("Duplicate or missing selection rule id")
         ids.add(rule["id"])
@@ -65,11 +65,16 @@ def matches(file: str, prefix: str) -> bool:
 
 
 def select(registry: dict, files: list[str], gate: str, source_sha: str, issue: str,
-           base_sha: str | None = None) -> dict:
+           base_sha: str | None = None, risks: list[str] | None = None) -> dict:
     if gate not in GATES:
         raise ValueError("Unknown G gate")
     if not SHA.fullmatch(source_sha):
         raise ValueError("Expected full 40-character source SHA")
+    risk_rules = {rule["id"]: rule for rule in registry.get("risk_rules", [])}
+    risks = sorted(set(risks or []))
+    unknown_risks = sorted(set(risks) - set(risk_rules))
+    if unknown_risks:
+        raise ValueError("Unknown risk tags: " + ", ".join(unknown_risks))
     matched: dict[str, dict] = {}
     unclassified: list[str] = []
     for file in sorted(set(files)):
@@ -90,6 +95,11 @@ def select(registry: dict, files: list[str], gate: str, source_sha: str, issue: 
         else:
             for rule in rules:
                 matched[rule["id"]] = rule
+    # Cross-cutting risk contracts are additive; path specificity applies only
+    # to path rules. A Quick source change with security implications must
+    # still select the security-on handshake test, not silently suppress it.
+    for risk in risks:
+        matched["risk:" + risk] = risk_rules[risk]
     cases = sorted({c for rule in matched.values() for c in rule["cases"]})
     # Plan identity excludes ephemeral paths, timestamps, cache state and runner identity.
     identity = {
@@ -98,7 +108,7 @@ def select(registry: dict, files: list[str], gate: str, source_sha: str, issue: 
         "registry_hash": hashlib.sha256(json.dumps(
             registry, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
         "issue": issue, "gate": gate, "changed_files": sorted(set(files)),
-        "rule_ids": sorted(matched), "case_ids": cases,
+        "risk_tags": risks, "rule_ids": sorted(matched), "case_ids": cases,
     }
     key = hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -121,6 +131,25 @@ def self_test(registry: dict) -> None:
     assert "hyremote-quick-capture-test" in quick["case_ids"]
     assert "hyremote-runtime-diagnostics-test" not in quick["case_ids"]
     assert quick["status"] == "ADVISORY" and not quick["execution_allowed"]
+    auth = select(registry, quick["changed_files"], "G1", sha, "967",
+                  risks=["security-auth"])
+    assert "hyremote-rfb-vnc-auth-handshake-test" in auth["case_ids"]
+    assert "hyremote-quick-capture-test" in auth["case_ids"]
+    assert auth["plan_hash"] != quick["plan_hash"]
+    assert select(registry, quick["changed_files"], "G1", sha, "967",
+                  risks=["public-sdk-abi", "security-auth"])["plan_hash"] == select(
+                      registry, quick["changed_files"], "G1", sha, "967",
+                      risks=["security-auth", "public-sdk-abi"])["plan_hash"]
+    assert "hyremote-qml-installed-consumer" in select(
+        registry, ["src/integrations/qml/QmlRemoteAccess.cpp"], "G1", sha, "970",
+        risks=["qml-registration"])["case_ids"]
+    try:
+        select(registry, quick["changed_files"], "G1", sha, "970",
+               risks=["not-a-known-risk"])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unregistered risk accepted")
     assert quick["plan_hash"] == select(registry, quick["changed_files"], "G1", sha, "967")["plan_hash"]
     docs = select(registry, ["docs/internal/evidence/sample.md"], "G1", sha, "970")
     assert "hyremote-runtime-dll-lifecycle-test" not in docs["case_ids"]
@@ -149,6 +178,8 @@ def main() -> int:
     parser.add_argument("--sha", help="Exact 40-character test source SHA")
     parser.add_argument("--issue", default="unassigned")
     parser.add_argument("--gate", choices=GATES, default="G1")
+    parser.add_argument("--risk", action="append", default=[],
+                        help="Declared cross-cutting risk from registry; repeatable")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
@@ -173,7 +204,8 @@ def main() -> int:
             files = args.file
         if not files:
             parser.error("No changed files supplied or discovered; zero-case plan is forbidden")
-        result = select(registry, files, args.gate, source, args.issue, base)
+        result = select(registry, files, args.gate, source, args.issue, base,
+                        risks=args.risk)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
         return 2 if result["status"] == "BLOCKED_UNMAPPED" else 0
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
