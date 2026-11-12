@@ -696,14 +696,11 @@ private:
                                s->converting.begin(), s->converting.end());
                 s->converting.clear();
             }
-            // The session worker may still hold the fence/PBO. Stop it and
-            // drop the shared context; the old Qt render context reclaims its
-            // GL names. Never glDelete from an invalid render context.
+            // The worker's finished connection is installed before it starts.
+            // Retire its GL resources even if this window never renders again.
             if (s->retireWorker) {
-                // Do NOT requestStop here: the GUI completion task connects
-                // the finished signal first, then stops the worker. Calling
-                // it here could let the worker exit before a listener exists.
                 s->workerStopRequested = true;
+                s->retireWorker->requestStop();
             }
             if (sceneGraph)
                 ++g_quickGlPboInvalidations;

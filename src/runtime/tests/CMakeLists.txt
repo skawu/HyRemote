@@ -10,6 +10,24 @@ add_test(NAME hyremote-runtime-listener-binding-test
          COMMAND hyremote-runtime-listener-binding-test)
 set_tests_properties(hyremote-runtime-listener-binding-test PROPERTIES TIMEOUT 15)
 
+if(WIN32 AND HYREMOTE_BUILD_CPP_API AND HYREMOTE_WITH_VNC
+   AND HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
+   AND TARGET Qt6::Quick)
+    target_sources(hyremote-remoteaccess PRIVATE dll_lifecycle_bridge.cpp)
+    add_executable(hyremote-runtime-dll-lifecycle-test test_dll_lifecycle.cpp)
+    target_compile_features(hyremote-runtime-dll-lifecycle-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-runtime-dll-lifecycle-test PRIVATE
+        Qt6::Quick Qt6::Network)
+    add_dependencies(hyremote-runtime-dll-lifecycle-test hyremote-remoteaccess)
+    add_test(NAME hyremote-runtime-dll-lifecycle-test
+             COMMAND hyremote-runtime-dll-lifecycle-test $<TARGET_FILE:hyremote-remoteaccess>)
+    set_tests_properties(hyremote-runtime-dll-lifecycle-test PROPERTIES
+        TIMEOUT 45
+        PASS_REGULAR_EXPRESSION "SDK_DLL_TWO_CYCLES=PASS"
+        ENVIRONMENT "QSG_RHI_BACKEND=opengl;QSG_RENDER_LOOP=threaded"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+endif()
+
 # Application-level automatic access controller tests plus the private notification seam. These were
 # only ever reachable because the whole tests directory used to be entered behind
 # HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE, so they keep that same effective guard here: freeing the

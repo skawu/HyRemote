@@ -138,9 +138,16 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     bool resizeScenario = false;
+#if !defined(HYREMOTE_R4_D3D11)
+    bool rebuildScenario = false;
+#endif
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--resize")
             resizeScenario = true;
+#if !defined(HYREMOTE_R4_D3D11)
+        else if (std::string(argv[i]) == "--rebuild-scene-graph")
+            rebuildScenario = true;
+#endif
         else {
             std::cerr << "R4=BLOCKED_UNKNOWN_ARGUMENT\n";
             return 9;
@@ -157,14 +164,18 @@ int main(int argc, char **argv)
         std::cerr << "R4=BLOCKED_NOT_OPENGL_RHI\n";
         return 10;
     }
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#else
+    QQuickWindow::setSceneGraphBackend(QSGRendererInterface::OpenGL);
+#endif
 #endif
     QQuickWindow window;
+    app.setQuitOnLastWindowClosed(false);
     window.resize(kW, kH);
     window.setColor(Qt::black);
     RealScene scene(window.contentItem());
     scene.setPhase(0);
-    window.show();
 
 #if defined(HYREMOTE_R4_D3D11)
     auto source = HyRemote::detail::createExperimentalQuickD3d11StagingCaptureSource(&window);
@@ -192,11 +203,42 @@ int main(int argc, char **argv)
     bool resized = false;
 #if !defined(HYREMOTE_R4_D3D11)
     bool pboCleanupWhileWindowAlive = false;
+    bool rebuildRequested = false;
+    bool rebuildVerified = false;
+    int revokedEvents = 0;
+    int revokedFrames = 0;
+    std::atomic<int> graphInitializations{0};
+    std::atomic<int> graphInvalidations{0};
+    QMetaObject::Connection graphInitialized;
+    QMetaObject::Connection graphInvalidated;
+    if (rebuildScenario) {
+        window.setPersistentSceneGraph(false);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        window.setPersistentGraphics(false);
+#else
+        window.setPersistentOpenGLContext(false);
+#endif
+        graphInitialized = QObject::connect(
+            &window, &QQuickWindow::sceneGraphInitialized, &window,
+            [&] { ++graphInitializations; }, Qt::DirectConnection);
+        graphInvalidated = QObject::connect(
+            &window, &QQuickWindow::sceneGraphInvalidated, &window,
+            [&] { ++graphInvalidations; }, Qt::DirectConnection);
+    }
 #endif
 
     std::function<void()> dispatchNext;
     std::function<void()> finishCase;
     const auto onFrame = [&](hyremote::RemoteFrame frame) {
+#if !defined(HYREMOTE_R4_D3D11)
+        if (rebuildRequested && frame.requestId && *frame.requestId == 888) {
+            if (rebuildVerified || frame.storage || revokedEvents != 1 || ++revokedFrames != 1) {
+                ++errors;
+                app.exit(31);
+            }
+            return;
+        }
+#endif
         if (hiddenRequestPending && frame.requestId && *frame.requestId == 777) {
             if (hiddenUnavailableEvents != 1 || frame.storage
                 || !frame.timing.requestTime || !frame.timing.completionTime
@@ -218,7 +260,8 @@ int main(int argc, char **argv)
             ++staleCallbacks;
             return;
         }
-        if (!validateFrame(frame, desired, currentW, currentH)) {
+        if (!validateFrame(frame, desired, currentW, currentH)
+            || *frame.requestId != static_cast<hyremote::CaptureRequestId>(100 + desired)) {
             ++errors;
             std::cerr << "R4=FAIL_WRONG_OWNED_PIXELS_OR_FRAME_METADATA phase="
                       << desired << '\n';
@@ -235,6 +278,13 @@ int main(int argc, char **argv)
     };
 
     const auto onEvent = [&](const hyremote::CaptureEvent &event) {
+#if !defined(HYREMOTE_R4_D3D11)
+        if (rebuildRequested && !rebuildVerified && event.recoverable
+            && event.message == "Qt GL Scene Graph surface invalidated") {
+            ++revokedEvents;
+            return;
+        }
+#endif
         if (hiddenRequestPending
             && event.code == hyremote::CaptureEventCode::TemporarilyUnavailable
             && event.recoverable) {
@@ -266,14 +316,17 @@ int main(int argc, char **argv)
                     && hiddenUnavailableEvents == 1 && hiddenTerminalFrames == 1
 #if !defined(HYREMOTE_R4_D3D11)
                     && pboCleanupWhileWindowAlive
+                    && (!rebuildScenario || (rebuildVerified && revokedFrames == 1))
 #endif
                     ;
                 std::cout << "R4_RESULT_JSON={"
                     << "\"qt\":\"" << QT_VERSION_STR << "\","
 #if defined(HYREMOTE_R4_D3D11)
                     << "\"backend\":\"Qt6_RHI_Direct3D11\","
-#else
+#elif QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
                     << "\"backend\":\"Qt6_RHI_OpenGL\","
+#else
+                    << "\"backend\":\"Qt5_OpenGL\","
 #endif
 #if defined(HYREMOTE_R4_D3D11)
                     << "\"source\":\"real_D3d11StagingCaptureSource\","
@@ -296,6 +349,8 @@ int main(int argc, char **argv)
 #if !defined(HYREMOTE_R4_D3D11)
                     << "\"pbo_cleanup_while_window_alive\":"
                     << (pboCleanupWhileWindowAlive ? "true" : "false") << ","
+                    << "\"scene_graph_rebuilt\":"
+                    << (rebuildVerified ? "true" : "false") << ","
 #endif
                     << "\"errors\":" << errors << ","
                     << "\"qualified_for_product\":false"
@@ -307,6 +362,42 @@ int main(int argc, char **argv)
     };
 
     dispatchNext = [&] {
+#if !defined(HYREMOTE_R4_D3D11)
+        if (rebuildScenario && completed == 4 && !rebuildVerified) {
+            if (!rebuildRequested) {
+                rebuildRequested = true;
+                hyremote::CaptureRequest abandoned;
+                abandoned.id = 888;
+                abandoned.requestTime = hyremote::Clock::now();
+                if (!source->requestFrame(abandoned)) {
+                    app.exit(32);
+                    return;
+                }
+                window.hide();
+                window.releaseResources();
+                window.destroy();
+            }
+            if (graphInvalidations.load() == 0 || revokedFrames == 0) {
+                QTimer::singleShot(20, &app, dispatchNext);
+                return;
+            }
+            if (!window.isVisible()) {
+                const auto retired = HyRemote::detail::quickGlPboResourceCounts();
+                if (retired.buffersCreated == 0
+                    || retired.buffersDeleted != retired.buffersCreated
+                    || retired.workersRetired != retired.workersCreated) {
+                    QTimer::singleShot(20, &app, dispatchNext);
+                    return;
+                }
+                window.show();
+            }
+            if (graphInitializations.load() < 2) {
+                QTimer::singleShot(20, &app, dispatchNext);
+                return;
+            }
+            rebuildVerified = true;
+        }
+#endif
         if (completed >= kPhases) {
             if (hiddenRequestPending || hiddenTerminalFrames)
                 return;
@@ -334,6 +425,9 @@ int main(int argc, char **argv)
                 && resources.buffersCreated > 0
                 && resources.buffersCreated == resources.buffersDeleted
                 && resources.workersCreated == resources.workersRetired;
+            if (rebuildScenario)
+                pboCleanupWhileWindowAlive = pboCleanupWhileWindowAlive
+                    && resources.buffersCreated >= 2 && resources.workersCreated >= 2;
 #endif
             ++restarts;
             QTimer::singleShot(70, &app, [&] {
@@ -371,7 +465,12 @@ int main(int argc, char **argv)
     watchdog.setSingleShot(true);
     QObject::connect(&watchdog, &QTimer::timeout, &app, [&] {
         ++errors;
-        std::cerr << "R4_VERDICT=FAIL_TIMEOUT completed=" << completed << '\n';
+        std::cerr << "R4_VERDICT=FAIL_TIMEOUT completed=" << completed
+#if !defined(HYREMOTE_R4_D3D11)
+                  << " graph_init=" << graphInitializations.load()
+                  << " graph_invalid=" << graphInvalidations.load()
+#endif
+                  << '\n';
         app.exit(27);
     });
 
@@ -395,6 +494,12 @@ int main(int argc, char **argv)
         startSource();
         dispatchNext();
     });
+    window.show();
     watchdog.start(25000);
-    return app.exec();
+    const int result = app.exec();
+#if !defined(HYREMOTE_R4_D3D11)
+    QObject::disconnect(graphInitialized);
+    QObject::disconnect(graphInvalidated);
+#endif
+    return result;
 }
