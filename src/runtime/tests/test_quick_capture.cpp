@@ -2024,6 +2024,7 @@ void runPublicQuickProfile()
 // regression that CI PASS alone could not prove.
 void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
 {
+    CHECK(HyRemote::detail::runQuickGlPboBatchOwnershipRegression());
     const auto result = HyRemote::detail::runQuickGlPboSessionSelfTest();
     if (!result.ran) {
         std::cerr << "WIN962_SESSION_SELFTEST=SKIP detail=" << result.detail << std::endl;

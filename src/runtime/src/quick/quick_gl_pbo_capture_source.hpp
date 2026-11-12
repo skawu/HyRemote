@@ -57,6 +57,7 @@ runQuickGlPboSessionSelfTest();
 
 // Number of real sceneGraphInvalidated deliveries observed by the source.
 HYREMOTE_QUICK_GL_TEST_EXPORT unsigned quickGlPboInvalidationCount();
+HYREMOTE_QUICK_GL_TEST_EXPORT bool runQuickGlPboBatchOwnershipRegression();
 
 // P1 (#962 review): inject a 5s retire delay, then requestStop+wait. Proves
 // stop() is bounded by the worker's abort check, not by the 750ms fence

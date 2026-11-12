@@ -992,8 +992,14 @@ private:
         return true;
     }
 
-    static void onRetireResult(const std::shared_ptr<State> &s,
-                               GlRetireResult &&result)
+    static bool canSubmitQueuedReadback(const State &state)
+    {
+        return !state.gpuPending && !state.cpuConversionPending && !state.queued.empty();
+    }
+
+    static void onRetireResult(
+        const std::shared_ptr<State> &s, GlRetireResult &&result,
+        void (*beforeCpuAdoption)(const std::shared_ptr<State> &) = nullptr)
     {
         std::vector<hyremote::CaptureRequest> revoked;
         {
@@ -1016,6 +1022,8 @@ private:
             }
         }
         if (result.pixels) {
+            if (beforeCpuAdoption)
+                beforeCpuAdoption(s);
             finishCpuConversion(s, result.job.generation,
                                 result.pixels, result.job.width, result.job.height,
                                 result.job.dpr, result.job.renderTime);
@@ -1206,9 +1214,7 @@ private:
                     // gpuPending and requests one bounded fallback frame.
                     kickAgain = false;
                 }
-                if (!s->gpuPending && !s->cpuConversionPending
-                    && !kickAgain && failed.empty()
-                    && !s->queued.empty()) {
+                if (canSubmitQueuedReadback(*s) && !kickAgain && failed.empty()) {
                     const qreal dpr = captureWindowDpr(window);
                     const int w = qRound(window->width()*dpr);
                     const int h = qRound(window->height()*dpr);
@@ -1305,6 +1311,60 @@ private:
             }, Qt::QueuedConnection);
     }
 
+public:
+    static bool batchOwnershipRegression()
+    {
+        auto s = std::make_shared<State>();
+        s->active = true;
+        s->generation = 1;
+        const auto now = hyremote::Clock::now();
+        s->converting.push_back({101, now});
+        s->queued.push_back({102, now});
+        s->gpuPending = true;
+        s->cpuConversionPending = true;
+        s->cpuWorkersInFlight = 1;
+        std::vector<std::pair<hyremote::CaptureRequestId, unsigned>> delivered;
+        s->onFrame = [&](hyremote::RemoteFrame frame) {
+            if (!frame.requestId || !frame.storage)
+                return;
+            const auto plane = frame.storage->mapRead(0);
+            if (plane)
+                delivered.emplace_back(*frame.requestId, std::to_integer<unsigned>(plane->data[0]));
+        };
+        const auto submitNext = [](const std::shared_ptr<State> &state) {
+            std::lock_guard<std::mutex> guard(state->mutex);
+            if (!canSubmitQueuedReadback(*state))
+                return;
+            state->converting.swap(state->queued);
+            state->gpuPending = true;
+            state->cpuConversionPending = true;
+            ++state->cpuWorkersInFlight;
+        };
+        const auto complete = [&](unsigned red, auto hook) {
+            GlRetireJob job;
+            job.generation = s->generation;
+            job.width = 1;
+            job.height = 1;
+            job.dpr = 1;
+            job.renderTime = now;
+            auto pixels = std::shared_ptr<std::byte>(
+                new std::byte[4]{std::byte(red), std::byte{0}, std::byte{0}, std::byte{255}},
+                std::default_delete<std::byte[]>());
+            onRetireResult(s, GlRetireResult{job, std::move(pixels), nullptr}, hook);
+            QCoreApplication::processEvents();
+        };
+        // Deterministically enter the renderer admission window before the
+        // first worker has adopted pixels and taken its matching batch.
+        complete(17, +submitNext);
+        const bool first = delivered.size() == 1 && delivered[0] == std::make_pair(
+            hyremote::CaptureRequestId{101}, 17u);
+        submitNext(s);
+        complete(29, nullptr);
+        return first && delivered.size() == 2 && delivered[1] == std::make_pair(
+            hyremote::CaptureRequestId{102}, 29u);
+    }
+
+private:
     std::shared_ptr<State> m_state;
 };
 } // namespace
@@ -1312,6 +1372,11 @@ private:
 unsigned quickGlPboInvalidationCount()
 {
     return g_quickGlPboInvalidations.load();
+}
+
+bool runQuickGlPboBatchOwnershipRegression()
+{
+    return GlPboCaptureSource::batchOwnershipRegression();
 }
 
 QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)
