@@ -2050,6 +2050,27 @@ void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
               << " invalidations=" << result.invalidations << std::endl;
 }
 
+// #967: static-surface traces proved the GL route spent ~42ms waiting for a
+// forced Qt frame. This state-machine regression fails if the 17ms wait is
+// restored or the one-update-per-render arm is released by the timer again.
+// It needs no GPU window.
+void testQuickGlPboFallbackPolicy()
+{
+    const auto result = HyRemote::detail::runQuickGlPboFallbackPolicyRegression();
+    CHECK(result.ran);
+    CHECK(result.oneArmPerRender);
+    CHECK(result.armReleasedByRender);
+    CHECK(result.glFallbackDelayMs == 0);
+    CHECK(result.d3dFallbackDelayMs == 17);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_FALLBACK=FAIL detail=" << result.detail << std::endl;
+    else
+        std::cerr << "WIN967_FALLBACK=PASS glDelayMs=" << result.glFallbackDelayMs
+                  << " d3dDelayMs=" << result.d3dFallbackDelayMs
+                  << " oneArmPerRender=1 armReleasedByRender=1" << std::endl;
+}
+
 // #962 review B2: the real public Qt signal (not a manually flipped flag)
 // must revoke an admitted GlPbo request exactly once and leave the source
 // stoppable without a render frame.
@@ -2156,6 +2177,7 @@ int main(int argc, char **argv)
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
         testQuickGlPboSessionReuseAndInvalidationRecovery(true);
+        testQuickGlPboFallbackPolicy();
         testQuickGlPboRealSceneGraphInvalidationSignal(true);
         testQuickGlPboStopIsBounded(true);
         testQuickGlPboStopFromNonGuiThread(true);
@@ -2168,6 +2190,7 @@ int main(int argc, char **argv)
     testQuickProfileClockDoesNotMeasureSleepAsCpu();
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     testQuickGlPboSessionReuseAndInvalidationRecovery(false);
+    testQuickGlPboFallbackPolicy();
     testQuickGlPboRealSceneGraphInvalidationSignal(false);
     testQuickGlPboStopIsBounded(false);
     testQuickGlPboStopFromNonGuiThread(false);
