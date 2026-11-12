@@ -1,0 +1,27 @@
+{
+  "viewer_pid": 23108,
+  "window_titles": [
+    "127.0.0.1::15921 (HyRemote (view-only)) - RealVNC Viewer"
+  ],
+  "samples": [],
+  "missed_sequences": [
+    1
+  ],
+  "scan_duration_max_ms": 32.0172,
+  "viewer_window_positioned": true,
+  "host_trace_events": 0,
+  "native_requests": [],
+  "host_exit_code": 0,
+  "native_stop": {
+    "contexts": 1,
+    "buffers": 1,
+    "submissions": 1,
+    "cleaned": 1,
+    "pending_at_stop": 1
+  },
+  "credit_before_viewer": [],
+  "credit_after_viewer": [],
+  "cpu": {},
+  "viewer_exit_code": 0,
+  "viewer_diagnostic": ""
+}
