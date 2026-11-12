@@ -679,9 +679,18 @@ void testQuickRendererCapabilityRouting()
         // route. Qualifying the provider is a Kit/build concern, not an
         // implicit promise that every Qt version or GL driver supports it.
         const auto armed = selectQuickCaptureRoute(scenario.api, true, true);
-        CHECK(armed.route ==
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-              QuickCaptureRoute::PublicQtGrabToImage);
+        const auto expectedArmedRoute = QuickCaptureRoute::PublicQtGrabToImage;
+#else
+        const auto expectedArmedRoute =
+            (scenario.backend == QuickCaptureBackend::OpenGL
+             ? QuickCaptureRoute::ExperimentalOpenGlPbo
+             : scenario.backend == QuickCaptureBackend::Direct3D11
+               ? QuickCaptureRoute::ExperimentalD3d11Staging
+               : QuickCaptureRoute::PublicQtGrabToImage);
+#endif
+        CHECK(armed.route == expectedArmedRoute);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         if (scenario.api == Api::OpenGL)
             CHECK(armed.renderingPath == QuickRenderingPath::Qt5Direct);
         if (scenario.api == Api::OpenGLRhi)
@@ -695,11 +704,6 @@ void testQuickRendererCapabilityRouting()
                   ? QuickCaptureRoute::ExperimentalOpenGlPbo
                   : QuickCaptureRoute::PublicQtGrabToImage));
 #else
-              (scenario.backend == QuickCaptureBackend::OpenGL
-               ? QuickCaptureRoute::ExperimentalOpenGlPbo
-               : scenario.backend == QuickCaptureBackend::Direct3D11
-                 ? QuickCaptureRoute::ExperimentalD3d11Staging
-                 : QuickCaptureRoute::PublicQtGrabToImage));
         if (scenario.api == Api::OpenGL)
             CHECK(armed.renderingPath == QuickRenderingPath::Qt6Rhi);
 #endif
