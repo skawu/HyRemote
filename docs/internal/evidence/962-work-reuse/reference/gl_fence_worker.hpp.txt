@@ -1,0 +1,151 @@
+#pragma once
+
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
+#include <QOpenGLExtraFunctions>
+#include <QThread>
+
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace ResearchGl {
+using Clock = std::chrono::steady_clock;
+constexpr unsigned int kPackBuffer = 0x88EB;       // GL_PIXEL_PACK_BUFFER
+constexpr unsigned int kPackBinding = 0x88ED;      // GL_PIXEL_PACK_BUFFER_BINDING
+constexpr unsigned int kReadFramebufferBinding = 0x8CAA; // GL_READ_FRAMEBUFFER_BINDING
+constexpr unsigned int kPackRowLength = 0x0D02; // GL_PACK_ROW_LENGTH
+constexpr unsigned int kPackSkipRows = 0x0D03; // GL_PACK_SKIP_ROWS
+constexpr unsigned int kPackSkipPixels = 0x0D04; // GL_PACK_SKIP_PIXELS
+constexpr unsigned int kStreamRead = 0x88E1;       // GL_STREAM_READ
+constexpr unsigned int kMapRead = 0x0001;          // GL_MAP_READ_BIT
+constexpr unsigned int kSyncGpu = 0x9117;          // GL_SYNC_GPU_COMMANDS_COMPLETE
+constexpr unsigned int kAlready = 0x911A;          // GL_ALREADY_SIGNALED
+constexpr unsigned int kTimedOut = 0x911B;         // GL_TIMEOUT_EXPIRED
+constexpr unsigned int kSatisfied = 0x911C;        // GL_CONDITION_SATISFIED
+constexpr unsigned int kWaitFailed = 0x911D;       // GL_WAIT_FAILED
+
+struct Job {
+    QOpenGLContext *shared = nullptr; // moved to worker thread before start()
+    QOffscreenSurface *surface = nullptr; // created/destroyed on GUI thread
+    GLuint pbo = 0;
+    GLsync fence = nullptr;
+    int width = 0;
+    int height = 0;
+    bool holdBeforeCurrentForHide = false;
+    unsigned generation = 0;
+    int paletteOffset = 0;
+    const std::atomic<int> *waitForInvalidation = nullptr;
+};
+
+class FenceRetirement {
+public:
+    Job job;
+    std::vector<unsigned char> rgba;
+    std::string reason = "NOT_STARTED";
+    double gpuWaitMs = 0;
+    double cpuMapCopyMs = 0;
+    bool contextWasCurrent = false;
+    void retire(bool keepResources = false)
+    {
+        // QOpenGLContext must be owned by this QThread; QOffscreenSurface is
+        // only created/destroyed on GUI thread, then used here for makeCurrent.
+        QOpenGLContext *context = job.shared;
+        rgba.clear();
+        reason = "NOT_STARTED";
+        gpuWaitMs = 0;
+        cpuMapCopyMs = 0;
+        contextWasCurrent = false;
+        // Lifecycle stress only (NEVER a performance sample): permit the
+        // GUI to hide/release its QQuickWindow while this independent shared
+        // context owns the PBO/fence, before any GPU synchronization.
+        if (job.waitForInvalidation) {
+            const auto deadline = Clock::now() + std::chrono::milliseconds(750);
+            while (job.waitForInvalidation->load() == 0 && Clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } else if (job.holdBeforeCurrentForHide) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        }
+        if (!context || !job.surface || context->thread() != QThread::currentThread()
+            || !context->makeCurrent(job.surface)) {
+            reason = "SHARED_CONTEXT_MAKE_CURRENT_FAILED";
+            if (!keepResources && context && context->thread() == QThread::currentThread())
+                delete context;
+            return;
+        }
+        contextWasCurrent = QOpenGLContext::currentContext() == context;
+        auto *gl = context->extraFunctions();
+        gl->initializeOpenGLFunctions();
+        const auto start = Clock::now();
+        bool signaled = false;
+        for (int poll = 0; poll < 150; ++poll) {
+            // Bounded 5ms * 150, never block Qt's render/GUI thread.
+            const auto status = gl->glClientWaitSync(job.fence, 0, 5'000'000ULL);
+            if (status == kAlready || status == kSatisfied) {
+                signaled = true;
+                break;
+            }
+            if (status == kWaitFailed || status != kTimedOut) {
+                reason = "GPU_FENCE_WAIT_FAILED";
+                break;
+            }
+        }
+        gpuWaitMs = std::chrono::duration<double, std::milli>(
+            Clock::now() - start).count();
+
+        const std::size_t stride = std::size_t(job.width) * 4;
+        const std::size_t bytes = stride * std::size_t(job.height);
+        if (signaled && job.width > 0 && job.height > 0
+            && bytes <= 40 * 1024 * 1024) {
+            const auto copyStart = Clock::now();
+            GLint oldPack = 0;
+            gl->glGetIntegerv(kPackBinding, &oldPack);
+            gl->glBindBuffer(kPackBuffer, job.pbo);
+            const void *mapped = gl->glMapBufferRange(kPackBuffer, 0,
+                GLsizeiptr(bytes), kMapRead);
+            if (mapped) {
+                rgba.resize(bytes);
+                const auto *src = static_cast<const unsigned char *>(mapped);
+                // GL framebuffer is bottom-up. This is one owned CPU copy;
+                // do NOT expose a mapped PBO after unmap().
+                for (int y = 0; y < job.height; ++y)
+                    std::memcpy(rgba.data() + std::size_t(y) * stride,
+                        src + std::size_t(job.height - y - 1) * stride, stride);
+                reason = gl->glUnmapBuffer(kPackBuffer)
+                    ? "OK" : "GPU_BUFFER_UNMAP_FAILED";
+                if (reason != "OK")
+                    rgba.clear();
+            } else {
+                reason = "PBO_MAP_FAILED";
+            }
+            gl->glBindBuffer(kPackBuffer, GLuint(oldPack));
+            cpuMapCopyMs = std::chrono::duration<double, std::milli>(
+                Clock::now() - copyStart).count();
+        } else if (reason == "NOT_STARTED") {
+            reason = "GPU_FENCE_750MS_TIMEOUT_OR_BAD_SIZE";
+        }
+        // Both objects are shared GL objects. Delete them HERE while the
+        // worker's shared context is current, never from a timer thread.
+        if (job.fence)
+            gl->glDeleteSync(job.fence);
+        job.fence = nullptr;
+        if (!keepResources && job.pbo)
+            gl->glDeleteBuffers(1, &job.pbo);
+        context->doneCurrent();
+        if (!keepResources) {
+            delete context;
+            job.shared = nullptr;
+        }
+    }
+};
+
+class FenceWorker final : public QThread, public FenceRetirement {
+protected:
+    void run() override { retire(); }
+};
+
+} // namespace ResearchGl
+
