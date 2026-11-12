@@ -809,9 +809,15 @@ private:
         // the old generation, clear the flag and build a fresh one. This is
         // what makes sceneGraphInvalidated -> new context work again instead
         // of permanently disabling the native provider.
-        const bool matches = existing && existingCtx && existingCtx->isValid()
+        // Only dereference existingCtx when no retirement was requested: the
+        // worker owns and deletes its context as soon as requestStop() lets
+        // it exit. After invalidation/stop that pointer may already be gone,
+        // so the short-circuit below is a hard use-after-free guard, not an
+        // optimisation.
+        const bool matches = !retireRequested && existing && existingCtx
+            && existingCtx->isValid()
             && existingCtx->shareGroup() == renderCtx->shareGroup();
-        if (matches && !retireRequested)
+        if (matches)
             return true;
         if (!surface)
             return false;
