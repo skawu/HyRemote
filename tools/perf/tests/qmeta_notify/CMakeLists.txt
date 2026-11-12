@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.21)
+project(HyRemoteQMetaNotifySmoke LANGUAGES CXX)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
+add_executable(hyremote-qmeta-notify-smoke main.cpp)
+target_link_libraries(hyremote-qmeta-notify-smoke PRIVATE Qt6::Core)
+target_compile_features(hyremote-qmeta-notify-smoke PRIVATE cxx_std_17)
