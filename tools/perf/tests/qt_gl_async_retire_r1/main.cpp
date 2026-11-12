@@ -349,14 +349,6 @@ int main(int argc, char **argv)
                                   Qt::QueuedConnection);
     };
 
-    // Qt render callbacks can execute on the scenegraph's dedicated thread.
-    // QCoreApplication::exit() is NOT thread-safe; always post the exit onto
-    // its GUI thread rather than calling it from the render callback.
-    const auto failFromRender = [&app](int code) {
-        QMetaObject::invokeMethod(&app, [&app, code] { app.exit(code); },
-                                  Qt::QueuedConnection);
-    };
-
     QObject::connect(&worker, &QThread::finished, &app, [&] {
         worker.wait(); // synchronize ownership before inspecting its data
         const bool imageValid = pixelTruth(worker);
