@@ -244,6 +244,21 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
     endif()
 endif()
 
+# Private experiment only: the Automatic owner may bind explicitly opted-in
+# QQuickView root NOTIFY properties to its real Surface ID, never a process scan.
+# Full Generic transparent scene-dirty detection is NOT implied. OFF by default.
+option(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY
+    "TEST ONLY: source-owned per-Surface QML property wake for Automatic/Generic" OFF)
+if(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+    if(NOT HYREMOTE_REMOTEACCESS_WITH_QUICK OR NOT HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE)
+        message(FATAL_ERROR
+            "Per-Surface semantic NOTIFY pilot requires Qt6 Quick and Automatic runtime")
+    endif()
+    target_compile_definitions(hyremote-remoteaccess PRIVATE
+        HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY=1)
+    message(WARNING "TEST ONLY per-Surface semantic NOTIFY pilot ON: NOT qualified for Generic release")
+endif()
+
 # #589 W2: the server-side watermark compositor paints text, so it is a real capability only where Qt Gui exists.
 # The macro is declared explicitly (never left undefined) so a build cannot silently claim a compositor it does
 # not contain; a build without Gui keeps refusing an enabled policy at start().

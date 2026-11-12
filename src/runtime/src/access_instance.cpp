@@ -627,6 +627,9 @@ struct AccessInstance::Impl
     RuntimeNotificationSink notifications;
     std::optional<AccessState> transitionState;
     std::shared_ptr<std::atomic<bool>> runActive;
+    // Non-owning reference to the current capture generation, never to the
+    // capture wrapper's QObject or to a stopped/rebound Session.
+    std::weak_ptr<ViewerCaptureDemand> currentSemanticSourceDemand;
     std::uint64_t lastFailureRevision = 0;
 
     // ---------------------------------------------------------------- #174 binding lifecycle
@@ -763,6 +766,7 @@ struct AccessInstance::Impl
 
     void shutdownRuntime() noexcept
     {
+        currentSemanticSourceDemand.reset(); // revoke old generation before stop
         // The run stops being active before anything is torn down, so a callback that belongs to this
         // run can no longer change the client count or publish a notification - including the last
         // one, which the caller publishes itself after the teardown.
@@ -1221,6 +1225,18 @@ void AccessInstance::reconcileInterfaceBinding()
         m_impl->reconcileBinding();
 }
 
+void AccessInstance::notifySemanticSourceInvalidation() noexcept
+{
+    // Called only by an already validated GUI-thread Surface owner; it is a
+    // no-op between Sessions or after stop/rebind. The gate itself decides
+    // whether 0 viewers or RFB output backpressure permit new capture.
+    if (!m_impl || !m_impl->session || !m_impl->runActive
+        || !m_impl->runActive->load(std::memory_order_acquire))
+        return;
+    if (const auto demand = m_impl->currentSemanticSourceDemand.lock())
+        demand->noteSourceInvalidation();
+}
+
 void AccessInstance::stop() noexcept
 {
     if (!m_impl)
@@ -1671,6 +1687,7 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 
     inputSink = std::move(freshInputSink);
     session = std::move(freshSession);
+    currentSemanticSourceDemand = viewerDemand;
     return true;
 }
 

@@ -73,6 +73,12 @@ public:
     bool start();
     void stop() noexcept;
 
+    // Runtime-private, non-installed contract: a Surface owner has already
+    // validated a genuine semantic source event and exact membership.
+    // No Qt render-loop signal, process-level window discovery or public SDK
+    // semantics are added. With no active Session this is a no-op.
+    void notifySemanticSourceInvalidation() noexcept;
+
     AccessState state() const;
     std::size_t connectedClientCount() const noexcept;
     std::optional<Error> lastError() const;

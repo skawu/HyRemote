@@ -4,6 +4,12 @@
 #include "automatic/interactive_composite_target.hpp"
 #include "detail/runtime_diagnostics.hpp"
 #include "detail/watermark_policy.hpp"
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+#  include "automatic/surface_semantic_source_registry.hpp"
+#  include <QVariant>
+#  include <QtQuick/QQuickItem>
+#  include <QtQuick/QQuickView>
+#endif
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -56,6 +62,9 @@ struct AccessController::Impl final : QObject
 
     explicit Impl(AccessConfig config)
         : config(std::move(config))
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+        , semanticRegistry([this](quint64 id) { onOwnedSemanticSurfaceChange(id); })
+#endif
     {
     }
 
@@ -116,6 +125,16 @@ protected:
             raisePending.insert(watched);
             scheduleRefresh();
             break;
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+        case QEvent::DynamicPropertyChange:
+            // Do not refresh for arbitrary business dynamic properties:
+            // only source-registration metadata owned by a real Surface
+            // can affect the experimental subscription map.
+            if (static_cast<QDynamicPropertyChangeEvent *>(event)->propertyName()
+                == QByteArrayLiteral("hyremoteSemanticSourceProperties"))
+                scheduleRefresh();
+            break;
+#endif
         default:
             break;
         }
@@ -123,6 +142,63 @@ protected:
     }
 
 private:
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+    void onOwnedSemanticSurfaceChange(quint64 id)
+    {
+        if (!started || !access || !semanticRegistry.isWatching(id))
+            return;
+        // This ID must still belong to an Automatic composite surface.
+        bool currentMember = false;
+        for (auto it = surfaceIds.cbegin(); it != surfaceIds.cend(); ++it) {
+            if (it.value() == id && it.key()) {
+                currentMember = true;
+                break;
+            }
+        }
+        if (!currentMember)
+            return;
+
+        // This is a source notification, NOT proof that a fresh Qt grab or
+        // Viewer paint occurred. ViewerCaptureDemand may suppress it at 0V,
+        // under output backpressure, or when the session has stopped.
+        access->notifySemanticSourceInvalidation();
+        qInfo().noquote() << "HYREMOTE_TEST_AUTO_SEMANTIC_NOTIFY_SURFACE_ID=" << id;
+    }
+
+    void reconcileSemanticSource(quint64 id, QObject *target, bool visible)
+    {
+        if (!semanticRegistry.upsertSurface(id, target, visible))
+            return;
+        if (!visible) {
+            semanticRegistry.unwatchSource(id);
+            return;
+        }
+        // Explicit opt-in for the exact real QQuickView surface. Do NOT scan
+        // the process or assume Automatic's composite target is QQuickView.
+        // QQmlApplicationEngine/QQuickWindow applications are not covered.
+        auto *view = qobject_cast<QQuickView *>(target);
+        if (!view || !view->rootObject()
+            || view->rootObject()->window() != view) {
+            semanticRegistry.unwatchSource(id);
+            return;
+        }
+        const QStringList properties =
+            view->property("hyremoteSemanticSourceProperties").toStringList();
+        if (properties.isEmpty()) {
+            semanticRegistry.unwatchSource(id);
+            return;
+        }
+        const bool wasWatching = semanticRegistry.isWatching(id);
+        if (semanticRegistry.watchSource(id, view, view->rootObject(), properties)) {
+            if (!wasWatching)
+                qInfo().noquote() << "HYREMOTE_TEST_AUTO_SEMANTIC_SOURCE_CONNECTED_ID=" << id;
+        } else {
+            semanticRegistry.unwatchSource(id);
+            qWarning().noquote() << "HYREMOTE_TEST_AUTO_SEMANTIC_SOURCE_REJECTED_ID=" << id;
+        }
+    }
+#endif
+
     void scheduleRefresh()
     {
         if (!started || refreshQueued)
@@ -156,6 +232,9 @@ private:
             }
 
             compositeTarget->upsertSurface(id, target, surface.globalGeometry, surface.visible);
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+            reconcileSemanticSource(id, target, surface.visible);
+#endif
             if (surface.visible)
                 haveVisibleSurface = true;
 
@@ -166,6 +245,9 @@ private:
         for (auto it = surfaceIds.begin(); it != surfaceIds.end();) {
             if (!liveTargets.contains(it.key())) {
                 const quint64 removedId = it.value();
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+                semanticRegistry.removeSurface(removedId);
+#endif
                 compositeTarget->removeSurface(removedId);
                 if (activeSurfaceId && *activeSurfaceId == removedId) {
                     activeSurfaceId.reset();
@@ -365,6 +447,9 @@ private:
 
     void stopCurrent() noexcept
     {
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+        semanticRegistry.clear(); // before Session destruction and ID reset
+#endif
         // Stop live notifications before teardown; the final stopped snapshot is emitted synchronously
         // after Runtime quiescence so no queued worker notification can dereference a destroyed instance.
         unsubscribeDiagnostics();
@@ -466,6 +551,9 @@ private:
     }
 
     AccessConfig config;
+#if defined(HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY)
+    SurfaceSemanticSourceRegistry semanticRegistry;
+#endif
     std::unique_ptr<Runtime::AccessInstance> access;
     RuntimeNotificationToken diagnosticToken;
     std::shared_ptr<std::atomic<bool>> diagnosticRunActive;

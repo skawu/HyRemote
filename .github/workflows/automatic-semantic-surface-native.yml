@@ -1,0 +1,89 @@
+name: Windows Qt6.8.3 Automatic semantic Surface integration compile (TEST ONLY)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/automatic-semantic-surface-native.yml
+      - src/runtime/CMakeLists.txt
+      - src/runtime/src/access_instance.*
+      - src/runtime/src/automatic/automatic_access_controller.cpp
+      - src/runtime/src/automatic/surface_semantic_source_registry.hpp
+      - src/runtime/src/detail/viewer_capture_demand.hpp
+      - tools/perf/fixtures/windows_automatic_semantic/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-automatic-semantic-source:
+    name: Windows Qt6.8.3 MSVC Automatic/Generic source scoped - ${{ matrix.arm }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [OFF, ON]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Establish exact Qt 6.8.3 kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt6.8.3 Quick kit unavailable' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile actual Runtime + Generic plugin with proven ON/OFF configuration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arm = '${{ matrix.arm }}'
+          $build = 'build-automatic-semantic-' + $arm.ToLowerInvariant()
+          $source = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $source -ne '${{ github.event.pull_request.head.sha || github.sha }}') {
+            throw "Wrong source SHA: $source"
+          }
+          $tree = Join-Path $env:RUNNER_TEMP ("quick-automatic-" + $arm)
+          git worktree add --detach $tree $source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/fixtures/windows_automatic_semantic/apply_fixture.py --worktree $tree --fixture tools/perf/fixtures/windows_automatic_semantic/Main.qml --manifest (Join-Path $env:RUNNER_TEMP ("quick-automatic-" + $arm + "-identity.json"))
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location $tree
+          try {
+            & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY=$arm"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $cache = Join-Path $tree "$build/CMakeCache.txt"
+          if (!(Test-Path $cache)) { throw 'CMakeCache.txt missing: cannot certify test configuration' }
+          $setting = @(Get-Content $cache | Where-Object {
+            $_ -match '^HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY:BOOL='
+          })
+          if ($setting.Count -ne 1 -or $setting[0] -ne "HYREMOTE_EXPERIMENTAL_AUTOMATIC_SEMANTIC_NOTIFY:BOOL=$arm") {
+            throw "Compiled CMake feature flag mismatch expected=$arm actual=$($setting -join ', ')"
+          }
+          $binary = Get-ChildItem -Path (Join-Path $tree $build) -Recurse -File -Filter 'HyRemoteRemoteAccess.dll' | Select-Object -First 1
+          if (!$binary) { throw 'Actual Shared Runtime DLL absent' }
+          Write-Host "GENERIC_SURFACE_NOTIFY_BUILD=PASS ARM=$arm SOURCE_SHA=$source CONFIG=$($setting[0])"
