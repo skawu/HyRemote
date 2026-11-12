@@ -22,3 +22,4 @@
 - [Qt 技术判断以精确版本 Qt 源码为最高依据](feedback_qt_source_first.md) — 用 C:\Qt\6.8.3\Src\qtbase / qtbase v5.15.2，不靠文章论坛；标注源码证实/推断
 - [本机 #949/Qt 验证夹具与环境要点](feedback_win949_local_harness.md) — MSVC14.44/cl 直用、Ninja/CMake 入 PATH、Qt Kit、HYREMOTE_ENABLE_CPU_PROBE、Qt6 Gui/Qt5 API
 - [固定 SHA 证据/性能矩阵长任务的落地方式](feedback_fixed_sha_evidence_runs.md) — checkout 建 tmp worktree、工具按字节恢复、统计内联复算、脚本必须登记 script_inventory
+- [长任务收尾优先交付，不被本地全量套件反复拖住](feedback_delivery_over_local_suite.md) — 一次状态确认即提 PR 交 CI，禁止循环轮询与重复全套
