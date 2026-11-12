@@ -66,28 +66,7 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
 #endif
         break;
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    // Qt 5.15 has both the default direct-GL scenegraph and opt-in early
-    // RHI graphics APIs. Never refer to Qt6 enum names in a Qt5 build.
-    case QSGRendererInterface::Direct3D12Rhi:
-        backend = QuickCaptureBackend::Direct3D12;
-        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
-        break;
-    case QSGRendererInterface::OpenGLRhi:
-        backend = QuickCaptureBackend::OpenGL;
-        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
-        break;
     case QSGRendererInterface::Direct3D11Rhi:
-        backend = QuickCaptureBackend::Direct3D11;
-        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
-        break;
-    case QSGRendererInterface::VulkanRhi:
-        backend = QuickCaptureBackend::Vulkan;
-        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
-        break;
-    case QSGRendererInterface::MetalRhi:
-        backend = QuickCaptureBackend::Metal;
-        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
-        break;
 #else
     case QSGRendererInterface::Direct3D11:
 #endif
