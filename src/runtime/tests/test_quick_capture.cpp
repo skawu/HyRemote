@@ -2017,6 +2017,7 @@ void runPublicQuickProfile()
 
 }  // namespace
 
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
 // #962 review B1/B2: real offscreen GL session. One PBO allocation is reused
 // by a second request, then a simulated scene-graph invalidation retires the
 // worker and a second generation must produce fresh pixels. This is the
@@ -2049,7 +2050,7 @@ void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
 // #962 review B2: the real public Qt signal (not a manually flipped flag)
 // must revoke an admitted GlPbo request exactly once and leave the source
 // stoppable without a render frame.
-void testQuickGlPboRealSceneGraphInvalidationSignal()
+void testQuickGlPboRealSceneGraphInvalidationSignal(bool requireGl)
 {
     QQuickWindow window;
     auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
@@ -2061,6 +2062,13 @@ void testQuickGlPboRealSceneGraphInvalidationSignal()
                 ++terminal;
         },
         [](const hyremote::CaptureEvent &) {});
+    if (!started) {
+        std::cerr << "WIN962_INVALIDATION_SIGNAL=SKIP detail=start-unavailable"
+                  << std::endl;
+        if (requireGl)
+            CHECK(started);
+        return;
+    }
     CHECK(started);
     CHECK(source->requestFrame({501, hyremote::Clock::now()}));
     QCoreApplication::processEvents(); // installs the DirectConnection
@@ -2073,6 +2081,7 @@ void testQuickGlPboRealSceneGraphInvalidationSignal()
     CHECK(terminal.load() == 1);
     source->stop();
 }
+#endif // HYREMOTE_TEST_QUICK_GL_PBO
 
 int main(int argc, char **argv)
 {
@@ -2080,17 +2089,21 @@ int main(int argc, char **argv)
     // Dedicated Linux xcb/Xvfb lane: the offscreen QPA used by the normal
     // Quick suite cannot create a desktop GL context, so reuse/recovery must
     // have its own native-platform registration.
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
         testQuickGlPboSessionReuseAndInvalidationRecovery(true);
-        testQuickGlPboRealSceneGraphInvalidationSignal();
+        testQuickGlPboRealSceneGraphInvalidationSignal(true);
         HyRemote::detail::resetFactories();
         if (failures != 0)
             std::cerr << failures << " GL PBO session checks failed\n";
         return failures == 0 ? 0 : 1;
     }
+#endif
     testQuickProfileClockDoesNotMeasureSleepAsCpu();
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     testQuickGlPboSessionReuseAndInvalidationRecovery(false);
-    testQuickGlPboRealSceneGraphInvalidationSignal();
+    testQuickGlPboRealSceneGraphInvalidationSignal(false);
+#endif
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();
         HyRemote::detail::resetFactories();

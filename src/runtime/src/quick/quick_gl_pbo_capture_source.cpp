@@ -53,7 +53,6 @@ constexpr GLenum kTimedOut = 0x911B; // GL_TIMEOUT_EXPIRED
 constexpr GLenum kSatisfied = 0x911C; // GL_CONDITION_SATISFIED
 constexpr GLenum kWaitFailed = 0x911D; // GL_WAIT_FAILED
 
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
 // #962 review B1/B2: observable session counters. They are test-only and
 // never affect the production path; the self-test below drives the same
 // allocation/reuse/worker-generation mechanism the capture source uses.
@@ -62,7 +61,6 @@ std::atomic<unsigned> g_quickGlPboReuses{0};
 std::atomic<unsigned> g_quickGlPboWorkersCreated{0};
 std::atomic<unsigned> g_quickGlPboWorkersRetired{0};
 std::atomic<unsigned> g_quickGlPboInvalidations{0};
-#endif
 
 // Give the application's normal Qt render loop one frame opportunity before
 // requesting a new render solely for a remote Viewer. The render callback
@@ -413,9 +411,7 @@ public:
             worker->requestStop();
             worker->wait();
             delete worker;
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
             ++g_quickGlPboWorkersRetired;
-#endif
         }
         // QOffscreenSurface destroy() must happen on the GUI thread.
         if (surface) {
@@ -622,9 +618,7 @@ private:
                 s->retireWorker->requestStop();
                 s->workerStopRequested = true;
             }
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
             ++g_quickGlPboInvalidations;
-#endif
             s->sharedContext = nullptr;
             s->gpuPending = false;
             s->pbo = 0;
@@ -825,9 +819,7 @@ private:
             existing->requestStop();
             existing->wait();
             delete existing;
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
             ++g_quickGlPboWorkersRetired;
-#endif
             std::lock_guard<std::mutex> guard(s->mutex);
             if (s->retireWorker == existing)
                 s->retireWorker = nullptr;
@@ -867,9 +859,7 @@ private:
             s->sharedContext = shared;
             s->retireWorker = worker;
             ++s->contextEpoch;
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
             ++g_quickGlPboWorkersCreated;
-#endif
         }
         worker->start();
         return true;
@@ -1114,14 +1104,10 @@ private:
                             if (resizePbo) {
                                 s->pboCapacityBytes = wantedBytes;
                                 HYREMOTE_P1_COUNT(QuickGlPboResize);
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
                                 ++g_quickGlPboAllocations;
-#endif
                             } else {
                                 HYREMOTE_P1_COUNT(QuickGlPboReuse);
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
                                 ++g_quickGlPboReuses;
-#endif
                             }
                             gl->glFlush();
                             s->pixelWidth = w;
@@ -1188,7 +1174,6 @@ private:
 };
 } // namespace
 
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
 unsigned quickGlPboInvalidationCount()
 {
     return g_quickGlPboInvalidations.load();
@@ -1420,7 +1405,6 @@ QuickGlPboSessionSelfTest runQuickGlPboSessionSelfTest()
     out.detail = out.ok ? "PASS" : "FAIL";
     return out;
 }
-#endif
 
 std::unique_ptr<hyremote::CaptureSource>
 createExperimentalQuickGlPboCaptureSource(QQuickWindow *window)

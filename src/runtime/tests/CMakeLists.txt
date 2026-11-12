@@ -465,6 +465,11 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
             Qt6::Quick
     )
     target_include_directories(hyremote-quick-capture-test PRIVATE ../src)
+    if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+        # The GL PBO session hooks only exist when the experimental provider
+        # is compiled; never reference them from a default-off build.
+        target_compile_definitions(hyremote-quick-capture-test PRIVATE HYREMOTE_TEST_QUICK_GL_PBO=1)
+    endif()
     add_test(NAME hyremote-quick-capture-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"

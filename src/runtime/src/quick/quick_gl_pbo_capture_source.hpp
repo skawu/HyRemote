@@ -1,7 +1,14 @@
 #pragma once
 
 #include "hyremote/core/capture_source.hpp"
-#include <HyRemote/RemoteAccessExport.h>
+// The generated export header exists in the Runtime build tree, but the
+// standalone GL-RHI fixture compiles this source directly. Only include it
+// when the build actually provides it; without it the hooks are internal.
+#if defined(__has_include)
+#  if __has_include(<HyRemote/RemoteAccessExport.h>)
+#    include <HyRemote/RemoteAccessExport.h>
+#  endif
+#endif
 #include <memory>
 #include <string>
 
@@ -9,7 +16,12 @@ class QQuickWindow;
 
 namespace HyRemote::detail {
 
-#if defined(HYREMOTE_ENABLE_PRIVATE_TEST_EXPORTS)
+// This translation unit is built only for the experimental, default-OFF GL
+// PBO provider. Its observability seam is therefore part of that TEST-ONLY
+// provider, not the product ABI. Use the DLL export macro when the Runtime
+// build provides it; the standalone GL-RHI fixture has no export header and
+// compiles the same source with plain internal linkage.
+#if defined(HYREMOTE_REMOTEACCESS_EXPORT)
 #  define HYREMOTE_QUICK_GL_TEST_EXPORT HYREMOTE_REMOTEACCESS_EXPORT
 #else
 #  define HYREMOTE_QUICK_GL_TEST_EXPORT
