@@ -434,8 +434,14 @@ private:
             if (!state->active)
                 return;
             for (auto &entry : state->pending) {
-                if (entry.second.expected.erase(id) > 0)
+                if (entry.second.expected.erase(id) > 0) {
+                    // A surface removed/hidden while another async child is
+                    // pending may already have produced a frame. Dropping its
+                    // expected token alone is insufficient: the old frame
+                    // would still be composited under the current request ID.
+                    entry.second.frames.erase(id);
                     mayComplete.push_back(entry.first);
+                }
             }
         }
         for (hyremote::CaptureRequestId requestId : mayComplete)
