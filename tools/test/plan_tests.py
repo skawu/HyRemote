@@ -51,10 +51,16 @@ def select(registry: dict, files: list[str], gate: str, source_sha: str, issue: 
     for file in sorted(set(files)):
         if not file or file.startswith("/") or ".." in Path(file).parts:
             raise ValueError("Invalid changed file path")
-        rules = [
-            rule for rule in registry["rules"]
-            if any(file.startswith(prefix) for prefix in rule["prefixes"])
+        candidates = [
+            (len(prefix), rule)
+            for rule in registry["rules"]
+            for prefix in rule["prefixes"]
+            if file.startswith(prefix)
         ]
+        # A specific Quick/RFB prefix overrides the generic Runtime family;
+        # independent rules with equally specific paths still combine.
+        specificity = max((length for length, _ in candidates), default=0)
+        rules = [rule for length, rule in candidates if length == specificity]
         if not rules:
             unclassified.append(file)
         else:
@@ -86,6 +92,7 @@ def self_test(registry: dict) -> None:
     quick = select(registry, ["src/runtime/src/quick/quick_gl_pbo_capture_source.cpp"], "G1", sha, "967")
     assert "hyremote-runtime-dll-lifecycle-test" in quick["case_ids"]
     assert "hyremote-quick-capture-test" in quick["case_ids"]
+    assert "hyremote-runtime-diagnostics-test" not in quick["case_ids"]
     assert quick["status"] == "ADVISORY" and not quick["execution_allowed"]
     assert quick["plan_hash"] == select(registry, quick["changed_files"], "G1", sha, "967")["plan_hash"]
     docs = select(registry, ["docs/internal/evidence/sample.md"], "G1", sha, "970")
