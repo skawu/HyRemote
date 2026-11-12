@@ -1,6 +1,6 @@
 #pragma once
 
-// Qt Quick capture-route policy, not a hardware/OS whitelist. All Qt 6
+// Qt Quick capture-route policy, not a hardware/OS whitelist. All supported
 // scenegraph APIs are served by Qt's public QQuickItem::grabToImage contract.
 // A graphics API name is diagnostic context only: it never grants permission
 // to use an unqualified private QRhi readback experiment.
@@ -35,18 +35,33 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
         backend = QuickCaptureBackend::Software;
         break;
     case QSGRendererInterface::OpenGL:
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    case QSGRendererInterface::OpenGLRhi:
+#endif
         backend = QuickCaptureBackend::OpenGL;
         break;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    case QSGRendererInterface::Direct3D11Rhi:
+#else
     case QSGRendererInterface::Direct3D11:
+#endif
         backend = QuickCaptureBackend::Direct3D11;
         break;
     case QSGRendererInterface::Direct3D12:
         backend = QuickCaptureBackend::Direct3D12;
         break;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    case QSGRendererInterface::VulkanRhi:
+#else
     case QSGRendererInterface::Vulkan:
+#endif
         backend = QuickCaptureBackend::Vulkan;
         break;
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    case QSGRendererInterface::MetalRhi:
+#else
     case QSGRendererInterface::Metal:
+#endif
         backend = QuickCaptureBackend::Metal;
         break;
     default:
