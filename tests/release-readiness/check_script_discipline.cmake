@@ -41,6 +41,7 @@ set(_planned_prefixes
     "src/integrations/cpp/tests/"
     "tests/"
     "tools/perf/"
+    "tools/test/"
     "tools/local-owner/"
 )
 set(_planned_root_files "build.cmd")
@@ -95,6 +96,7 @@ endfunction()
 # Positive/negative self-test: the classifier itself must not silently pass.
 if(HYREMOTE_SCRIPT_SELF_TEST)
     _script_discipline_assert("tools/perf/aggregate_cpu_probe.py" "OK")
+    _script_discipline_assert("tools/test/plan_tests.py" "OK")
     _script_discipline_assert("tests/preflight/run_vencrypt_interop_probe.py" "OK")
     _script_discipline_assert(".github/scripts/resolve-ci-scope.py" "OK")
     _script_discipline_assert("cmake/HyRemoteQtKitPrompt.cmd" "OK")
@@ -105,7 +107,7 @@ if(HYREMOTE_SCRIPT_SELF_TEST)
     _script_discipline_assert("probe.py" "REJECT")
     _script_discipline_assert("fg0.cmd" "REJECT")
     _script_discipline_assert("evidence/run.py" "REJECT")
-    message(STATUS "script-discipline self-test PASS (6 positive, 5 negative)")
+    message(STATUS "script-discipline self-test PASS (7 positive, 5 negative)")
     return()
 endif()
 
