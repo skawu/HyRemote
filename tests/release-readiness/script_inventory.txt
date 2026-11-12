@@ -15,6 +15,9 @@ build.cmd
 cmake/HyRemoteQtKitPrompt.cmd
 cmake/HyRemoteQtKitPrompt.sh
 docs/check_ai_flavor.py
+docs/internal/evidence/962-realvnc-matrix/measure.py
+docs/internal/evidence/962-realvnc-matrix/measure_matrix.py
+docs/internal/evidence/962-realvnc-matrix/run_fixed_matrix.ps1
 src/integrations/cpp/tests/rfb_product_fit.py
 tests/consumer-installed-qpa/product_fit.py
 tests/physical_input_agent.py
