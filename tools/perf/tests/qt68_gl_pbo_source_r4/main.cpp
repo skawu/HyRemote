@@ -190,6 +190,9 @@ int main(int argc, char **argv)
     int currentW = kW;
     int currentH = kH;
     bool resized = false;
+#if !defined(HYREMOTE_R4_D3D11)
+    bool pboCleanupWhileWindowAlive = false;
+#endif
 
     std::function<void()> dispatchNext;
     std::function<void()> finishCase;
@@ -260,7 +263,11 @@ int main(int argc, char **argv)
                 const bool valid = errors == 0 && staleCallbacks == 0
                     && completed == kPhases && restarts == 2
                     && seenRequestIds.size() == kPhases
-                    && hiddenUnavailableEvents == 1 && hiddenTerminalFrames == 1;
+                    && hiddenUnavailableEvents == 1 && hiddenTerminalFrames == 1
+#if !defined(HYREMOTE_R4_D3D11)
+                    && pboCleanupWhileWindowAlive
+#endif
+                    ;
                 std::cout << "R4_RESULT_JSON={"
                     << "\"qt\":\"" << QT_VERSION_STR << "\","
 #if defined(HYREMOTE_R4_D3D11)
@@ -286,6 +293,10 @@ int main(int argc, char **argv)
 
                     << "\"hidden_terminal_remote_frames\":" << hiddenTerminalFrames << ","
                     << "\"late_callbacks_after_stop\":" << staleCallbacks << ","
+#if !defined(HYREMOTE_R4_D3D11)
+                    << "\"pbo_cleanup_while_window_alive\":"
+                    << (pboCleanupWhileWindowAlive ? "true" : "false") << ","
+#endif
                     << "\"errors\":" << errors << ","
                     << "\"qualified_for_product\":false"
                     << "}\nR4_VERDICT="
@@ -315,6 +326,15 @@ int main(int argc, char **argv)
         if (completed == 6 && restarts == 1) {
             intentionallyStopped = true;
             source->stop();
+#if !defined(HYREMOTE_R4_D3D11)
+            // Assert immediately: the application window remains visible,
+            // and Qt has not rendered a retirement frame after stop().
+            const auto resources = HyRemote::detail::quickGlPboResourceCounts();
+            pboCleanupWhileWindowAlive = window.isVisible()
+                && resources.buffersCreated > 0
+                && resources.buffersCreated == resources.buffersDeleted
+                && resources.workersCreated == resources.workersRetired;
+#endif
             ++restarts;
             QTimer::singleShot(70, &app, [&] {
                 intentionallyStopped = false;

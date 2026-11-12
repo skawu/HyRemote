@@ -59,6 +59,14 @@ runQuickGlPboSessionSelfTest();
 HYREMOTE_QUICK_GL_TEST_EXPORT unsigned quickGlPboInvalidationCount();
 HYREMOTE_QUICK_GL_TEST_EXPORT bool runQuickGlPboBatchOwnershipRegression();
 
+struct QuickGlPboResourceCounts {
+    unsigned buffersCreated;
+    unsigned buffersDeleted;
+    unsigned workersCreated;
+    unsigned workersRetired;
+};
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboResourceCounts quickGlPboResourceCounts();
+
 // P1 (#962 review): inject a 5s retire delay, then requestStop+wait. Proves
 // stop() is bounded by the worker's abort check, not by the 750ms fence
 // ceiling or an unbounded join.
@@ -66,6 +74,7 @@ struct QuickGlPboStopProbe {
     bool ran = false;
     bool ok = false;
     bool timedOut = false;
+    bool bufferDeleted = false;
     double joinMs = 0;
     std::string detail;
 };

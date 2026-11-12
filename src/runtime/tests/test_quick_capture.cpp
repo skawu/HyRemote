@@ -2097,6 +2097,7 @@ void testQuickGlPboStopIsBounded(bool requireGl)
         return;
     }
     CHECK(!probe.timedOut);
+    CHECK(probe.bufferDeleted);
     CHECK(probe.ok);
     std::cerr << "WIN962_STOP_PROBE=" << probe.detail
               << " join_ms=" << probe.joinMs << std::endl;

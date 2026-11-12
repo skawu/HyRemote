@@ -1,7 +1,7 @@
 // EXPERIMENTAL, default OFF. Uses Qt6.8 public OpenGL RHI callbacks and
 // PBO/fence facilities, not QtGuiPrivate, QRhi or platform-specific APIs.
-// NOT RELEASE QUALIFIED. A readable default framebuffer in afterFrameEnd is
-// verified on Mesa/Xvfb only; EGLFS/front-buffer semantics remain unverified.
+// NOT RELEASE QUALIFIED. Reads only a non-multisampled default framebuffer
+// before swap; other window targets retain the public Qt fallback.
 #include "quick/quick_gl_pbo_capture_source.hpp"
 #include "quick/quick_readback_timing.hpp"
 #include "quick/quick_readback_batch.hpp"
@@ -15,9 +15,11 @@
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QThread>
-#include <QThreadPool>
 #include <QTimer>
 #include <QtGlobal>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QQuickRenderTarget>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -45,6 +47,10 @@ namespace {
 
 constexpr GLenum kPackTarget = 0x88EB; // GL_PIXEL_PACK_BUFFER
 constexpr GLenum kPackBinding = 0x88ED; // GL_PIXEL_PACK_BUFFER_BINDING
+constexpr GLenum kReadFramebuffer = 0x8CAA; // GL_READ_FRAMEBUFFER_BINDING
+constexpr GLenum kPackRowLength = 0x0D02;
+constexpr GLenum kPackSkipRows = 0x0D03;
+constexpr GLenum kPackSkipPixels = 0x0D04;
 constexpr GLenum kStreamRead = 0x88E1; // GL_STREAM_READ
 constexpr GLenum kMapRead = 0x0001; // GL_MAP_READ_BIT
 constexpr GLenum kFenceGpu = 0x9117; // GL_SYNC_GPU_COMMANDS_COMPLETE
@@ -61,6 +67,7 @@ std::atomic<unsigned> g_quickGlPboBufferDataCalls{0};
 std::atomic<unsigned> g_quickGlPboReuses{0};
 std::atomic<unsigned> g_quickGlPboWorkersCreated{0};
 std::atomic<unsigned> g_quickGlPboWorkersRetired{0};
+std::atomic<unsigned> g_quickGlPboBuffersDeleted{0};
 std::atomic<unsigned> g_quickGlPboInvalidations{0};
 
 // Give the application's normal Qt render loop one frame opportunity before
@@ -70,10 +77,8 @@ std::atomic<unsigned> g_quickGlPboInvalidations{0};
 // 750ms terminal-outcome timer if the window cannot render.
 constexpr int kNormalFrameOpportunityMs = QuickReadbackTiming::normalFrameOpportunityMs;
 
-// Qt 5.15 direct OpenGL renders into its current framebuffer and exposes
-// screen-scraping via afterRendering() before swap. Qt 6 RHI has a different
-// submission lifecycle and uses afterFrameEnd(). This adapter is the ONLY
-// version-specific portion of the GL PBO provider.
+// Qt 5.15 direct OpenGL draws into the current target before afterRendering.
+// Qt 6 RHI flushes recorded work when entering external commands at that point.
 inline bool hasRequiredPboFenceApi(const QOpenGLContext *ctx) noexcept
 {
     if (!ctx)
@@ -111,6 +116,7 @@ struct GlRetireJob {
     float dpr = 1.f;
     hyremote::TimePoint renderTime{};
     std::uint64_t generation = 0;
+    std::uint64_t contextEpoch = 0;
 };
 
 struct GlRetireResult {
@@ -122,9 +128,22 @@ struct GlRetireResult {
 class GlRetireWorker final : public QThread {
 public:
     GlRetireWorker(QOpenGLContext *context, QOffscreenSurface *surface,
-                   std::function<void(GlRetireResult &&)> onResult)
-        : m_context(context), m_surface(surface), m_onResult(std::move(onResult))
+                   std::function<void(GlRetireResult &&)> onResult,
+                   std::function<void()> onReady = {})
+        : m_context(context), m_surface(surface), m_onResult(std::move(onResult)),
+          m_onReady(std::move(onReady))
     {
+    }
+
+    bool ready() const noexcept
+    {
+        return m_ready.load(std::memory_order_acquire)
+            && !m_abort.load(std::memory_order_acquire);
+    }
+
+    void ownBuffer(GLuint buffer) noexcept
+    {
+        m_ownedBuffer.store(buffer, std::memory_order_release);
     }
 
     void enqueue(GlRetireJob job)
@@ -164,6 +183,9 @@ protected:
         }
         auto *gl = m_context->extraFunctions();
         gl->initializeOpenGLFunctions();
+        m_ready.store(true, std::memory_order_release);
+        if (m_onReady)
+            m_onReady();
         for (;;) {
             GlRetireJob job;
             {
@@ -175,6 +197,13 @@ protected:
                 m_jobs.pop_front();
             }
             retireOne(gl, std::move(job));
+        }
+        m_ready.store(false, std::memory_order_release);
+        const GLuint buffer = m_ownedBuffer.exchange(0, std::memory_order_acq_rel);
+        if (buffer) {
+            gl->glDeleteBuffers(1, &buffer);
+            if (!gl->glIsBuffer(buffer))
+                ++g_quickGlPboBuffersDeleted;
         }
         m_context->doneCurrent();
         delete m_context;
@@ -270,11 +299,14 @@ private:
     QOpenGLContext *m_context = nullptr;
     QOffscreenSurface *m_surface = nullptr;
     std::function<void(GlRetireResult &&)> m_onResult;
+    std::function<void()> m_onReady;
     std::mutex m_mutex;
     std::condition_variable m_cv;
     std::deque<GlRetireJob> m_jobs;
     bool m_stop = false;
     std::atomic<bool> m_abort{false};
+    std::atomic<bool> m_ready{false};
+    std::atomic<GLuint> m_ownedBuffer{0};
     std::atomic<int> m_testDelayMs{0};
 };
 
@@ -286,11 +318,12 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         QPointer<QQuickWindow> window;
         std::uint64_t generation = 0;
         bool active = false;
+        bool windowBound = false;
         bool connected = false;
         bool kickPosted = false;
         bool fallbackRenderTimerArmed = false;
-        bool cleanupRequested = false;
         unsigned int callbacksInFlight = 0;
+        unsigned int renderCallbacksInFlight = 0;
         unsigned int cpuWorkersInFlight = 0;
         std::vector<hyremote::CaptureRequest> queued;
         std::vector<hyremote::CaptureRequest> inFlight;
@@ -304,22 +337,16 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         // QOpenGLContext is created on the Qt render thread, moved onto
         // retireWorker and deleted by that worker.
         QOffscreenSurface *offscreen = nullptr;
-        QOpenGLContext *sharedContext = nullptr;
-        GlRetireWorker *retireWorker = nullptr;
-        // At most one detached worker may be retiring. The render thread never
-        // joins it; a GUI-thread completion handler clears this slot and asks
-        // for one bounded resume frame. Keeping it to one also bounds the
-        // number of shared contexts alive across an invalidation.
-        GlRetireWorker *retiringWorker = nullptr;
+        std::unique_ptr<GlRetireWorker> retireWorker;
+        QPointer<QOpenGLContext> workerRenderContext;
+        QObject *dispatcher = nullptr;
+        QMetaObject::Connection workerFinished;
         std::uint64_t contextEpoch = 0;
         bool workerStopRequested = false;
-        bool stopTimedOut = false;
+        bool workerFailed = false;
         // All GL fields below may be ACCESSED ONLY in the render callback.
         GLuint pbo = 0;
         GLsync fence = nullptr;
-        // GL object names are meaningful ONLY in their creating Context.
-        // Qt may destroy that Context before an eventual delayed stop().
-        QPointer<QOpenGLContext> resourceContext;
         bool gpuPending = false;
         std::size_t pboCapacityBytes = 0; // render-thread-only under State mutex
         hyremote::TimePoint readbackRenderTime{};
@@ -329,21 +356,35 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         int pixelWidth = 0;
         int pixelHeight = 0;
         float dpr = 1.0f;
-        int forcedRenders = 0;
     };
 
-    // Prevent a queued/running conversion from surviving CaptureSource::stop()
-    // and subsequently executing code from an unloaded Runtime library.
-    // The worker count must retire even if normalization/reporting throws.
-    struct CpuWorkerDrainGuard {
-        std::shared_ptr<State> state;
-        ~CpuWorkerDrainGuard() noexcept
+    struct RenderCallbackGuard {
+        State &state;
+        bool entered = false;
+        explicit RenderCallbackGuard(State &s) : state(s)
         {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            --state->cpuWorkersInFlight;
-            state->drained.notify_all();
+            std::lock_guard<std::mutex> lock(state.mutex);
+            entered = state.active;
+            if (entered)
+                ++state.renderCallbacksInFlight;
+        }
+        ~RenderCallbackGuard()
+        {
+            if (!entered)
+                return;
+            std::lock_guard<std::mutex> lock(state.mutex);
+            --state.renderCallbacksInFlight;
+            state.drained.notify_all();
         }
     };
+
+    template<typename Callback>
+    static bool postToDispatcher(const std::shared_ptr<State> &s, Callback callback)
+    {
+        std::lock_guard<std::mutex> lock(s->mutex);
+        return s->active && s->dispatcher
+            && QMetaObject::invokeMethod(s->dispatcher, std::move(callback), Qt::QueuedConnection);
+    }
 
 public:
     explicit GlPboCaptureSource(QQuickWindow *window)
@@ -400,13 +441,13 @@ public:
             }
             s->offscreen = surface;
         }
+        s->dispatcher = new QObject;
         s->workerStopRequested = false;
+        s->workerFailed = false;
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
+        s->windowBound = true;
         s->active = true;
-        // Do NOT clear cleanupRequested from the previous generation here.
-        // Its fence/PBO objects belong to the Qt render thread and must
-        // retire there, before the new generation can reuse GL objects.
         return true;
     }
 
@@ -418,7 +459,7 @@ public:
         if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
             // P1 (#962 review): QOffscreenSurface and the session state are
             // GUI-thread owned. A worker/transport caller blocks here while
-            // the GUI thread performs the bounded stop; the GUI thread never
+            // the GUI thread performs the synchronous stop; the GUI thread never
             // blocks on itself.
             QMetaObject::invokeMethod(QCoreApplication::instance(),
                 [s] { stopOnGuiThread(s); }, Qt::BlockingQueuedConnection);
@@ -429,13 +470,20 @@ public:
 
     static void stopOnGuiThread(const std::shared_ptr<State> &s) noexcept
     {
-        GlRetireWorker *worker = nullptr;
-        GlRetireWorker *detached = nullptr;
+        std::unique_ptr<GlRetireWorker> worker;
         QOffscreenSurface *surface = nullptr;
+        QObject *dispatcher = nullptr;
         {
-            std::lock_guard<std::mutex> guard(s->mutex);
+            std::unique_lock<std::mutex> guard(s->mutex);
             s->active = false;
             ++s->generation;
+            QObject::disconnect(s->frameConnection);
+            QObject::disconnect(s->invalidatedConnection);
+            QObject::disconnect(s->workerFinished);
+            s->frameConnection = {};
+            s->invalidatedConnection = {};
+            s->workerFinished = {};
+            s->connected = false;
             s->queued.clear();
             s->inFlight.clear();
             s->converting.clear();
@@ -444,66 +492,26 @@ public:
             s->fallbackRenderTimerArmed = false;
             s->onFrame = {};
             s->onEvent = {};
-            s->cleanupRequested = true;
-            s->workerStopRequested = true;
-            worker = s->retireWorker;
-            s->retireWorker = nullptr;
-            detached = s->retiringWorker;
-            s->retiringWorker = nullptr;
-            s->sharedContext = nullptr; // the worker deletes its own context
-            s->gpuPending = false;
-            if (detached) {
-                // Its queued finished handler owns deletion and s->offscreen.
-                surface = nullptr;
-            } else {
-                surface = s->offscreen;
-                s->offscreen = nullptr;
-            }
+            s->drained.wait(guard, [&] { return s->renderCallbacksInFlight == 0; });
+            worker = std::move(s->retireWorker);
+            surface = std::exchange(s->offscreen, nullptr);
+            dispatcher = std::exchange(s->dispatcher, nullptr);
+            s->workerRenderContext.clear();
+            resetReadbackState(*s);
         }
-        std::vector<GlRetireWorker *> pending;
+
+        // Cancellation shortens fence polling. Never report quiescence while
+        // a driver call, CPU retirement, or Runtime worker can still execute.
         if (worker) {
             worker->requestStop();
-            // The worker aborts its fence poll on requestStop(); this 1s
-            // bound is a safety net, not the expected path.
-            if (worker->wait(1000)) {
-                worker->deleteLater();
-                ++g_quickGlPboWorkersRetired;
-            } else {
-                s->stopTimedOut = true;
-                pending.push_back(worker);
-            }
+            worker->wait();
+            worker.reset();
+            ++g_quickGlPboWorkersRetired;
         }
-        if (detached) {
-            // Never delete this worker here: the completion task connected in
-            // ensureSessionWorker owns it and the offscreen surface. Waiting
-            // here still bounds the caller and proves quiescence.
-            detached->requestStop();
-            detached->wait(1000);
-            if (!detached->isFinished())
-                s->stopTimedOut = true;
-            return;
-        }
-        if (pending.empty()) {
-            if (surface) {
-                surface->destroy();
-                delete surface;
-            }
-            return;
-        }
-        // A genuinely stuck worker is never deleted while running and its
-        // surface is destroyed only after the last worker is gone.
-        auto remaining = std::make_shared<std::atomic<int>>(int(pending.size()));
-        for (auto *w : pending) {
-            QObject::connect(w, &QThread::finished, QCoreApplication::instance(),
-                [w, surface, remaining] {
-                    w->wait();
-                    w->deleteLater();
-                    ++g_quickGlPboWorkersRetired;
-                    if (remaining->fetch_sub(1) == 1 && surface) {
-                        surface->destroy();
-                        delete surface;
-                    }
-                }, Qt::QueuedConnection);
+        delete dispatcher; // cancel pending GUI callbacks before unload
+        if (surface) {
+            surface->destroy();
+            delete surface;
         }
     }
 
@@ -524,7 +532,7 @@ public:
             // on the GUI thread without doing GL work; any later GPU
             // completion observes that its request was already revoked.
             const std::uint64_t requestGeneration = s->generation;
-            QTimer::singleShot(750, QCoreApplication::instance(), [s, requestGeneration, id = req.id] {
+            QTimer::singleShot(750, s->dispatcher, [s, requestGeneration, id = req.id] {
                 std::vector<hyremote::CaptureRequest> expired;
                 {
                     std::lock_guard<std::mutex> lock(s->mutex);
@@ -548,7 +556,7 @@ public:
             target = s->window;
             generation = s->generation;
         }
-        if (!QMetaObject::invokeMethod(target, [s, target, generation] {
+        if (!postToDispatcher(s, [s, target, generation] {
                 if (!target) return;
                 bool connectNow = false;
                 {
@@ -559,17 +567,10 @@ public:
                     if (connectNow) s->connected = true;
                 }
                 if (connectNow) {
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
                     s->frameConnection = QObject::connect(
                         target, &QQuickWindow::afterRendering, target,
                         [s, target] { onRender(s, target); },
                         Qt::DirectConnection);
-#else
-                    s->frameConnection = QObject::connect(
-                        target, &QQuickWindow::afterFrameEnd, target,
-                        [s, target] { onRender(s, target); },
-                        Qt::DirectConnection);
-#endif
                     s->invalidatedConnection = QObject::connect(
                         target, &QQuickWindow::sceneGraphInvalidated, target,
                         [s] { onInvalidated(s); },
@@ -592,7 +593,7 @@ public:
                     return;
                 }
                 requestFallbackRenderIfNoNormalFrame(s, target, generation);
-            }, Qt::QueuedConnection)) {
+            })) {
             // A failed GUI dispatch means this request was *rejected*:
             // Core will retry it. Remove its ID so a later dispatch cannot
             // also complete it. Other threads may already have received
@@ -631,14 +632,12 @@ private:
         // A quiet source still uses a bounded explicit update as fallback.
         if (!window)
             return;
-        {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != generation
-                || s->fallbackRenderTimerArmed)
-                return;
-            s->fallbackRenderTimerArmed = true;
-        }
-        QTimer::singleShot(kNormalFrameOpportunityMs, window.data(),
+        std::lock_guard<std::mutex> guard(s->mutex);
+        if (!s->active || s->generation != generation || !s->dispatcher
+            || s->fallbackRenderTimerArmed || s->queued.empty())
+            return;
+        s->fallbackRenderTimerArmed = true;
+        QTimer::singleShot(kNormalFrameOpportunityMs, s->dispatcher,
             [s, window, generation] {
                 bool needsFallbackRender = false;
                 {
@@ -657,28 +656,26 @@ private:
             });
     }
 
-    static void releaseGl(State &s, QOpenGLExtraFunctions *gl)
+    static void resetReadbackState(State &s)
     {
         // NEVER glDelete an old context's PBO name in the replacement
         // context: numeric names may alias unrelated Qt/driver resources.
         // If the original context disappeared, Qt/GL reclaimed those names.
         // The GLsync fence is owned by the session worker, never this state.
-        const bool ownsCurrentContext = s.resourceContext
-            && s.resourceContext.data() == QOpenGLContext::currentContext();
-        if (ownsCurrentContext && !s.gpuPending && s.pbo)
-            gl->glDeleteBuffers(1, &s.pbo);
+        // The worker owns deletion in the original share group.
         s.pbo = 0;
         s.fence = nullptr;
-        s.resourceContext = nullptr;
         s.gpuPending = false;
         s.pboCapacityBytes = 0;
         s.pixelWidth = 0;
         s.pixelHeight = 0;
-        s.forcedRenders = 0;
     }
 
-    static void onInvalidated(const std::shared_ptr<State> &s)
+    static void onInvalidated(const std::shared_ptr<State> &s, bool sceneGraph = true)
     {
+        RenderCallbackGuard callback(*s);
+        if (!callback.entered)
+            return;
         // If Qt has already destroyed the GL context, its objects are
         // reclaimed by context destruction. Do not touch an invalid context.
         std::vector<hyremote::CaptureRequest> revoked;
@@ -686,6 +683,7 @@ private:
         {
             std::lock_guard<std::mutex> guard(s->mutex);
             generation = s->generation;
+            ++s->contextEpoch;
             if (s->active) {
                 // A Scene Graph rebuild is a hard source-pixel epoch
                 // boundary. Do not carry an already queued/mapped request
@@ -707,14 +705,12 @@ private:
                 // it here could let the worker exit before a listener exists.
                 s->workerStopRequested = true;
             }
-            ++g_quickGlPboInvalidations;
-            s->sharedContext = nullptr;
+            if (sceneGraph)
+                ++g_quickGlPboInvalidations;
             s->gpuPending = false;
             s->pbo = 0;
             s->fence = nullptr;
             s->pboCapacityBytes = 0;
-            s->resourceContext = nullptr;
-            s->cleanupRequested = false;
             // A hidden/destroyed Scene Graph may never produce the stop
             // retirement frame. Qt has already reclaimed GL resources.
             if (!s->active && s->connected) {
@@ -727,7 +723,8 @@ private:
         }
         if (!revoked.empty())
             reportUnavailable(s, generation, std::move(revoked),
-                              "Qt GL Scene Graph surface invalidated");
+                              sceneGraph ? "Qt GL Scene Graph surface invalidated"
+                                         : "Qt GL render target is not qualified for direct readback");
     }
 
     static void reportUnavailable(const std::shared_ptr<State> &s,
@@ -735,9 +732,7 @@ private:
                                   std::vector<hyremote::CaptureRequest> requests,
                                   const char *reason)
     {
-        QObject *dispatcher = QCoreApplication::instance();
-        if (!dispatcher) return;
-        QMetaObject::invokeMethod(dispatcher,
+        postToDispatcher(s,
             [s, generation, requests = std::move(requests), reason] {
                 hyremote::FrameReadyHandler callback;
                 hyremote::CaptureEventHandler eventCallback;
@@ -774,25 +769,34 @@ private:
                     --s->callbacksInFlight;
                     s->drained.notify_all();
                 }
-            }, Qt::QueuedConnection);
+            });
     }
 
     static void reportFrame(const std::shared_ptr<State> &s,
                             std::uint64_t generation,
+                            std::uint64_t contextEpoch,
                             std::vector<hyremote::CaptureRequest> requests,
                             std::shared_ptr<const hyremote::FrameStorage> storage,
                             int width, int height, float dpr,
                             hyremote::TimePoint renderTime)
     {
-        QObject *dispatcher = QCoreApplication::instance();
-        if (!dispatcher) return;
-        QMetaObject::invokeMethod(dispatcher,
-            [s, generation, requests = std::move(requests),
+        postToDispatcher(s,
+            [s, generation, contextEpoch, requests = std::move(requests),
              storage = std::move(storage), width, height, dpr, renderTime] {
                 hyremote::FrameReadyHandler callback;
+                bool current = false;
                 {
                     std::lock_guard<std::mutex> guard(s->mutex);
                     if (!s->active || s->generation != generation) return;
+                    current = s->contextEpoch == contextEpoch;
+                    if (current && s->windowBound) {
+                        auto *window = s->window.data();
+                        const auto actualDpr = window ? captureWindowDpr(window) : 0;
+                        current = window && window->isVisible()
+                            && qRound(window->width() * actualDpr) == width
+                            && qRound(window->height() * actualDpr) == height
+                            && float(actualDpr) == dpr;
+                    }
                     callback = s->onFrame;
                     ++s->callbacksInFlight;
                 }
@@ -806,7 +810,8 @@ private:
                     prototype.geometry.planeCount = 1;
                     prototype.geometry.devicePixelRatio = dpr;
                     prototype.damage = hyremote::Damage::fullFrame();
-                    prototype.storage = storage;
+                    if (current)
+                        prototype.storage = storage;
                     // The content was produced during the actual Qt render,
                     // NOT when the GPU->CPU result arrived. Frame age must
                     // include fence retirement and worker conversion time.
@@ -827,12 +832,13 @@ private:
                     --s->callbacksInFlight;
                     s->drained.notify_all();
                 }
-            }, Qt::QueuedConnection);
+            });
     }
 
     static void finishCpuConversion(
         const std::shared_ptr<State> &s,
         std::uint64_t generation,
+        std::uint64_t contextEpoch,
         const std::shared_ptr<std::byte> &raw,
         int width, int height, float dpr,
         hyremote::TimePoint renderTime)
@@ -849,147 +855,96 @@ private:
         std::vector<hyremote::CaptureRequest> requests;
         {
             std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != generation)
+            if (!s->active || s->generation != generation || s->contextEpoch != contextEpoch)
                 return; // stop/restart revoked the work
             s->cpuConversionPending = false;
             requests.swap(s->converting); // timeout may already have retired IDs
         }
         if (!requests.empty()) {
             if (storage)
-                reportFrame(s, generation, std::move(requests),
+                reportFrame(s, generation, contextEpoch, std::move(requests),
                             std::move(storage), width, height, dpr, renderTime);
             else
                 reportUnavailable(s, generation, std::move(requests),
                                   "GL PBO CPU frame conversion failed");
         }
-        if (auto *app = QCoreApplication::instance()) {
-            QMetaObject::invokeMethod(app, [s, generation] {
-                QPointer<QQuickWindow> target;
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    if (!s->active || s->generation != generation)
-                        return;
-                    target = s->window;
-                }
-                requestFallbackRenderIfNoNormalFrame(s, target, generation);
-            }, Qt::QueuedConnection);
-        }
     }
 
-    static bool ensureSessionWorker(const std::shared_ptr<State> &s,
-                                    QQuickWindow *window,
-                                    QOpenGLContext *renderCtx)
+    enum class WorkerAdmission { Ready, Pending, Unavailable };
+
+    static WorkerAdmission ensureSessionWorker(const std::shared_ptr<State> &s,
+                                               QOpenGLContext *renderCtx)
     {
-        Q_UNUSED(window);
-        QOffscreenSurface *surface = nullptr;
-        GlRetireWorker *existing = nullptr;
-        QOpenGLContext *existingCtx = nullptr;
-        bool retireRequested = false;
-        GlRetireWorker *detached = nullptr;
-        bool alreadyRetiring = false;
-        {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            surface = s->offscreen;
-            existing = s->retireWorker;
-            existingCtx = s->sharedContext;
-            retireRequested = s->workerStopRequested;
-            alreadyRetiring = s->retiringWorker != nullptr;
-            if (!s->active)
-                return false;
+        std::lock_guard<std::mutex> guard(s->mutex);
+        if (!s->active || !s->offscreen || !s->dispatcher || s->workerFailed)
+            return WorkerAdmission::Unavailable;
+
+        if (s->retireWorker) {
+            if (s->workerStopRequested || s->workerRenderContext.data() != renderCtx) {
+                if (!s->workerStopRequested)
+                    ++s->contextEpoch;
+                s->workerStopRequested = true;
+                s->retireWorker->requestStop();
+                return WorkerAdmission::Pending;
+            }
+            return s->retireWorker->ready() ? WorkerAdmission::Ready : WorkerAdmission::Pending;
         }
-        // P1 (#962 review): this runs inside the Qt render callback. Never
-        // join the old worker here. Retire it asynchronously on the GUI
-        // thread and refuse to build a new generation until that worker has
-        // really finished, so two share groups never overlap.
-        if (alreadyRetiring)
-            return false;
-        const bool matches = !retireRequested && existing && existingCtx
-            && existingCtx->isValid()
-            && existingCtx->shareGroup() == renderCtx->shareGroup();
-        if (matches)
-            return true;
-        if (!surface)
-            return false;
-        if (existing) {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            if (s->retireWorker == existing)
-                s->retireWorker = nullptr;
-            s->retiringWorker = existing;
-            s->sharedContext = nullptr;
-            s->workerStopRequested = false;
-            s->gpuPending = false;
-            s->pbo = 0; // GL names belong to the old share group
-            s->pboCapacityBytes = 0;
-            s->resourceContext = nullptr;
-            detached = existing;
-        } else {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            s->workerStopRequested = false;
-        }
-        if (detached) {
-            // Connect before requestStop: a worker that exits immediately
-            // must not lose its finish notification. The render thread only
-            // detaches; join/deletion and the single resume frame happen on
-            // the GUI thread.
-            QMetaObject::invokeMethod(QCoreApplication::instance(), [s, detached] {
-                QObject::connect(detached, &QThread::finished,
-                    QCoreApplication::instance(), [s, detached] {
-                        detached->wait();
-                        detached->deleteLater();
-                        QOffscreenSurface *surface = nullptr;
-                        QPointer<QQuickWindow> target;
-                        std::uint64_t generation = 0;
-                        bool resume = false;
-                        {
-                            std::lock_guard<std::mutex> guard(s->mutex);
-                            if (s->retiringWorker == detached)
-                                s->retiringWorker = nullptr;
-                            s->drained.notify_all();
-                            resume = s->active;
-                            generation = s->generation;
-                            target = s->window;
-                            if (!resume) {
-                                surface = s->offscreen;
-                                s->offscreen = nullptr;
-                            }
-                        }
-                        ++g_quickGlPboWorkersRetired;
-                        if (!resume && surface) {
-                            surface->destroy();
-                            delete surface;
-                        }
-                        if (resume)
-                            requestFallbackRenderIfNoNormalFrame(s, target, generation);
-                    }, Qt::QueuedConnection);
-                detached->requestStop();
-            }, Qt::QueuedConnection);
-            return false; // this frame must not use the retiring generation
-        }
-        auto *shared = new QOpenGLContext;
+
+        auto shared = std::make_unique<QOpenGLContext>();
         shared->setFormat(renderCtx->format());
         shared->setShareContext(renderCtx);
-        if (!shared->create() || !QOpenGLContext::areSharing(renderCtx, shared)) {
-            delete shared;
-            return false;
-        }
-        auto *worker = new GlRetireWorker(
-            shared, surface,
-            [s](GlRetireResult &&result) { onRetireResult(s, std::move(result)); });
-        {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->workerStopRequested || s->retiringWorker) {
-                delete worker; // never started
-                delete shared;
-                return false;
-            }
-            shared->moveToThread(worker);
-            s->sharedContext = shared;
-            s->retireWorker = worker;
-            ++s->contextEpoch;
-            ++g_quickGlPboWorkersCreated;
-        }
-        worker->start();
-        return true;
+        if (!shared->create() || !QOpenGLContext::areSharing(renderCtx, shared.get()))
+            return WorkerAdmission::Unavailable;
+
+        const auto generation = s->generation;
+        auto worker = std::make_unique<GlRetireWorker>(
+            shared.get(), s->offscreen,
+            [s](GlRetireResult &&result) { onRetireResult(s, std::move(result)); },
+            [s, generation] {
+                postToDispatcher(s, [s, generation] {
+                    requestFallbackRenderIfNoNormalFrame(s, s->window, generation);
+                });
+            });
+        auto *identity = worker.get();
+        shared->moveToThread(identity);
+        if (shared->thread() != identity)
+            return WorkerAdmission::Unavailable;
+        s->workerFinished = QObject::connect(identity, &QThread::finished, s->dispatcher,
+            [s, identity, generation] {
+                std::unique_ptr<GlRetireWorker> finished;
+                std::vector<hyremote::CaptureRequest> revoked;
+                {
+                    std::lock_guard<std::mutex> lock(s->mutex);
+                    if (!s->active || s->generation != generation || s->retireWorker.get() != identity)
+                        return;
+                    if (!s->workerStopRequested) {
+                        s->workerFailed = true;
+                        revoked.swap(s->queued);
+                    }
+                    revoked.insert(revoked.end(), s->converting.begin(), s->converting.end());
+                    s->converting.clear();
+                    s->cpuConversionPending = false;
+                    finished = std::move(s->retireWorker);
+                    s->workerRenderContext.clear();
+                    s->workerStopRequested = false;
+                    resetReadbackState(*s);
+                }
+                finished->wait(); // already finished, on the GUI thread only
+                finished.reset();
+                ++g_quickGlPboWorkersRetired;
+                if (!revoked.empty())
+                    reportUnavailable(s, generation, std::move(revoked),
+                                      "Qt GL worker generation retired");
+                requestFallbackRenderIfNoNormalFrame(s, s->window, generation);
+            }, Qt::QueuedConnection);
+        identity->moveToThread(s->dispatcher->thread());
+        shared.release(); // the worker destroys its context on its own thread
+        s->workerRenderContext = renderCtx;
+        s->retireWorker = std::move(worker);
+        ++s->contextEpoch;
+        ++g_quickGlPboWorkersCreated;
+        identity->start(); // publish and start under the same ownership lock
+        return WorkerAdmission::Pending;
     }
 
     static bool canSubmitQueuedReadback(const State &state)
@@ -1004,7 +959,8 @@ private:
         std::vector<hyremote::CaptureRequest> revoked;
         {
             std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != result.job.generation) {
+            if (!s->active || s->generation != result.job.generation
+                || s->contextEpoch != result.job.contextEpoch) {
                 if (s->cpuWorkersInFlight > 0)
                     --s->cpuWorkersInFlight;
                 s->drained.notify_all();
@@ -1024,7 +980,7 @@ private:
         if (result.pixels) {
             if (beforeCpuAdoption)
                 beforeCpuAdoption(s);
-            finishCpuConversion(s, result.job.generation,
+            finishCpuConversion(s, result.job.generation, result.job.contextEpoch,
                                 result.pixels, result.job.width, result.job.height,
                                 result.job.dpr, result.job.renderTime);
         } else if (!revoked.empty()) {
@@ -1037,55 +993,17 @@ private:
                 --s->cpuWorkersInFlight;
             s->drained.notify_all();
         }
-        if (auto *app = QCoreApplication::instance()) {
-            QMetaObject::invokeMethod(app, [s, gen = result.job.generation] {
-                QPointer<QQuickWindow> target;
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    if (!s->active || s->generation != gen)
-                        return;
-                    target = s->window;
-                }
-                requestFallbackRenderIfNoNormalFrame(s, target, gen);
-            }, Qt::QueuedConnection);
-        }
-    }
-
-    static void requestOneRetirementRender(const std::shared_ptr<State> &s,
-                                           QQuickWindow *window,
-                                           std::uint64_t generation)
-    {
-        // At most two extra renders per submitted GPU readback. Never
-        // continuously redraw a static application to wait for a fence.
-        int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
-        {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != generation
-                || !s->gpuPending
-                || s->forcedRenders >= QuickReadbackTiming::maxExtraRenders)
-                return;
-            if (s->forcedRenders > 0)
-                delayMs = QuickReadbackTiming::secondRetirementRenderMs;
-        }
-        QTimer::singleShot(delayMs, window, [s, window, generation] {
-            bool shouldRender = false;
-            {
-                std::lock_guard<std::mutex> guard(s->mutex);
-                if (s->active && s->generation == generation
-                    && s->gpuPending && s->forcedRenders < 2) {
-                    ++s->forcedRenders;
-                    shouldRender = true;
-                }
-            }
-            if (shouldRender) {
-                HYREMOTE_P1_COUNT(QuickGlRetirementRender);
-                window->update();
-            }
+        postToDispatcher(s, [s, gen = result.job.generation] {
+            requestFallbackRenderIfNoNormalFrame(s, s->window, gen);
         });
     }
 
+
     static void onRender(const std::shared_ptr<State> &s, QQuickWindow *window)
     {
+        RenderCallbackGuard callback(*s);
+        if (!callback.entered)
+            return;
         auto *ctx = QOpenGLContext::currentContext();
         // The provider was qualified by Qt's declared graphics API, but
         // actual GL/ES context capabilities are only authoritative here on
@@ -1109,8 +1027,12 @@ private:
                 // No GL resource operations are safe without the qualified
                 // context. Retire stale PBO/fence objects ONLY when the
                 // next valid GL context enters this render callback.
-                s->gpuPending = false;
-                s->cleanupRequested = true;
+                if (s->retireWorker) {
+                    if (!s->workerStopRequested)
+                        ++s->contextEpoch;
+                    s->workerStopRequested = true;
+                    s->retireWorker->requestStop();
+                }
             }
             if (!unsupported.empty())
                 reportUnavailable(s, generation, std::move(unsupported),
@@ -1118,11 +1040,33 @@ private:
             return;
         }
         auto *gl = ctx->extraFunctions();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        if (!window->renderTarget().isNull()) {
+            onInvalidated(s, false);
+            return;
+        }
+        window->beginExternalCommands();
+        struct ExternalCommands {
+            QQuickWindow *window;
+            ~ExternalCommands() { window->endExternalCommands(); }
+        } externalCommands{window};
+#endif
+        GLint readFramebuffer = -1;
+        GLint samples = -1;
+        gl->glGetIntegerv(kReadFramebuffer, &readFramebuffer);
+        gl->glGetIntegerv(GL_SAMPLE_BUFFERS, &samples);
+        if (readFramebuffer != 0 || samples != 0) {
+            onInvalidated(s, false);
+            return;
+        }
         HYREMOTE_P1_SCOPE(QuickGlRenderCallback);
         // The session worker is created once per (window, Qt render context).
         // If its shared context cannot be qualified, fall back immediately
         // instead of entering the 750ms terminal path.
-        if (!ensureSessionWorker(s, window, ctx)) {
+        const auto workerAdmission = ensureSessionWorker(s, ctx);
+        if (workerAdmission == WorkerAdmission::Pending)
+            return;
+        if (workerAdmission == WorkerAdmission::Unavailable) {
             std::vector<hyremote::CaptureRequest> unsupported;
             std::uint64_t generation = 0;
             {
@@ -1147,44 +1091,17 @@ private:
         }
         std::vector<hyremote::CaptureRequest> failed;
         std::uint64_t gen = 0;
-        bool kickAgain = false;
         const char *failureReason = "GL PBO frame readback unavailable";
         {
             std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->gpuPending && s->pbo
-                && (!s->resourceContext || s->resourceContext.data() != ctx)) {
-                // Missing sceneGraphInvalidated is not permission to reuse
-                // stale GPU objects from an unrelated Qt GL context.
-                gen = s->generation;
-                failed.swap(s->inFlight);
-                failureReason = "Qt OpenGL context changed during GPU readback";
-                releaseGl(*s, gl); // safe: drops mismatched names without glDelete
-                s->cleanupRequested = false;
-                kickAgain = !s->queued.empty();
-            }
-            if (!s->gpuPending && s->cleanupRequested) {
-                releaseGl(*s, gl);
-                s->cleanupRequested = false;
-            }
             // B1 (#962 review): an idle, valid PBO in the same Qt context is
             // the reusable session resource. An empty request queue is NOT a
             // reason to glDeleteBuffers and reallocate on the next capture.
             // Only stop/cleanup, invalidation, a render-context change or a
             // submission failure may release it. The worker owns the fence
             // until it completes, so no orphan fence can exist here.
-            if (!s->active) {
-                // stop() intentionally kept the render connection alive
-                // only until its GPU objects could be destroyed on the
-                // owning GL thread. Release it now: otherwise each restart
-                // or source destruction retains another shared State and
-                // an unnecessary render callback until window destruction.
-                if (s->connected) {
-                    QObject::disconnect(s->frameConnection);
-                    QObject::disconnect(s->invalidatedConnection);
-                    s->frameConnection = {};
-                    s->invalidatedConnection = {};
-                    s->connected = false;
-                }
+            if (!s->active || s->workerStopRequested || !s->retireWorker
+                || !s->retireWorker->ready() || s->workerRenderContext.data() != ctx) {
                 return;
             }
             gen = s->generation;
@@ -1195,7 +1112,7 @@ private:
             if (!s->pbo) {
                 gl->glGenBuffers(1, &s->pbo);
                 if (s->pbo) {
-                    s->resourceContext = ctx;
+                    s->retireWorker->ownBuffer(s->pbo);
                     ++g_quickGlPboBuffersCreated;
                 }
             }
@@ -1204,24 +1121,18 @@ private:
                 failureReason = "GL PBO allocation failed";
             } else {
                 GLint oldPack = 4, oldPackPbo = 0;
+                GLint oldRowLength = 0, oldSkipRows = 0, oldSkipPixels = 0;
                 gl->glGetIntegerv(GL_PACK_ALIGNMENT, &oldPack);
                 gl->glGetIntegerv(kPackBinding, &oldPackPbo);
-                if (s->gpuPending) {
-                    // The session worker owns the fence and PBO until it
-                    // completes. Never block the Qt render thread, map the
-                    // PBO here, or schedule extra window->update() frames to
-                    // retire a fence. The worker's completion callback clears
-                    // gpuPending and requests one bounded fallback frame.
-                    kickAgain = false;
-                }
-                if (canSubmitQueuedReadback(*s) && !kickAgain && failed.empty()) {
+                gl->glGetIntegerv(kPackRowLength, &oldRowLength);
+                gl->glGetIntegerv(kPackSkipRows, &oldSkipRows);
+                gl->glGetIntegerv(kPackSkipPixels, &oldSkipPixels);
+                if (canSubmitQueuedReadback(*s) && failed.empty()) {
                     const qreal dpr = captureWindowDpr(window);
                     const int w = qRound(window->width()*dpr);
                     const int h = qRound(window->height()*dpr);
                     if (w>0 && h>0 && std::size_t(w) <=
                         std::numeric_limits<std::size_t>::max() / (4u*std::size_t(h))) {
-                        GLint framebuffer = 0;
-                        gl->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
                         const auto wantedBytes =
                             std::size_t(w) * std::size_t(h) * 4u;
                         gl->glBindBuffer(kPackTarget, s->pbo);
@@ -1237,6 +1148,9 @@ private:
                                              nullptr, kStreamRead);
                         }
                         gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
+                        gl->glPixelStorei(kPackRowLength, 0);
+                        gl->glPixelStorei(kPackSkipRows, 0);
+                        gl->glPixelStorei(kPackSkipPixels, 0);
                         gl->glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
                         HYREMOTE_P1_COUNT(QuickGlGpuSubmit);
                         s->fence = gl->glFenceSync(kFenceGpu, 0);
@@ -1256,12 +1170,11 @@ private:
                             s->dpr = static_cast<float>(dpr);
                             s->gpuPending = true;
                             s->readbackRenderTime = hyremote::Clock::now();
-                            s->forcedRenders = 0;
                             s->inFlight.swap(s->queued);
                             s->converting.swap(s->inFlight);
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
-                            GlRetireWorker *worker = s->retireWorker;
+                            GlRetireWorker *worker = s->retireWorker.get();
                             if (worker) {
                                 GlRetireJob job;
                                 job.pbo = s->pbo;
@@ -1271,6 +1184,7 @@ private:
                                 job.dpr = static_cast<float>(dpr);
                                 job.renderTime = s->readbackRenderTime;
                                 job.generation = s->generation;
+                                job.contextEpoch = s->contextEpoch;
                                 s->fence = nullptr; // the session worker owns it
                                 worker->enqueue(std::move(job));
                             } else {
@@ -1301,20 +1215,21 @@ private:
                 }
                 gl->glBindBuffer(kPackTarget, static_cast<GLuint>(oldPackPbo));
                 gl->glPixelStorei(GL_PACK_ALIGNMENT, oldPack);
+                gl->glPixelStorei(kPackRowLength, oldRowLength);
+                gl->glPixelStorei(kPackSkipRows, oldSkipRows);
+                gl->glPixelStorei(kPackSkipPixels, oldSkipPixels);
             }
         }
         if (!failed.empty())
             reportUnavailable(s, gen, std::move(failed), failureReason);
-        if (kickAgain)
-            QMetaObject::invokeMethod(window, [s, window, gen] {
-                requestFallbackRenderIfNoNormalFrame(s, window, gen);
-            }, Qt::QueuedConnection);
     }
 
 public:
     static bool batchOwnershipRegression()
     {
         auto s = std::make_shared<State>();
+        QObject dispatcher;
+        s->dispatcher = &dispatcher;
         s->active = true;
         s->generation = 1;
         const auto now = hyremote::Clock::now();
@@ -1372,6 +1287,12 @@ private:
 unsigned quickGlPboInvalidationCount()
 {
     return g_quickGlPboInvalidations.load();
+}
+
+QuickGlPboResourceCounts quickGlPboResourceCounts()
+{
+    return {g_quickGlPboBuffersCreated.load(), g_quickGlPboBuffersDeleted.load(),
+            g_quickGlPboWorkersCreated.load(), g_quickGlPboWorkersRetired.load()};
 }
 
 bool runQuickGlPboBatchOwnershipRegression()
@@ -1435,6 +1356,8 @@ QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)
 
     auto *worker = new GlRetireWorker(shared, &surface,
         [](GlRetireResult &&) {});
+    gl->glBindBuffer(kPackTarget, 0);
+    worker->ownBuffer(pbo);
     shared->moveToThread(worker);
     worker->setRetireDelayForTest(delayMs);
     worker->start();
@@ -1456,17 +1379,17 @@ QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)
     out.joinMs = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - started).count();
     out.timedOut = !joined;
-    out.ok = joined && out.joinMs < 500.0;
-    if (joined)
-        delete worker;
-    else
-        worker->deleteLater(); // never delete a running QThread
-
-    gl->glBindBuffer(kPackTarget, 0);
-    gl->glDeleteBuffers(1, &pbo);
+    if (!joined)
+        worker->wait(); // keep the still-owned surface alive even on test failure
+    delete worker;
+    out.bufferDeleted = !gl->glIsBuffer(pbo);
+    out.ok = joined && out.joinMs < 500.0 && out.bufferDeleted;
+    if (!out.bufferDeleted)
+        gl->glDeleteBuffers(1, &pbo);
     render->doneCurrent();
     delete render;
-    out.detail = out.ok ? "PASS" : (joined ? "TOO_SLOW" : "TIMEOUT");
+    out.detail = out.ok ? "PASS" : (!joined ? "TIMEOUT" :
+        (out.bufferDeleted ? "TOO_SLOW" : "PBO_NOT_DELETED"));
     return out;
 }
 
