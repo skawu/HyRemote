@@ -27,6 +27,15 @@ if(WIN32 AND HYREMOTE_BUILD_CPP_API AND HYREMOTE_WITH_VNC
         PASS_REGULAR_EXPRESSION "SDK_DLL_TWO_CYCLES=PASS"
         ENVIRONMENT "QSG_RHI_BACKEND=opengl;QSG_RENDER_LOOP=threaded"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    if(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+        add_test(NAME hyremote-runtime-dll-d3d11-lifecycle-test
+                 COMMAND hyremote-runtime-dll-lifecycle-test $<TARGET_FILE:hyremote-remoteaccess>)
+        set_tests_properties(hyremote-runtime-dll-d3d11-lifecycle-test PROPERTIES
+            TIMEOUT 45
+            PASS_REGULAR_EXPRESSION "SDK_DLL_TWO_CYCLES=PASS"
+            ENVIRONMENT "QSG_RHI_BACKEND=d3d11;QSG_RENDER_LOOP=threaded"
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
 endif()
 
 # Application-level automatic access controller tests plus the private notification seam. These were

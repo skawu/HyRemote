@@ -12,6 +12,7 @@
 #include <QPointer>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
+#include <QThread>
 #include <QThreadPool>
 #include <QTimer>
 #include <QtMath>
@@ -78,14 +79,16 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         std::mutex mutex;
         std::condition_variable drained;
         QPointer<QQuickWindow> target;
+        QObject *dispatcher = nullptr;
+        QThreadPool workers;
         std::uint64_t generation = 0;
         bool active = false;
         bool connected = false;
         bool guiKickPosted = false;
         bool fallbackTimerArmed = false;
         bool cpuConversionPending = false;
-        bool cleanupRequested = false;
         unsigned int callbacksInFlight = 0;
+        unsigned int renderCallbacksInFlight = 0;
         unsigned int cpuWorkersInFlight = 0;
         std::vector<hyremote::CaptureRequest> queued;
         std::vector<hyremote::CaptureRequest> submitted;
@@ -124,6 +127,27 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         }
     };
 
+    struct RenderDrain {
+        State &state;
+        bool admitted = false;
+        explicit RenderDrain(State &s) : state(s)
+        {
+            std::lock_guard<std::mutex> lock(state.mutex);
+            if (state.active) {
+                ++state.renderCallbacksInFlight;
+                admitted = true;
+            }
+        }
+        ~RenderDrain()
+        {
+            if (admitted) {
+                std::lock_guard<std::mutex> lock(state.mutex);
+                --state.renderCallbacksInFlight;
+                state.drained.notify_all();
+            }
+        }
+    };
+
 public:
     explicit D3d11StagingCaptureSource(QQuickWindow *window)
         : m_state(std::make_shared<State>())
@@ -147,11 +171,13 @@ public:
     {
         auto s = m_state;
         auto *app = QCoreApplication::instance();
-        if (!app)
+        if (!app || QThread::currentThread() != app->thread())
             return false;
         std::lock_guard<std::mutex> lock(s->mutex);
         if (s->active || !s->target || s->target->thread() != app->thread())
             return false;
+        s->dispatcher = new QObject;
+        s->workers.setMaxThreadCount(1);
         ++s->generation;
         s->queued.clear();
         s->submitted.clear();
@@ -162,40 +188,58 @@ public:
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->active = true;
-        // An old GPU generation is released in the next render callback.
         return true;
     }
 
     void stop() noexcept override
     {
         auto s = m_state;
-        QPointer<QQuickWindow> window;
+        auto *app = QCoreApplication::instance();
+        if (!app)
+            return;
+        if (QThread::currentThread() != app->thread()) {
+            QMetaObject::invokeMethod(app, [s] { stopOnGuiThread(s); },
+                                      Qt::BlockingQueuedConnection);
+            return;
+        }
+        stopOnGuiThread(s);
+    }
+
+    static void stopOnGuiThread(const std::shared_ptr<State> &s) noexcept
+    {
+        QObject *dispatcher = nullptr;
         {
             std::unique_lock<std::mutex> lock(s->mutex);
             s->active = false;
             ++s->generation;
+            QObject::disconnect(s->passConnection);
+            QObject::disconnect(s->renderConnection);
+            QObject::disconnect(s->invalidationConnection);
+            s->passConnection = {};
+            s->renderConnection = {};
+            s->invalidationConnection = {};
+            s->connected = false;
             s->queued.clear();
             s->submitted.clear();
             s->converting.clear();
             s->cpuConversionPending = false;
             s->guiKickPosted = false;
             s->fallbackTimerArmed = false;
-            s->cleanupRequested = true;
             s->onFrame = {};
             s->onEvent = {};
             // Prevent any CPU worker from executing after Runtime DLL unload.
             s->drained.wait(lock, [&] {
                 return s->callbacksInFlight == 0
+                    && s->renderCallbacksInFlight == 0
                     && s->cpuWorkersInFlight == 0;
             });
-            window = s->target;
+            dispatcher = std::exchange(s->dispatcher, nullptr);
+            // Only release owned COM references, after the last user.
+            // The D3D immediate context remains render-thread-only.
+            releaseNative(*s);
         }
-        // Release borrowed GPU resources at Qt's next render-thread callback.
-        if (window)
-            QMetaObject::invokeMethod(window, [window] {
-                if (window && window->isVisible())
-                    window->update();
-            }, Qt::QueuedConnection);
+        s->workers.waitForDone(); // includes runnable destruction, not just its callback
+        delete dispatcher;
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
@@ -212,7 +256,7 @@ public:
                 return false;
             s->queued.push_back(request);
             generation = s->generation;
-            QTimer::singleShot(kRequestDeadlineMs, app,
+            QTimer::singleShot(kRequestDeadlineMs, s->dispatcher,
                 [s, generation, id = request.id] {
                     std::vector<hyremote::CaptureRequest> expired;
                     {
@@ -236,7 +280,7 @@ public:
             window = s->target;
         }
 
-        if (QMetaObject::invokeMethod(window, [s, window, generation] {
+        if (postToDispatcher(s, [s, window, generation] {
                 if (!window) return;
                 bool shouldConnect = false;
                 {
@@ -274,7 +318,7 @@ public:
                     return;
                 }
                 requestFallbackRender(s, window, generation);
-            }, Qt::QueuedConnection))
+            }))
             return true;
 
         std::vector<hyremote::CaptureRequest> accepted;
@@ -296,6 +340,15 @@ public:
     }
 
 private:
+    template<class Callback>
+    static bool postToDispatcher(const std::shared_ptr<State> &s, Callback &&callback)
+    {
+        std::lock_guard<std::mutex> lock(s->mutex);
+        return s->active && s->dispatcher
+            && QMetaObject::invokeMethod(s->dispatcher, std::forward<Callback>(callback),
+                                         Qt::QueuedConnection);
+    }
+
     static void deliver(const std::shared_ptr<State> &s,
                         std::uint64_t generation,
                         std::vector<hyremote::CaptureRequest> requests,
@@ -304,10 +357,9 @@ private:
                         hyremote::TimePoint renderPts,
                         const char *error = nullptr)
     {
-        auto *app = QCoreApplication::instance();
-        if (!app || requests.empty())
+        if (requests.empty())
             return;
-        QMetaObject::invokeMethod(app,
+        postToDispatcher(s,
             [s, generation, requests = std::move(requests),
              storage = std::move(storage), width, height, dpr, renderPts, error] {
                 hyremote::FrameReadyHandler frameCallback;
@@ -359,7 +411,7 @@ private:
                     --s->callbacksInFlight;
                     s->drained.notify_all();
                 }
-            }, Qt::QueuedConnection);
+            });
     }
 
     static void requestFallbackRender(const std::shared_ptr<State> &s,
@@ -368,14 +420,11 @@ private:
     {
         if (!window)
             return;
-        {
-            std::lock_guard<std::mutex> lock(s->mutex);
-            if (!s->active || s->generation != generation
-                || s->fallbackTimerArmed)
-                return;
-            s->fallbackTimerArmed = true;
-        }
-        QTimer::singleShot(kNormalOpportunityMs, window.data(),
+        std::lock_guard<std::mutex> lock(s->mutex);
+        if (!s->active || s->generation != generation || s->fallbackTimerArmed)
+            return;
+        s->fallbackTimerArmed = true;
+        QTimer::singleShot(kNormalOpportunityMs, s->dispatcher,
             [s, window, generation] {
                 bool shouldUpdate = false;
                 {
@@ -400,15 +449,13 @@ private:
         if (!window)
             return;
         int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
-        {
-            std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != generation
-                || !s->staging || s->forcedRenders >= kMaxExtraRenders)
-                return;
-            if (s->forcedRenders > 0)
-                delayMs = QuickReadbackTiming::secondRetirementRenderMs;
-        }
-        QTimer::singleShot(delayMs, window.data(),
+        std::lock_guard<std::mutex> guard(s->mutex);
+        if (!s->active || s->generation != generation
+            || !s->staging || s->forcedRenders >= kMaxExtraRenders)
+            return;
+        if (s->forcedRenders > 0)
+            delayMs = QuickReadbackTiming::secondRetirementRenderMs;
+        QTimer::singleShot(delayMs, s->dispatcher,
             [s, window, generation] {
                 bool shouldRender = false;
                 {
@@ -465,6 +512,9 @@ private:
 
     static void onInvalidated(const std::shared_ptr<State> &s)
     {
+        RenderDrain drain(*s);
+        if (!drain.admitted)
+            return;
         std::vector<hyremote::CaptureRequest> lost;
         std::uint64_t generation = 0;
         {
@@ -481,13 +531,6 @@ private:
                 s->converting.clear();
             }
             releaseNative(*s);
-            s->cleanupRequested = false;
-            if (!s->active && s->connected) {
-                QObject::disconnect(s->passConnection);
-                QObject::disconnect(s->renderConnection);
-                QObject::disconnect(s->invalidationConnection);
-                s->connected = false;
-            }
         }
         if (!lost.empty())
             deliver(s, generation, std::move(lost), {}, 0, 0, 1.f, {},
@@ -497,6 +540,9 @@ private:
     static void onRenderPass(const std::shared_ptr<State> &s,
                              QQuickWindow *window)
     {
+        RenderDrain drain(*s);
+        if (!drain.admitted)
+            return;
         std::lock_guard<std::mutex> lock(s->mutex);
         if (!s->active || s->queued.empty() || s->staging
             || s->cpuConversionPending || !window->rendererInterface()
@@ -560,8 +606,7 @@ private:
                     width, height, dpr, pts,
                     storage ? nullptr : "D3D11 CPU frame conversion failed");
 
-        if (auto *app = QCoreApplication::instance()) {
-            QMetaObject::invokeMethod(app, [s, generation] {
+        postToDispatcher(s, [s, generation] {
                 QPointer<QQuickWindow> window;
                 {
                     std::lock_guard<std::mutex> lock(s->mutex);
@@ -569,13 +614,15 @@ private:
                     window = s->target;
                 }
                 requestFallbackRender(s, window, generation);
-            }, Qt::QueuedConnection);
-        }
+            });
     }
 
     static void onAfterRender(const std::shared_ptr<State> &s,
                               QQuickWindow *window)
     {
+        RenderDrain drain(*s);
+        if (!drain.admitted)
+            return;
         std::shared_ptr<std::byte> raw;
         std::vector<hyremote::CaptureRequest> failed;
         const char *failure = "D3D11 staging readback failed";
@@ -589,10 +636,8 @@ private:
         bool tryNext = false;
         {
             std::lock_guard<std::mutex> lock(s->mutex);
-            if (s->cleanupRequested) {
-                releaseNative(*s);
-                s->cleanupRequested = false;
-            }
+            if (!s->active)
+                return;
             // Deadline completion may have retired an entire submitted
             // batch before the GPU made the staging texture mappable.
             // Discard the orphaned readback on Qt's render thread instead
@@ -601,15 +646,6 @@ private:
                 releaseActiveReadback(*s);
             if (!s->staging && s->queued.empty())
                 s->capturedTarget.Reset();
-            if (!s->active) {
-                if (s->connected) {
-                    QObject::disconnect(s->passConnection);
-                    QObject::disconnect(s->renderConnection);
-                    QObject::disconnect(s->invalidationConnection);
-                    s->connected = false;
-                }
-                return;
-            }
             generation = s->generation;
             if (!s->staging && (s->queued.empty() || s->cpuConversionPending))
                 return;
@@ -751,7 +787,7 @@ private:
 
         if (raw) {
             try {
-                QThreadPool::globalInstance()->start(
+                s->workers.start(
                     [s, generation, raw = std::move(raw), bytes, pitch, rowBytes,
                      width, height, dpr, format, pts] {
                         WorkerDrain drain{s};
@@ -797,9 +833,9 @@ private:
         if (pump)
             requestRetirementRender(s, window, generation);
         if (tryNext)
-            QMetaObject::invokeMethod(window, [s, window, generation] {
+            postToDispatcher(s, [s, window, generation] {
                 requestFallbackRender(s, window, generation);
-            }, Qt::QueuedConnection);
+            });
     }
 
     std::shared_ptr<State> m_state;

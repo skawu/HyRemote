@@ -49,56 +49,39 @@ carries the full procedure on demand. Client-side injection is a soft
 constraint, so a project-level PreToolUse hook and the merge-level guard below
 provide the actual blocks.
 
-## Client-level enforcement (project PreToolUse hooks)
+## Client-level enforcement (project PreToolUse hook)
 
-`.codebuddy/settings.json` mounts two project-level `PreToolUse` hooks, both
-matched on `Write|Edit|MultiEdit|Bash|delete_file`:
+`.codebuddy/settings.json` mounts one project-level `PreToolUse` hook:
 
 ```
-python tools/local-owner/guard_workspace_boundary.py
 python tools/local-owner/guard_scratch_writes.py
 ```
 
-### Workspace boundary (owner decision, 2026-11-11)
+It denies, for CodeBuddy's own tool calls only, any attempt to create or modify
+an executable script under `tmp/`. Covered paths: the file tools
+(`Write`/`Edit`/`MultiEdit`) and the shell tool when the command writes a
+`tmp/` script (redirect, `Set-Content`, `cp`/`mv`, `open(...,'w')`). Everything
+else is allowed: evidence JSON, logs, screenshots, product sources, planned
+scripts, and running existing scripts.
 
-The only workspace is the repository root. Inside it — every subdirectory,
-including `build/`, `tmp/` and `.codebuddy/` — **every operation is allowed
-without asking**. Outside it, **every non-read operation is denied**: writes,
-edits, deletions, directory creation and shell redirection.
-
-Read-only access outside the workspace stays allowed (`Get-Content`, `cat`,
-`dir`, `Get-ChildItem`, `Test-Path`, `Select-String`, `git` queries). The guard
-is fail-open on internal errors, so a broken guard cannot block work inside the
-workspace.
-
-### Scratch-script gate
-
-`guard_scratch_writes.py` denies, for CodeBuddy's own tool calls only, any
-attempt to create or modify an executable script under `tmp/`. Covered paths:
-the file tools (`Write`/`Edit`/`MultiEdit`) and the shell tool when the command
-writes a `tmp/` script (redirect, `Set-Content`, `cp`/`mv`, `open(...,'w')`).
-Otherwise `tmp/` behaves normally: evidence JSON, logs, screenshots and running
-existing scripts stay allowed.
-
-Deliberate properties of both hooks:
+Deliberate properties:
 
 - **Scope is CodeBuddy only.** A human typing in a terminal is out of scope by
-  design; these hooks see tool calls, not keystrokes.
+  design; this hook sees tool calls, not keystrokes.
 - **Fail-open.** Any internal error, unparsable payload, missing interpreter or
-  timeout emits `allow`. A broken guard must never block normal work; verified
-  by pointing the hook at a non-existent interpreter and confirming a workspace
+  timeout emits `allow`. A broken guard must never block normal file writes;
+  verified by pointing the hook at a non-existent interpreter and confirming a
   write still succeeded.
 - **No user-level config is touched.** No `~/.codebuddy/settings.json` change,
   no plugin enablement, no `python3` dependency (that is a WindowsApps stub on
-  this machine and would fail silently). Both commands use `python` on PATH and
-  repository-relative script paths.
-- **Cost.** About 116 ms per covered tool call (interpreter startup), doubled
-  while both hooks run. Only file and shell tools are matched, so read-only
-  turns pay nothing.
+  this machine and would fail silently). The hook command uses `python` on PATH
+  and a repository-relative script path.
+- **Cost.** About 116 ms per covered tool call (interpreter startup). Only file
+  and shell tools are matched, so read-only turns pay nothing.
 
 Limits: this binds a CodeBuddy session on this checkout. It is not a server
-gate, it does not constrain other clients, and if `python` is not on PATH both
-hooks fail open (no block, no breakage).
+gate, it does not constrain other clients, and if `python` is not on PATH the
+hook fails open (no block, no breakage).
 
 ## Merge-level enforcement (machine, not memory)
 

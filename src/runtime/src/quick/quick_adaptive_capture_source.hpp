@@ -46,6 +46,8 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
         std::uint64_t surfaceEpoch = 1;
         bool active = false;
         bool nativeEnabled = false;
+        const bool traceAcceptedFrames =
+            qEnvironmentVariableIntValue("HYREMOTE_QUICK_ACCEPTED_FRAME_PROOF") == 1;
         unsigned int consecutiveNativeFailures = 0;
         // Count provider failure EPISODES, not each request ID sharing a
         // failed GPU readback (one event can complete many empty frames).
@@ -447,6 +449,10 @@ private:
             frame.timing.ptsSource = hyremote::PtsSource::Completion;
             frame.timing.completionTime = now;
         }
+        if (state->traceAcceptedFrames && frame.storage)
+            qInfo().noquote() << (route == Route::Native
+                ? "HYREMOTE_QUICK_ACCEPTED_FRAME=NATIVE"
+                : "HYREMOTE_QUICK_ACCEPTED_FRAME=PUBLIC");
         try { callback(std::move(frame)); } catch (...) {}
     }
 

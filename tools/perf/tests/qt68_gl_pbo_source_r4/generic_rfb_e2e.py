@@ -64,6 +64,7 @@ def main():
     port = free_port()
     env = os.environ.copy()
     env["QT_SCALE_FACTOR"] = str(args.scale_factor)
+    env["HYREMOTE_QUICK_ACCEPTED_FRAME_PROOF"] = "1"
     require(env.get("QSG_RHI_BACKEND") == "opengl",
             "This test qualifies only exact Qt6.8.3 OpenGL RHI")
     cmd = [str(args.exe.resolve()), "-plugin", f"hyremote:port={port}", "--test-seconds", "30"]
@@ -150,12 +151,18 @@ def main():
                     require("HYREMOTE_R4_QML_SCREEN_DPR=1.5" in trace,
                             "Qt Quick test Screen did not report requested 1.5 DPR; "
                             "cannot claim high-DPI coverage")
+                native_accepted = trace.count("HYREMOTE_QUICK_ACCEPTED_FRAME=NATIVE")
+                public_accepted = trace.count("HYREMOTE_QUICK_ACCEPTED_FRAME=PUBLIC")
                 if args.arm == "ON":
                     require("HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE" in trace,
                             "ON product did not select the real experimental PBO CaptureSource")
+                    require(native_accepted >= 2 and public_accepted == 0,
+                            f"ON RFB run did not prove exclusive successful PBO delivery: "
+                            f"native={native_accepted}, public={public_accepted}")
                 else:
                     require("HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE" not in trace,
                             "OFF product unexpectedly selected experimental PBO source")
+                    require(native_accepted == 0, "OFF accepted experimental pixels")
                 result = {
                     "schema": "hyremote-r4-generic-rfb-real-viewport/1",
                     "arm": args.arm,
@@ -169,6 +176,8 @@ def main():
                     "top_left_rgb": top_left,
                     "bottom_right_rgb": bottom_right,
                     "source_route": "GlPboCaptureSource" if args.arm == "ON" else "PublicQtGrabToImage",
+                    "accepted_native_frames": native_accepted,
+                    "accepted_public_fallback_frames": public_accepted,
                     "actual_rfb_handshake_and_full_frame": True,
                     "dynamic_source_colors_visible_via_real_rfb": sorted(colors),
                     "dynamic_rfb_viewport_observations": frames_observed,

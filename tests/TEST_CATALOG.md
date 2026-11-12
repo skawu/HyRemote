@@ -53,6 +53,7 @@ All currently registered tests are `KEEP`. Historical `MOVE`/`SPLIT` decisions w
 | --- | --- | --- |
 | `hyremote-runtime-listener-binding-test` | Runtime | Deterministic IPv4 bind-mode/interface/locality decisions from injected interface facts. Failure invalidates listener policy independently of real sockets. |
 | `hyremote-runtime-dll-lifecycle-test` | Runtime (Windows OpenGL experiment) | A process without a Runtime import loads the DLL, uses the public C++ facade and verifies real RFB pixels, stops with the viewer attached, checks GL resource retirement, unloads, dispatches GUI work, and repeats. |
+| `hyremote-runtime-dll-d3d11-lifecycle-test` | Runtime (Windows D3D11 experiment) | Reuses the dynamic SDK host with D3D11, requiring native staging pixels and no public fallback before stopping, unloading, dispatching GUI work, and repeating. |
 | `hyremote-runtime-automatic-surface-model-test` | automatic Runtime available | Automatic surface discovery/model contract. |
 | `hyremote-runtime-automatic-composite-capture-test` | automatic Runtime available | Composite geometry/capture contract. |
 | `hyremote-runtime-automatic-composite-input-test` | automatic Runtime available | Composite input routing contract. |
