@@ -511,7 +511,38 @@ int main(int argc, char **argv)
         || !check(interruptedFrames.front().requestId == hyremote::CaptureRequestId{54},
                   "interrupted composite completes exactly its admitted ID"))
         return 22;
+    // Reusing a SurfaceId for a NEW Qt/native window is also an identity
+    // change. Even when both targets are visible, its predecessor's already
+    // captured pixels must not be relabeled as the replacement's pixels.
+    interrupted.setSurfaceVisible(20, true);
+    releasePopup = {};
+    if (!check(interruptedComponents.capture->requestFrame({55, hyremote::Clock::now()}),
+               "same-id target replacement request admitted"))
+        return 23;
+    QElapsedTimer replacementTimer;
+    replacementTimer.start();
+    while (!releasePopup && replacementTimer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (!check(static_cast<bool>(releasePopup) && interruptedFrames.size() == 1,
+               "base completed while popup is pending replacement"))
+        return 24;
+    QObject replacementBase;
+    interrupted.upsertSurface(20, &replacementBase, QRect(0, 0, 4, 4), true);
+    releasePopup();
+    if (!check(waitForFrame(interruptedFrames, 2),
+               "old base invalidated on same-id replacement"))
+        return 25;
+    const QImage replaced = imageView(interruptedFrames.at(1));
+    if (!check(replaced.size() == QSize(4, 4),
+               "in-flight replacement retains admitted canvas")
+        || !check(replaced.pixelColor(0, 0).alpha() == 0,
+                  "same-id replacement must discard old source pixels")
+        || !check(replaced.pixelColor(1, 1).alpha() == 128,
+                  "unaffected popup remains in final composition")
+        || !check(interruptedFrames.at(1).requestId == hyremote::CaptureRequestId{55},
+                  "replacement request has unique current identity"))
+        return 26;
     interruptedComponents.capture->stop();
-    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide output truth\n";
+    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide/output-identity truth\n";
     return 0;
 }
