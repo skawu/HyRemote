@@ -1,0 +1,77 @@
+name: Qt5 and Qt6 source-owned NOTIFY contract (TEST ONLY)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/semantic-source-notify-contract.yml
+      - src/runtime/src/detail/semantic_source_property_observer.hpp
+      - tools/perf/tests/semantic_source_notify/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qt5-linux:
+    name: Ubuntu 22.04 Qt 5.15 public QObject NOTIFY contract
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt5.15 and Ninja
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qtbase5-dev ninja-build
+          qmake -query QT_VERSION
+          qmake -query QT_VERSION | grep '^5\.15\.'
+      - name: Compile and execute Qt5 semantic source lifetime tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/perf/tests/semantic_source_notify -B build-semantic-contract-5 -G Ninja -DQT_FORCE_MAJOR=5 -DCMAKE_BUILD_TYPE=Release '-DCMAKE_CXX_FLAGS=-Wall -Wextra -Werror'
+          cmake --build build-semantic-contract-5 --parallel 2
+          ./build-semantic-contract-5/hyremote-semantic-source-notify-contract
+
+  qt6-windows:
+    name: Windows MSVC2022 Qt 6.8.3 public QObject NOTIFY contract
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Confirm Qt6.8.3 MSVC2022_64 kit
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Core.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Core.dll'))) { throw 'Qt6.8.3 MSVC Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Compile and execute Qt6 semantic source lifetime tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/semantic_source_notify -B build-semantic-contract-6 -G Ninja -DQT_FORCE_MAJOR=6 "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build build-semantic-contract-6 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & .\build-semantic-contract-6\hyremote-semantic-source-notify-contract.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
