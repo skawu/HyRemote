@@ -45,6 +45,7 @@
 #include "detail/readback_frame_storage.hpp"
 #include "detail/cursor_mapping.hpp"
 #include "quick/quick_capture_backend.hpp"
+#include "quick/quick_gl_pbo_capture_source.hpp"
 #include "quick/quick_readback_batch.hpp"
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
@@ -2016,10 +2017,80 @@ void runPublicQuickProfile()
 
 }  // namespace
 
+// #962 review B1/B2: real offscreen GL session. One PBO allocation is reused
+// by a second request, then a simulated scene-graph invalidation retires the
+// worker and a second generation must produce fresh pixels. This is the
+// regression that CI PASS alone could not prove.
+void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
+{
+    const auto result = HyRemote::detail::runQuickGlPboSessionSelfTest();
+    if (!result.ran) {
+        std::cerr << "WIN962_SESSION_SELFTEST=SKIP detail=" << result.detail << std::endl;
+        if (requireGl)
+            CHECK(result.ran); // the dedicated xcb/Xvfb lane must have GL.
+        return;
+    }
+    CHECK(result.pixelsOk);
+    CHECK(result.zeroViewerNoReadback);
+    CHECK(result.allocations == 2);
+    CHECK(result.reuses == 1);
+    CHECK(result.workersCreated == 2);
+    CHECK(result.workersRetired == 2);
+    CHECK(result.invalidations == 1);
+    CHECK(result.ok);
+    std::cerr << "WIN962_SESSION_SELFTEST=" << result.detail
+              << " alloc=" << result.allocations
+              << " reuse=" << result.reuses
+              << " workers=" << result.workersCreated
+              << "/" << result.workersRetired
+              << " invalidations=" << result.invalidations << std::endl;
+}
+
+// #962 review B2: the real public Qt signal (not a manually flipped flag)
+// must revoke an admitted GlPbo request exactly once and leave the source
+// stoppable without a render frame.
+void testQuickGlPboRealSceneGraphInvalidationSignal()
+{
+    QQuickWindow window;
+    auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
+    CHECK(source != nullptr);
+    std::atomic<int> terminal{0};
+    const bool started = source->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (!frame.storage)
+                ++terminal;
+        },
+        [](const hyremote::CaptureEvent &) {});
+    CHECK(started);
+    CHECK(source->requestFrame({501, hyremote::Clock::now()}));
+    QCoreApplication::processEvents(); // installs the DirectConnection
+    const unsigned before = HyRemote::detail::quickGlPboInvalidationCount();
+    const bool invalidated = QMetaObject::invokeMethod(
+        &window, "sceneGraphInvalidated", Qt::DirectConnection);
+    CHECK(invalidated);
+    CHECK(HyRemote::detail::quickGlPboInvalidationCount() == before + 1);
+    QCoreApplication::processEvents(); // delivers the one terminal outcome
+    CHECK(terminal.load() == 1);
+    source->stop();
+}
+
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    // Dedicated Linux xcb/Xvfb lane: the offscreen QPA used by the normal
+    // Quick suite cannot create a desktop GL context, so reuse/recovery must
+    // have its own native-platform registration.
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
+        testQuickGlPboSessionReuseAndInvalidationRecovery(true);
+        testQuickGlPboRealSceneGraphInvalidationSignal();
+        HyRemote::detail::resetFactories();
+        if (failures != 0)
+            std::cerr << failures << " GL PBO session checks failed\n";
+        return failures == 0 ? 0 : 1;
+    }
     testQuickProfileClockDoesNotMeasureSleepAsCpu();
+    testQuickGlPboSessionReuseAndInvalidationRecovery(false);
+    testQuickGlPboRealSceneGraphInvalidationSignal();
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();
         HyRemote::detail::resetFactories();

@@ -469,6 +469,17 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
+    if(UNIX AND NOT APPLE)
+        # #962 review B1/B2: the offscreen QPA cannot create a desktop GL
+        # context, so the PBO-reuse/invalidation-recovery self-test would be
+        # skipped. Run the same binary on the native xcb platform (CI starts
+        # Xvfb) so the regression actually executes.
+        add_test(NAME hyremote-quick-gl-pbo-session-test COMMAND hyremote-quick-capture-test)
+        set_tests_properties(hyremote-quick-gl-pbo-session-test PROPERTIES
+            ENVIRONMENT "QT_QPA_PLATFORM=xcb;QT_QUICK_BACKEND=software;HYREMOTE_EXPECT_GL_PBO_SESSION=1"
+            TIMEOUT 60
+        )
+    endif()
     add_test(NAME hyremote-quick-capture-forced-dpr-test COMMAND hyremote-quick-capture-test)
     set_tests_properties(hyremote-quick-capture-forced-dpr-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=1.5;HYREMOTE_EXPECT_DPR=1.5"
