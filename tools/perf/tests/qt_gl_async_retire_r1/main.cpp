@@ -37,6 +37,9 @@ constexpr int kFullHdWidth = 1920, kFullHdHeight = 1080;
 constexpr unsigned int kPackBuffer = 0x88EB;       // GL_PIXEL_PACK_BUFFER
 constexpr unsigned int kPackBinding = 0x88ED;      // GL_PIXEL_PACK_BUFFER_BINDING
 constexpr unsigned int kReadFramebufferBinding = 0x8CAA; // GL_READ_FRAMEBUFFER_BINDING
+constexpr unsigned int kPackRowLength = 0x0D02; // GL_PACK_ROW_LENGTH
+constexpr unsigned int kPackSkipRows = 0x0D03; // GL_PACK_SKIP_ROWS
+constexpr unsigned int kPackSkipPixels = 0x0D04; // GL_PACK_SKIP_PIXELS
 constexpr unsigned int kStreamRead = 0x88E1;       // GL_STREAM_READ
 constexpr unsigned int kMapRead = 0x0001;          // GL_MAP_READ_BIT
 constexpr unsigned int kSyncGpu = 0x9117;          // GL_SYNC_GPU_COMMANDS_COMPLETE
@@ -410,9 +413,9 @@ int main(int argc, char **argv)
         GLint oldSkipPixels = 0;
         gl->glGetIntegerv(kPackBinding, &oldPack);
         gl->glGetIntegerv(GL_PACK_ALIGNMENT, &oldAlign);
-        gl->glGetIntegerv(GL_PACK_ROW_LENGTH, &oldRowLength);
-        gl->glGetIntegerv(GL_PACK_SKIP_ROWS, &oldSkipRows);
-        gl->glGetIntegerv(GL_PACK_SKIP_PIXELS, &oldSkipPixels);
+        gl->glGetIntegerv(kPackRowLength, &oldRowLength);
+        gl->glGetIntegerv(kPackSkipRows, &oldSkipRows);
+        gl->glGetIntegerv(kPackSkipPixels, &oldSkipPixels);
         GLuint pbo = 0;
         gl->glGenBuffers(1, &pbo);
         gl->glBindBuffer(kPackBuffer, pbo);
@@ -422,9 +425,9 @@ int main(int argc, char **argv)
         // skip offset from its prior renderer commands. PBO map assumes tight
         // RGBA rows and exactly width * height * 4 bytes.
         gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        gl->glPixelStorei(GL_PACK_ROW_LENGTH, 0);
-        gl->glPixelStorei(GL_PACK_SKIP_ROWS, 0);
-        gl->glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+        gl->glPixelStorei(kPackRowLength, 0);
+        gl->glPixelStorei(kPackSkipRows, 0);
+        gl->glPixelStorei(kPackSkipPixels, 0);
         const auto start = Clock::now();
         gl->glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         GLsync fence = gl->glFenceSync(kSyncGpu, 0);
@@ -434,9 +437,9 @@ int main(int argc, char **argv)
         const GLenum status = gl->glGetError();
         gl->glBindBuffer(kPackBuffer, GLuint(oldPack));
         gl->glPixelStorei(GL_PACK_ALIGNMENT, oldAlign);
-        gl->glPixelStorei(GL_PACK_ROW_LENGTH, oldRowLength);
-        gl->glPixelStorei(GL_PACK_SKIP_ROWS, oldSkipRows);
-        gl->glPixelStorei(GL_PACK_SKIP_PIXELS, oldSkipPixels);
+        gl->glPixelStorei(kPackRowLength, oldRowLength);
+        gl->glPixelStorei(kPackSkipRows, oldSkipRows);
+        gl->glPixelStorei(kPackSkipPixels, oldSkipPixels);
         if (!pbo || !fence || status != GL_NO_ERROR) {
             if (fence) gl->glDeleteSync(fence);
             if (pbo) gl->glDeleteBuffers(1, &pbo);
