@@ -650,12 +650,18 @@ void CompositeTarget::upsertSurface(SurfaceId id,
                                     const QRect &globalGeometry,
                                     bool visible)
 {
+    // A stable SurfaceId can be reassigned when the native/Qt object is
+    // replaced. Frames already accepted from the previous QObject may still
+    // be waiting for another child; invalidate them before the new identity
+    // becomes eligible, even if both windows are visible.
+    const QPointer<QObject> previous = m_targets.value(id);
+    const bool targetReplaced = previous && previous.data() != target;
     if (target)
         m_targets[id] = target;
     else
         m_targets.remove(id);
     m_model.upsert(id, globalGeometry, visible);
-    if (!target || !visible)
+    if (targetReplaced || !target || !visible)
         notifySurfaceUnavailable(id);
 }
 
