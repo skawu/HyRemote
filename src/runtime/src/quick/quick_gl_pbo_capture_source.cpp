@@ -70,12 +70,15 @@ std::atomic<unsigned> g_quickGlPboWorkersRetired{0};
 std::atomic<unsigned> g_quickGlPboBuffersDeleted{0};
 std::atomic<unsigned> g_quickGlPboInvalidations{0};
 
-// Give the application's normal Qt render loop one frame opportunity before
-// requesting a new render solely for a remote Viewer. The render callback
-// consumes queued requests immediately if a normal frame arrives. Idle
-// sources still get a bounded fallback update, followed by the existing
-// 750ms terminal-outcome timer if the window cannot render.
-constexpr int kNormalFrameOpportunityMs = QuickReadbackTiming::normalFrameOpportunityMs;
+// #967: on this route a normal Qt frame is consumed by afterRendering as soon
+// as it happens, so no fixed opportunity wait is needed. Fixed-SHA traces
+// showed a 17ms timer + one display frame of pure waiting before glReadPixels,
+// while the readback itself took ~1ms. Arm the bounded fallback update now;
+// State::fallbackRenderTimerArmed stays set until the next render callback, so
+// multiple Core requests in one render generation never schedule extra Qt
+// updates. A normal frame still wins: it clears the arm before the timer fires.
+// The 750ms terminal-outcome timer remains the hidden-window backstop.
+constexpr int kNormalFrameOpportunityMs = QuickReadbackTiming::glFallbackRenderDelayMs;
 
 // Qt 5.15 direct OpenGL draws into the current target before afterRendering.
 // Qt 6 RHI flushes recorded work when entering external commands at that point.
@@ -321,6 +324,8 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         bool windowBound = false;
         bool connected = false;
         bool kickPosted = false;
+        // Armed for one fallback update and released by the next render
+        // callback (RenderCallbackGuard), not by the QTimer callback itself.
         bool fallbackRenderTimerArmed = false;
         unsigned int callbacksInFlight = 0;
         unsigned int renderCallbacksInFlight = 0;
@@ -365,8 +370,14 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         {
             std::lock_guard<std::mutex> lock(state.mutex);
             entered = state.active;
-            if (entered)
+            if (entered) {
                 ++state.renderCallbacksInFlight;
+                // A natural or fallback Qt frame has arrived; the single
+                // fallback update armed for this generation is now consumed.
+                // Do not release it in the timer callback, or every request
+                // arriving before the frame would force another update().
+                state.fallbackRenderTimerArmed = false;
+            }
         }
         ~RenderCallbackGuard()
         {
@@ -621,6 +632,12 @@ public:
     }
 
 private:
+    static bool shouldArmFallbackRender(const State &s) noexcept
+    {
+        return s.active && s.dispatcher && !s.fallbackRenderTimerArmed
+            && !s.queued.empty();
+    }
+
     static void requestFallbackRenderIfNoNormalFrame(
         const std::shared_ptr<State> &s,
         QPointer<QQuickWindow> window,
@@ -633,8 +650,7 @@ private:
         if (!window)
             return;
         std::lock_guard<std::mutex> guard(s->mutex);
-        if (!s->active || s->generation != generation || !s->dispatcher
-            || s->fallbackRenderTimerArmed || s->queued.empty())
+        if (s->generation != generation || !shouldArmFallbackRender(*s))
             return;
         s->fallbackRenderTimerArmed = true;
         QTimer::singleShot(kNormalFrameOpportunityMs, s->dispatcher,
@@ -644,7 +660,8 @@ private:
                     std::lock_guard<std::mutex> guard(s->mutex);
                     if (!s->active || s->generation != generation)
                         return;
-                    s->fallbackRenderTimerArmed = false;
+                    // Keep the arm set until RenderCallbackGuard observes the
+                    // next Qt frame: at most one forced update per render.
                     needsFallbackRender = !s->gpuPending
                         && !s->cpuConversionPending
                         && !s->queued.empty();
@@ -1276,6 +1293,42 @@ public:
             hyremote::CaptureRequestId{102}, 29u);
     }
 
+    static QuickGlPboFallbackPolicyRegression fallbackPolicyRegression()
+    {
+        QuickGlPboFallbackPolicyRegression out;
+        out.ran = true;
+        out.glFallbackDelayMs = kNormalFrameOpportunityMs;
+        out.d3dFallbackDelayMs = QuickReadbackTiming::normalFrameOpportunityMs;
+        auto s = std::make_shared<State>();
+        QObject dispatcher;
+        s->dispatcher = &dispatcher;
+        s->active = true;
+        const auto now = hyremote::Clock::now();
+        s->queued.push_back({101, now});
+
+        const bool armsOnce = shouldArmFallbackRender(*s);
+        s->fallbackRenderTimerArmed = true;
+        const bool suppressesSecondArm = !shouldArmFallbackRender(*s);
+        // The real RenderCallbackGuard releases the arm when Qt renders;
+        // releasing it in the QTimer callback would force one update per
+        // request instead of one per render generation.
+        {
+            RenderCallbackGuard callback(*s);
+            out.armReleasedByRender = callback.entered
+                && !s->fallbackRenderTimerArmed;
+        }
+        s->queued.clear();
+        const bool noArmWithoutDemand = !shouldArmFallbackRender(*s);
+        out.oneArmPerRender = armsOnce && suppressesSecondArm
+            && noArmWithoutDemand;
+
+        out.ok = out.oneArmPerRender && out.armReleasedByRender
+            && out.glFallbackDelayMs == 0 && out.d3dFallbackDelayMs == 17;
+        if (!out.ok)
+            out.detail = "gl-fallback-delay-or-one-update-per-render-regressed";
+        return out;
+    }
+
 private:
     std::shared_ptr<State> m_state;
 };
@@ -1295,6 +1348,11 @@ QuickGlPboResourceCounts quickGlPboResourceCounts()
 bool runQuickGlPboBatchOwnershipRegression()
 {
     return GlPboCaptureSource::batchOwnershipRegression();
+}
+
+QuickGlPboFallbackPolicyRegression runQuickGlPboFallbackPolicyRegression()
+{
+    return GlPboCaptureSource::fallbackPolicyRegression();
 }
 
 QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)

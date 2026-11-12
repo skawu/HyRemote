@@ -59,6 +59,23 @@ runQuickGlPboSessionSelfTest();
 HYREMOTE_QUICK_GL_TEST_EXPORT unsigned quickGlPboInvalidationCount();
 HYREMOTE_QUICK_GL_TEST_EXPORT bool runQuickGlPboBatchOwnershipRegression();
 
+// #967 fallback-policy regression seam. Drives the same arming state machine
+// the GL source uses, without a GPU window: no inherited 17ms wait, at most
+// one forced update per render generation, and the arm is released by the
+// real RenderCallbackGuard rather than by the QTimer callback.
+struct QuickGlPboFallbackPolicyRegression {
+    bool ran = false;
+    bool ok = false;
+    bool oneArmPerRender = false;
+    bool armReleasedByRender = false;
+    int glFallbackDelayMs = -1;
+    int d3dFallbackDelayMs = -1;
+    std::string detail;
+};
+
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboFallbackPolicyRegression
+runQuickGlPboFallbackPolicyRegression();
+
 struct QuickGlPboResourceCounts {
     unsigned buffersCreated;
     unsigned buffersDeleted;
