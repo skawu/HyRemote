@@ -385,6 +385,6 @@ int main(int argc, char **argv)
                   "new composition has new request identity"))
         return 18;
     layeredComponents.capture->stop();
-    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide output truth\\n";
+    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide output truth\n";
     return 0;
 }
