@@ -104,8 +104,6 @@ public:
     explicit DeferredSolidCapture(std::function<void()> *release)
         : m_solid(qRgba(0, 0, 255, 128), 2, 2), m_release(release)
     {
-        if (m_release)
-            *m_release = [this] { deliver(); };
     }
 
     ~DeferredSolidCapture() override
@@ -134,6 +132,8 @@ public:
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
         m_request = request;
+        if (m_release)
+            *m_release = [this] { deliver(); };
         return true;
     }
 
