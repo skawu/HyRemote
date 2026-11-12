@@ -434,8 +434,14 @@ private:
             if (!state->active)
                 return;
             for (auto &entry : state->pending) {
-                if (entry.second.expected.erase(id) > 0)
+                if (entry.second.expected.erase(id) > 0) {
+                    // A surface removed/hidden while another async child is
+                    // pending may already have produced a frame. Dropping its
+                    // expected token alone is insufficient: the old frame
+                    // would still be composited under the current request ID.
+                    entry.second.frames.erase(id);
                     mayComplete.push_back(entry.first);
+                }
             }
         }
         for (hyremote::CaptureRequestId requestId : mayComplete)
@@ -444,6 +450,7 @@ private:
 
     static void onChildFrame(const std::shared_ptr<State> &state,
                              SurfaceId id,
+                             const std::weak_ptr<ChildRuntime> &source,
                              hyremote::RemoteFrame frame)
     {
         if (!frame.requestId)
@@ -451,7 +458,12 @@ private:
         const hyremote::CaptureRequestId requestId = *frame.requestId;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
+            const auto live = state->children.find(id);
+            // SurfaceId may be reused for a different QObject/adapter.
+            // A retiring adapter's callbacks cannot represent that source,
+            // even if the old request ID happens to be outstanding.
+            if (!state->active || live == state->children.end()
+                || live->second != source.lock())
                 return;
             auto pendingIt = state->pending.find(requestId);
             if (pendingIt == state->pending.end()
@@ -465,8 +477,16 @@ private:
 
     static void onChildEvent(const std::shared_ptr<State> &state,
                              SurfaceId id,
+                             const std::weak_ptr<ChildRuntime> &source,
                              const hyremote::CaptureEvent &event)
     {
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            const auto live = state->children.find(id);
+            if (!state->active || live == state->children.end()
+                || live->second != source.lock())
+                return;
+        }
         markSurfaceUnavailable(state, id);
         // Propagate the child's own recoverability. Losing one application-owned surface is recoverable -
         // the composite continues with the remaining surfaces - but a child that reports an unrecoverable
@@ -503,12 +523,13 @@ private:
         auto runtime = std::make_shared<ChildRuntime>();
         runtime->target = target;
         runtime->capture = std::move(components.capture);
+        const std::weak_ptr<ChildRuntime> weakRuntime = runtime;
         if (!runtime->capture->start(
-                [state, id](hyremote::RemoteFrame frame) {
-                    onChildFrame(state, id, std::move(frame));
+                [state, id, weakRuntime](hyremote::RemoteFrame frame) {
+                    onChildFrame(state, id, weakRuntime, std::move(frame));
                 },
-                [state, id](const hyremote::CaptureEvent &event) {
-                    onChildEvent(state, id, event);
+                [state, id, weakRuntime](const hyremote::CaptureEvent &event) {
+                    onChildEvent(state, id, weakRuntime, event);
                 })) {
             publishEvent(state,
                          hyremote::CaptureEventCode::TemporarilyUnavailable,
@@ -644,12 +665,18 @@ void CompositeTarget::upsertSurface(SurfaceId id,
                                     const QRect &globalGeometry,
                                     bool visible)
 {
+    // A stable SurfaceId can be reassigned when the native/Qt object is
+    // replaced. Frames already accepted from the previous QObject may still
+    // be waiting for another child; invalidate them before the new identity
+    // becomes eligible, even if both windows are visible.
+    const bool targetReplaced = m_targets.contains(id)
+                                && m_targets.value(id).data() != target;
     if (target)
         m_targets[id] = target;
     else
         m_targets.remove(id);
     m_model.upsert(id, globalGeometry, visible);
-    if (!target || !visible)
+    if (targetReplaced || !target || !visible)
         notifySurfaceUnavailable(id);
 }
 
