@@ -454,6 +454,19 @@ int main(int argc, char **argv)
     CompositeTarget interrupted;
     interrupted.upsertSurface(20, &asyncBase, QRect(0, 0, 4, 4), true);
     interrupted.upsertSurface(21, &asyncPopup, QRect(1, 1, 2, 2), true);
+    // Automatic AccessController refreshes unchanged windows frequently.
+    // An identical QObject+SurfaceId upsert must not invalidate a pending
+    // request or manufacture a new source epoch.
+    int baseInvalidations = 0;
+    const quint64 baseInvalidationToken = interrupted.addSurfaceUnavailableHandler(
+        [&](HyRemote::Runtime::Automatic::SurfaceId id) {
+            if (id == 20)
+                ++baseInvalidations;
+        });
+    interrupted.upsertSurface(20, &asyncBase, QRect(0, 0, 4, 4), true);
+    if (!check(baseInvalidations == 0,
+               "unchanged visible QObject upsert must not invalidate its frame"))
+        return 27;
     std::function<void()> releasePopup;
     const HyRemote::detail::BuiltinTargetResolver interruptedResolver =
         [&](QObject *target, bool input) {
@@ -528,6 +541,9 @@ int main(int argc, char **argv)
         return 24;
     QObject replacementBase;
     interrupted.upsertSurface(20, &replacementBase, QRect(0, 0, 4, 4), true);
+    if (!check(baseInvalidations == 2,
+               "hide and real QObject replacement each invalidate exactly once"))
+        return 28;
     releasePopup();
     if (!check(waitForFrame(interruptedFrames, 2),
                "old base invalidated on same-id replacement"))
@@ -543,6 +559,7 @@ int main(int argc, char **argv)
                   "replacement request has unique current identity"))
         return 26;
     interruptedComponents.capture->stop();
+    interrupted.removeSurfaceUnavailableHandler(baseInvalidationToken);
     std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide/output-identity truth\n";
     return 0;
 }
