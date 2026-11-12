@@ -31,6 +31,14 @@ SHA, an execution environment exists, or a case passed. CTest timeout is a
 configured limit, and measured duration remains unknown. A missing case
 blocks admission. Complete registration still requires the existing manual
 gate. The audit never launches a test or grants execution permission.
+
+To inspect an existing report, supply `--ctest-junit <file>` and
+`--evidence-audit-hash <recorded-audit-hash>` together with the same discovery
+arguments. It compares the reported case set to the plan, records observed
+durations, and blocks on missing, extra, skipped or unsuccessful cases.
+The hash association is caller-declared and does not attest which binary
+ran. Plans spanning multiple Kits require separate lane evidence and
+manual reconciliation.
 The plan also identifies the registry content and Git base used. Rerunning
 the planner only regenerates advice and cannot rerun existing evidence.
 

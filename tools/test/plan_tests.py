@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = ROOT / "tests" / "case_selection_rules.json"
@@ -130,6 +131,40 @@ def ctest_audit(build: Path, plan: dict, registry: dict, ctest: str,
     return audit
 
 
+def audit_junit(path: Path, claimed_hash: str, audit: dict, plan: dict) -> dict:
+    if claimed_hash != audit["audit_hash"]:
+        raise ValueError("Evidence audit hash does not match current CTest discovery")
+    payload = path.read_bytes()
+    root = ET.fromstring(payload)
+    if root.tag not in ("testsuite", "testsuites"):
+        raise ValueError("Expected CTest JUnit XML")
+    outcomes = {}
+    for case in root.iter("testcase"):
+        name = case.attrib["name"]
+        if name in outcomes:
+            raise ValueError("Duplicate CTest result: " + name)
+        unsuccessful = (case.get("status") != "run"
+                        or any(case.find(tag) is not None for tag in ("failure", "error", "skipped")))
+        seconds = float(case.attrib["time"])
+        if not 0 <= seconds < float("inf"):
+            raise ValueError("Invalid CTest duration: " + name)
+        outcomes[name] = {"reported_success": not unsuccessful, "duration_seconds": seconds}
+    selected = set(plan["case_ids"])
+    missing = sorted(selected - outcomes.keys())
+    unexpected = sorted(outcomes.keys() - selected)
+    unsuccessful = sorted(name for name, result in outcomes.items()
+                          if not result["reported_success"])
+    verdict = ("BLOCKED_EVIDENCE_MISMATCH" if missing or unexpected else
+               "BLOCKED_EVIDENCE_OUTCOME" if unsuccessful else audit["admission"])
+    return {
+        "admission": verdict, "audit_hash": claimed_hash,
+        "junit_sha256": hashlib.sha256(payload).hexdigest(),
+        "provenance": "CALLER_DECLARED_AUDIT_ASSOCIATION", "outcomes": outcomes,
+        "missing": missing, "unexpected": unexpected, "unsuccessful": unsuccessful,
+        "execution_allowed": False, "qualification": "NOT_ACCEPTANCE",
+    }
+
+
 def select(registry: dict, files: list[str], gate: str, source_sha: str, issue: str,
            base_sha: str | None = None, risks: list[str] | None = None) -> dict:
     if gate not in GATES:
@@ -249,6 +284,8 @@ def main() -> int:
     parser.add_argument("--ctest-build", type=Path, help="Read-only discovery in an existing build tree")
     parser.add_argument("--ctest", default="ctest", help="CTest executable for discovery")
     parser.add_argument("--ctest-config", help="CTest configuration for multi-config builds")
+    parser.add_argument("--ctest-junit", type=Path, help="Audit an existing CTest --output-junit report")
+    parser.add_argument("--evidence-audit-hash", help="Discovery audit hash recorded for the report")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
@@ -278,10 +315,16 @@ def main() -> int:
         if args.ctest_build:
             result["ctest_audit"] = ctest_audit(args.ctest_build, result, registry,
                                                 args.ctest, args.ctest_config)
+        if args.ctest_junit or args.evidence_audit_hash:
+            if not (args.ctest_build and args.ctest_junit and args.evidence_audit_hash):
+                parser.error("JUnit audit requires --ctest-build, --ctest-junit and --evidence-audit-hash")
+            result["junit_audit"] = audit_junit(args.ctest_junit, args.evidence_audit_hash,
+                                               result["ctest_audit"], result)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
-        blocked = result.get("ctest_audit", {}).get("admission", "").startswith("BLOCKED_")
+        blocked = any(result.get(section, {}).get("admission", "").startswith("BLOCKED_")
+                      for section in ("ctest_audit", "junit_audit"))
         return 2 if result["status"] == "BLOCKED_UNMAPPED" or blocked else 0
-    except (KeyError, ValueError, OSError, subprocess.SubprocessError) as exc:
+    except (ET.ParseError, KeyError, ValueError, OSError, subprocess.SubprocessError) as exc:
         print("TEST_PLAN_ERROR: " + str(exc), file=sys.stderr)
         return 2
 
