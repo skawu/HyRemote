@@ -43,9 +43,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check aqtinstall ninja
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
-            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt Kit missing' }
@@ -151,13 +151,9 @@ jobs:
           Write-Host "QT5_DIRECT_GL_BACKEND_COMPILE=PASS SHA=${{ github.event.pull_request.head.sha || github.sha }}"
 
   linux-qt68-real-capture-source:
-    name: Qt6.8.3 GL-RHI real CaptureSource pixels/lifetime / ${{ matrix.loop }}
+    name: Qt6.8.3 GL-RHI real CaptureSource pixels/lifetime / basic and threaded
     runs-on: ubuntu-22.04
     timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        loop: [basic, threaded]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -196,21 +192,25 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
           QSG_RHI_BACKEND: opengl
-          QSG_RENDER_LOOP: ${{ matrix.loop }}
         run: |
           set -euo pipefail
           mkdir -p tmp/r4-source
-          for scenario in default resize; do
-            args=()
-            if [ "$scenario" = resize ]; then args+=(--resize); fi
-            timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 "${args[@]}" | tee "tmp/r4-source/$QSG_RENDER_LOOP-$scenario.jsonl"
+          status=0
+          for loop in basic threaded; do
+            export QSG_RENDER_LOOP="$loop"
+            export XDG_CACHE_HOME="$RUNNER_TEMP/r4-$loop-cache"
+            for scenario in default resize; do
+              args=()
+              if [ "$scenario" = resize ]; then args+=(--resize); fi
+              timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 "${args[@]}" | tee "tmp/r4-source/$loop-$scenario.jsonl" || status=1
+            done
           done
           python - <<'PY'
           import json
-          import os
           from pathlib import Path
-          for scenario in ("default", "resize"):
-              log = Path("tmp/r4-source/" + os.environ["QSG_RENDER_LOOP"] + "-" + scenario + ".jsonl").read_text()
+          for loop, scenario in (("basic", "default"), ("basic", "resize"),
+                                 ("threaded", "default"), ("threaded", "resize")):
+              log = Path(f"tmp/r4-source/{loop}-{scenario}.jsonl").read_text()
               assert "R4_VERDICT=PASS_SCOPED_CAPTURE_SOURCE" in log, log
               rows = [x.partition("=")[2] for x in log.splitlines() if x.startswith("R4_RESULT_JSON=")]
               assert len(rows) == 1, rows
@@ -223,13 +223,22 @@ jobs:
               assert r["resize_verified"] is (scenario == "resize"), r
               assert r["final_pixel_size"] == ([800,450] if scenario == "resize" else [640,360]), r
               assert r["qualified_for_product"] is False, r
-              print("R4_CAPTURE_SOURCE_RUNTIME_PIXEL_RESIZE_AND_LIFETIME=PASS_SCOPED", scenario, r)
+              print("R4_CAPTURE_SOURCE_RUNTIME_PIXEL_RESIZE_AND_LIFETIME=PASS_SCOPED", loop, scenario, r)
           PY
-      - name: Publish only source test JSON, not installation files
+          exit "$status"
+      - name: Publish basic source test JSON
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: r4-qt68-gl-real-source-${{ matrix.loop }}
-          path: tmp/r4-source/*.jsonl
+          name: r4-qt68-gl-real-source-basic
+          path: tmp/r4-source/basic-*.jsonl
+          if-no-files-found: warn
+          retention-days: 10
+      - name: Publish threaded source test JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r4-qt68-gl-real-source-threaded
+          path: tmp/r4-source/threaded-*.jsonl
           if-no-files-found: warn
           retention-days: 10
