@@ -68,6 +68,11 @@ struct QuickGlPboFallbackPolicyRegression {
     bool ok = false;
     bool oneArmPerRender = false;
     bool armReleasedByRender = false;
+    // #967 P95 tail: a timer that produces no Qt frame must release its own
+    // arm, while a real forced update keeps it until the render callback.
+    bool noUpdateReleasesArm = false;
+    bool updateKeepsArm = false;
+    bool negativeControlBlocksNextArm = false;
     int glFallbackDelayMs = -1;
     int d3dFallbackDelayMs = -1;
     std::string detail;

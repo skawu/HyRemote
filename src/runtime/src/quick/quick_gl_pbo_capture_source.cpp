@@ -638,6 +638,24 @@ private:
             && !s.queued.empty();
     }
 
+    // Caller holds s.mutex. #967 P95 tail: share the fallback timer decision
+    // with the GPU-free state-machine regression so the timer path and its
+    // regression cannot drift apart.
+    static bool evaluateFallbackRender(State &s) noexcept
+    {
+        const bool needsFallbackRender = !s.gpuPending
+            && !s.cpuConversionPending
+            && !s.queued.empty();
+        // #967 P95 tail: an arm whose timer requested no Qt frame must not
+        // outlive that timer. RenderCallbackGuard still owns the release when
+        // a real update is issued, so one render generation keeps at most one
+        // forced update. Releasing here lets the next Core request arm again
+        // instead of waiting for a natural Qt frame on a static surface.
+        if (!needsFallbackRender)
+            s.fallbackRenderTimerArmed = false;
+        return needsFallbackRender;
+    }
+
     static void requestFallbackRenderIfNoNormalFrame(
         const std::shared_ptr<State> &s,
         QPointer<QQuickWindow> window,
@@ -660,11 +678,11 @@ private:
                     std::lock_guard<std::mutex> guard(s->mutex);
                     if (!s->active || s->generation != generation)
                         return;
-                    // Keep the arm set until RenderCallbackGuard observes the
-                    // next Qt frame: at most one forced update per render.
-                    needsFallbackRender = !s->gpuPending
-                        && !s->cpuConversionPending
-                        && !s->queued.empty();
+                    // #967 P95 tail: an arm whose timer produced no Qt frame
+                    // must not survive its own callback. evaluateFallbackRender
+                    // releases it only when no forced update is requested; a
+                    // real update keeps it until RenderCallbackGuard.
+                    needsFallbackRender = evaluateFallbackRender(*s);
                 }
                 if (needsFallbackRender && window && window->isVisible()) {
                     HYREMOTE_P1_COUNT(QuickGlExplicitRender);
@@ -1322,10 +1340,33 @@ public:
         out.oneArmPerRender = armsOnce && suppressesSecondArm
             && noArmWithoutDemand;
 
+        // #967 P95 tail. Negative control: an arm left set after a timer that
+        // requested no Qt frame blocks the next Core request from arming.
+        s->fallbackRenderTimerArmed = true;
+        s->queued.push_back({102, now});
+        out.negativeControlBlocksNextArm = !shouldArmFallbackRender(*s);
+
+        // A timer producing no forced update must release its own arm.
+        s->queued.clear();
+        const bool noUpdate = !evaluateFallbackRender(*s);
+        const bool released = !s->fallbackRenderTimerArmed;
+        s->queued.push_back({103, now});
+        out.noUpdateReleasesArm = noUpdate && released
+            && shouldArmFallbackRender(*s);
+
+        // A real forced update keeps the arm until RenderCallbackGuard, so one
+        // render generation still schedules at most one update.
+        s->fallbackRenderTimerArmed = true;
+        const bool needsUpdate = evaluateFallbackRender(*s);
+        out.updateKeepsArm = needsUpdate && s->fallbackRenderTimerArmed
+            && !shouldArmFallbackRender(*s);
+
         out.ok = out.oneArmPerRender && out.armReleasedByRender
+            && out.negativeControlBlocksNextArm
+            && out.noUpdateReleasesArm && out.updateKeepsArm
             && out.glFallbackDelayMs == 0 && out.d3dFallbackDelayMs == 17;
         if (!out.ok)
-            out.detail = "gl-fallback-delay-or-one-update-per-render-regressed";
+            out.detail = "gl-fallback-arm-lifecycle-regressed";
         return out;
     }
 
