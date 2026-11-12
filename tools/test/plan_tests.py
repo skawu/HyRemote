@@ -23,14 +23,17 @@ def load_rules(path: Path = REGISTRY) -> dict:
     ids = set()
     catalog = (ROOT / "tests" / "TEST_CATALOG.md").read_text(encoding="utf-8")
     catalog_ids = set(re.findall(r"^\| `(hyremote-[^ `]+)` \|", catalog, re.MULTILINE))
-    for rule in obj["rules"] + obj.get("risk_rules", []):
-        if not rule.get("id") or rule["id"] in ids:
-            raise ValueError("Duplicate or missing selection rule id")
-        ids.add(rule["id"])
-        if not rule.get("prefixes") or not rule.get("cases"):
-            raise ValueError("Rule lacks scope or cases: " + rule["id"])
-        if any(c not in catalog_ids for c in rule["cases"]):
-            raise ValueError("Non-catalog case name in rule: " + rule["id"])
+    if not isinstance(obj.get("risk_rules", []), list):
+        raise ValueError("Invalid cross-cutting risk registry")
+    for kind, rules in (("path", obj["rules"]), ("risk", obj.get("risk_rules", []))):
+        for rule in rules:
+            if not rule.get("id") or rule["id"] in ids:
+                raise ValueError("Duplicate or missing selection rule id")
+            ids.add(rule["id"])
+            if (kind == "path" and not rule.get("prefixes")) or not rule.get("cases"):
+                raise ValueError("Rule lacks scope or cases: " + rule["id"])
+            if any(c not in catalog_ids for c in rule["cases"]):
+                raise ValueError("Non-catalog case name in rule: " + rule["id"])
     return obj
 
 
