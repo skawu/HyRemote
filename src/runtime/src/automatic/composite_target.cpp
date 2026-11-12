@@ -73,9 +73,9 @@ public:
 
         const std::weak_ptr<State> weakState = m_state;
         m_state->surfaceUnavailableHandler = m_state->target->addSurfaceUnavailableHandler(
-            [weakState](SurfaceId id) {
+            [weakState](SurfaceId id, CompositeTarget::SurfaceLoss loss) {
                 if (const auto state = weakState.lock())
-                    markSurfaceUnavailable(state, id);
+                    markSurfaceUnavailable(state, id, loss);
             });
         return true;
     }
@@ -138,6 +138,7 @@ private:
     {
         QPointer<QObject> target;
         std::unique_ptr<hyremote::CaptureSource> capture;
+        bool ownerRetired = false; // guarded by State::mutex
     };
 
     struct PendingRequest
@@ -195,15 +196,26 @@ private:
         bool m_entered = false;
     };
 
+    static bool isCurrentChildLocked(const State &state, SurfaceId id,
+                                     const std::weak_ptr<ChildRuntime> &source)
+    {
+        const auto live = state.children.find(id);
+        return live != state.children.end() && live->second
+            && !live->second->ownerRetired && live->second == source.lock();
+    }
+
     static void publishEvent(const std::shared_ptr<State> &state,
                              hyremote::CaptureEventCode code,
                              std::string message,
-                             bool recoverable = true)
+                             bool recoverable = true,
+                             std::optional<SurfaceId> childId = std::nullopt,
+                             const std::weak_ptr<ChildRuntime> &source = {})
     {
         hyremote::CaptureEventHandler callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active || !state->onEvent)
+            if (!state->active || !state->onEvent
+                || (childId && !isCurrentChildLocked(*state, *childId, source)))
                 return;
             callback = state->onEvent;
             ++state->parentCallbacksInFlight;
@@ -426,13 +438,21 @@ private:
         composeAndPublish(state, std::move(*completed));
     }
 
-    static void markSurfaceUnavailable(const std::shared_ptr<State> &state, SurfaceId id)
+    static void markSurfaceUnavailable(
+        const std::shared_ptr<State> &state, SurfaceId id,
+        CompositeTarget::SurfaceLoss loss = CompositeTarget::SurfaceLoss::Hidden,
+        const std::weak_ptr<ChildRuntime> *source = nullptr)
     {
         std::vector<hyremote::CaptureRequestId> mayComplete;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
+            if (!state->active || (source && !isCurrentChildLocked(*state, id, *source)))
                 return;
+            if (loss == CompositeTarget::SurfaceLoss::IdentityChanged) {
+                const auto child = state->children.find(id);
+                if (child != state->children.end() && child->second)
+                    child->second->ownerRetired = true;
+            }
             for (auto &entry : state->pending) {
                 if (entry.second.expected.erase(id) > 0) {
                     // A surface removed/hidden while another async child is
@@ -458,12 +478,10 @@ private:
         const hyremote::CaptureRequestId requestId = *frame.requestId;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            const auto live = state->children.find(id);
             // SurfaceId may be reused for a different QObject/adapter.
             // A retiring adapter's callbacks cannot represent that source,
             // even if the old request ID happens to be outstanding.
-            if (!state->active || live == state->children.end()
-                || live->second != source.lock())
+            if (!state->active || !isCurrentChildLocked(*state, id, source))
                 return;
             auto pendingIt = state->pending.find(requestId);
             if (pendingIt == state->pending.end()
@@ -480,14 +498,7 @@ private:
                              const std::weak_ptr<ChildRuntime> &source,
                              const hyremote::CaptureEvent &event)
     {
-        {
-            std::lock_guard<std::mutex> lock(state->mutex);
-            const auto live = state->children.find(id);
-            if (!state->active || live == state->children.end()
-                || live->second != source.lock())
-                return;
-        }
-        markSurfaceUnavailable(state, id);
+        markSurfaceUnavailable(state, id, CompositeTarget::SurfaceLoss::Hidden, &source);
         // Propagate the child's own recoverability. Losing one application-owned surface is recoverable -
         // the composite continues with the remaining surfaces - but a child that reports an unrecoverable
         // failure (a destroyed target, a backend that cannot capture at all) must reach Core as
@@ -496,7 +507,7 @@ private:
         publishEvent(state,
                      event.code,
                      std::string("composite child surface: ") + event.message,
-                     event.recoverable);
+                     event.recoverable, id, source);
     }
 
     static std::shared_ptr<ChildRuntime> ensureChild(
@@ -507,7 +518,8 @@ private:
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             auto it = state->children.find(id);
-            if (it != state->children.end() && it->second && it->second->target.data() == target)
+            if (it != state->children.end() && it->second && !it->second->ownerRetired
+                && it->second->target.data() == target)
                 return it->second;
         }
 
@@ -648,7 +660,7 @@ void CompositeTarget::removeSurfaceUnavailableHandler(quint64 token)
         m_surfaceUnavailableHandlers.remove(token);
 }
 
-void CompositeTarget::notifySurfaceUnavailable(SurfaceId id)
+void CompositeTarget::notifySurfaceUnavailable(SurfaceId id, SurfaceLoss loss)
 {
     // Invoke a snapshot so a handler can unregister itself as part of capture teardown without
     // invalidating this iteration. Surface/model mutations and capture orchestration are GUI-thread
@@ -656,7 +668,7 @@ void CompositeTarget::notifySurfaceUnavailable(SurfaceId id)
     const auto handlers = m_surfaceUnavailableHandlers.values();
     for (const SurfaceUnavailableHandler &handler : handlers) {
         if (handler)
-            handler(id);
+            handler(id, loss);
     }
 }
 
@@ -676,22 +688,24 @@ void CompositeTarget::upsertSurface(SurfaceId id,
     else
         m_targets.remove(id);
     m_model.upsert(id, globalGeometry, visible);
-    if (targetReplaced || !target || !visible)
-        notifySurfaceUnavailable(id);
+    if (targetReplaced || !target)
+        notifySurfaceUnavailable(id, SurfaceLoss::IdentityChanged);
+    else if (!visible)
+        notifySurfaceUnavailable(id, SurfaceLoss::Hidden);
 }
 
 void CompositeTarget::removeSurface(SurfaceId id)
 {
     m_targets.remove(id);
     m_model.remove(id);
-    notifySurfaceUnavailable(id);
+    notifySurfaceUnavailable(id, SurfaceLoss::IdentityChanged);
 }
 
 void CompositeTarget::setSurfaceVisible(SurfaceId id, bool visible)
 {
     m_model.setVisible(id, visible);
     if (!visible)
-        notifySurfaceUnavailable(id);
+        notifySurfaceUnavailable(id, SurfaceLoss::Hidden);
 }
 
 void CompositeTarget::setSurfaceGeometry(SurfaceId id, const QRect &globalGeometry)

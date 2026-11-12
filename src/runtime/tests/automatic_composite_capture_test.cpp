@@ -157,7 +157,8 @@ private:
 class StopEventCapture final : public hyremote::CaptureSource
 {
 public:
-    explicit StopEventCapture(QRgb color) : m_solid(color, 4, 4) {}
+    StopEventCapture(QRgb color, std::function<void()> &emitLateError)
+        : m_solid(color, 4, 4), m_emitLateError(emitLateError) {}
 
     hyremote::CaptureCapabilities capabilities() const override
     {
@@ -168,20 +169,16 @@ public:
                hyremote::CaptureEventHandler onEvent) override
     {
         m_onEvent = std::move(onEvent);
+        m_emitLateError = [this] { emitError(); };
         return m_solid.start(std::move(onFrame), {});
     }
 
     void stop() noexcept override
     {
         m_solid.stop();
-        if (m_onEvent) {
-            hyremote::CaptureEvent event;
-            event.code = hyremote::CaptureEventCode::BackendFailure;
-            event.message = "retired adapter shutdown, not new surface failure";
-            event.recoverable = false;
-            m_onEvent(event);
-            m_onEvent = {};
-        }
+        emitError();
+        m_onEvent = {};
+        m_emitLateError = {};
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
@@ -190,8 +187,20 @@ public:
     }
 
 private:
+    void emitError()
+    {
+        if (m_onEvent) {
+            hyremote::CaptureEvent event;
+            event.code = hyremote::CaptureEventCode::BackendFailure;
+            event.message = "source diagnostic";
+            event.recoverable = false;
+            m_onEvent(event);
+        }
+    }
+
     SolidCapture m_solid;
     hyremote::CaptureEventHandler m_onEvent;
+    std::function<void()> &m_emitLateError;
 };
 
 bool check(bool condition, const char *message)
@@ -501,7 +510,7 @@ int main(int argc, char **argv)
     // request or manufacture a new source epoch.
     int baseInvalidations = 0;
     const quint64 baseInvalidationToken = interrupted.addSurfaceUnavailableHandler(
-        [&](HyRemote::Runtime::Automatic::SurfaceId id) {
+        [&](HyRemote::Runtime::Automatic::SurfaceId id, CompositeTarget::SurfaceLoss) {
             if (id == 20)
                 ++baseInvalidations;
         });
@@ -605,6 +614,7 @@ int main(int argc, char **argv)
 
     QObject oldQtWindow;
     QObject newQtWindow;
+    std::function<void()> emitLateError;
     CompositeTarget retired;
     retired.upsertSurface(30, &oldQtWindow, QRect(0, 0, 4, 4), true);
     const HyRemote::detail::BuiltinTargetResolver retirementResolver =
@@ -614,7 +624,8 @@ int main(int argc, char **argv)
                 return result;
             if (target == &oldQtWindow) {
                 result.supported = true;
-                result.capture = std::make_unique<StopEventCapture>(qRgba(255, 0, 0, 255));
+                result.capture = std::make_unique<StopEventCapture>(
+                    qRgba(255, 0, 0, 255), emitLateError);
             } else if (target == &newQtWindow) {
                 result.supported = true;
                 result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255), 4, 4);
@@ -637,14 +648,25 @@ int main(int argc, char **argv)
         || !check(waitForFrame(retirementFrames, 1),
                   "retired child initial frame"))
         return 29;
+    if (!check(static_cast<bool>(emitLateError), "initial adapter exposes its event callback"))
+        return 32;
+    emitLateError();
+    if (!check(retirementEvents == 1, "current child diagnostics reach the parent"))
+        return 33;
     retired.upsertSurface(30, &newQtWindow, QRect(0, 0, 4, 4), true);
+    if (!check(static_cast<bool>(emitLateError), "old adapter still present before next request"))
+        return 34;
+    emitLateError();
+    if (!check(retirementEvents == 1,
+               "old adapter cannot fail a replaced surface before next request"))
+        return 35;
     if (!check(retirementComponents.capture->requestFrame({61, hyremote::Clock::now()}),
                "new same-id child request")
         || !check(waitForFrame(retirementFrames, 2),
                   "new same-id child completes"))
         return 30;
     const QImage freshOwner = imageView(retirementFrames.at(1));
-    if (!check(retirementEvents == 0,
+    if (!check(retirementEvents == 1,
                "retiring old Qt adapter must not report failure for new owner")
         || !check(freshOwner.pixelColor(0, 0) == QColor(0, 255, 0, 255),
                   "new child must own the delivered pixels after old stop")
