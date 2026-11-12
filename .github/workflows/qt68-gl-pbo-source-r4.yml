@@ -16,13 +16,9 @@ permissions:
   contents: read
 jobs:
   windows-runtime:
-    name: Windows MSVC Qt6.8.3 Runtime+Generic flag=${{ matrix.arm }}
+    name: Windows MSVC Qt6.8.3 Runtime+Generic flags OFF and ON
     runs-on: windows-2022
     timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        arm: [OFF, ON]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,29 +48,39 @@ jobs:
           "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Compile actual Qt Quick Runtime and Generic integration (no packages)
+        id: runtime-build
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $arm = '${{ matrix.arm }}'
-          $build = 'build-r4-' + $arm.ToLowerInvariant()
           if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.head.sha || github.sha }}') { throw 'Checkout SHA mismatch' }
-          & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($option in @('HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO', 'HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING')) {
-            $expected = "$($option):BOOL=$arm"
-            $setting = @(Get-Content "$build/CMakeCache.txt" | Where-Object {
-              $_ -match "^$($option):BOOL="
-            })
-            if ($setting.Count -ne 1 -or $setting[0] -ne $expected) {
-              throw "Incorrect actual CMake option $($option): $($setting -join ',')"
+          $failed = @()
+          foreach ($arm in @('OFF', 'ON')) {
+            $build = 'build-r4-' + $arm.ToLowerInvariant()
+            try {
+              & .\build.cmd build --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release "--build-dir=$build" --no-tests --clean -j4 "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=$arm" "--cmake=HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE=ON"
+              if ($LASTEXITCODE -ne 0) { throw "Build exit $LASTEXITCODE" }
+              foreach ($option in @('HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO', 'HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING')) {
+                $expected = "$($option):BOOL=$arm"
+                $setting = @(Get-Content "$build/CMakeCache.txt" | Where-Object {
+                  $_ -match "^$($option):BOOL="
+                })
+                if ($setting.Count -ne 1 -or $setting[0] -ne $expected) {
+                  throw "Incorrect actual CMake option $($option): $($setting -join ',')"
+                }
+              }
+              $runtime = Get-ChildItem -Path $build -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
+              if (!$runtime) { throw 'Native Runtime DLL absent' }
+              if ($arm -eq 'ON') { 'on_ok=true' >> $env:GITHUB_OUTPUT }
+              Write-Host "R4_RUNTIME_COMPILE=PASS arm=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
+            } catch {
+              $failed += $arm
+              Write-Host "::error title=Windows Qt6 Runtime $($arm)::$($_.Exception.Message)"
             }
           }
-          $runtime = Get-ChildItem -Path $build -Filter 'HyRemoteRemoteAccess.dll' -File -Recurse | Select-Object -First 1
-          if (!$runtime) { throw 'Native Runtime DLL absent' }
-          Write-Host "R4_RUNTIME_COMPILE=PASS ${{ matrix.arm }}=$arm SHA=${{ github.event.pull_request.head.sha || github.sha }}"
+          if ($failed.Count) { throw "Failed Windows Qt6 arms: $($failed -join ', ')" }
 
       - name: Real Qt6.8.3 D3D11 staging CaptureSource four-quadrant pixels and lifecycle
-        if: matrix.arm == 'ON'
+        if: ${{ !cancelled() && steps.runtime-build.outputs.on_ok == 'true' }}
         shell: pwsh
         env:
           QSG_RHI_BACKEND: d3d11
