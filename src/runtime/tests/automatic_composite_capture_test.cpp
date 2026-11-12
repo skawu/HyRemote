@@ -304,6 +304,87 @@ int main(int argc, char **argv)
         return 8;
     }
     scaledComponents.capture->stop();
-    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, and DPR fallback\n";
+
+    // #958 final-output ownership: two distinct presentable surfaces overlap.
+    // Capture each whole surface exactly once, then blend in application
+    // stacking order. This is deliberately NOT an item-by-item Qt Quick grab,
+    // nor proof that one GPU framebuffer covers both independent windows.
+    QObject baseWindow;
+    QObject translucentPopup;
+    CompositeTarget layered;
+    layered.upsertSurface(10, &baseWindow, QRect(0, 0, 4, 4), true);
+    layered.upsertSurface(11, &translucentPopup, QRect(1, 1, 2, 2), true);
+    const HyRemote::detail::BuiltinTargetResolver layeredResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &baseWindow) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255), 4, 4);
+            } else if (target == &translucentPopup) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(0, 0, 255, 128), 2, 2);
+            }
+            return result;
+        };
+    auto layeredComponents = layered.createTargetComponents(false, layeredResolver);
+    std::vector<hyremote::RemoteFrame> layeredFrames;
+    if (!check(layeredComponents.supported && layeredComponents.capture,
+               "layered top-level surface capture is available")
+        || !check(layeredComponents.capture->start(
+                      [&](hyremote::RemoteFrame frame) {
+                          layeredFrames.push_back(std::move(frame));
+                      },
+                      [](const hyremote::CaptureEvent &) {}),
+                  "layered capture starts")
+        || !check(layeredComponents.capture->requestFrame({51, hyremote::Clock::now()}),
+                  "layered first frame admitted")
+        || !check(waitForFrame(layeredFrames, 1), "layered first frame ready"))
+        return 13;
+    const QImage blend = imageView(layeredFrames.at(0));
+    const QColor blended = blend.pixelColor(1, 1);
+    if (!check(blend.size() == QSize(4, 4), "popup must not change base canvas size")
+        || !check(blend.pixelColor(0, 0) == QColor(255, 0, 0, 255),
+                  "uncovered base pixels preserved")
+        || !check(blended.alpha() == 255 && qAbs(blended.red() - 127) <= 1
+                      && blended.green() == 0 && qAbs(blended.blue() - 128) <= 1,
+                  "translucent popup is composed over its base exactly once"))
+        return 14;
+
+    // A real native-window raise changes the final ordering without creating
+    // or resurrecting any old source snapshot; the next accepted request must
+    // represent the NEW layering relationship.
+    layered.raiseSurface(10);
+    if (!check(layeredComponents.capture->requestFrame({52, hyremote::Clock::now()}),
+               "raised surface frame admitted")
+        || !check(waitForFrame(layeredFrames, 2), "raised surface frame ready"))
+        return 15;
+    const QImage raised = imageView(layeredFrames.at(1));
+    if (!check(raised.pixelColor(1, 1) == QColor(255, 0, 0, 255),
+               "raised opaque window obscures translucent popup")
+        || !check(layeredFrames.at(1).requestId == hyremote::CaptureRequestId{52},
+                  "raised composition has current request identity"))
+        return 16;
+
+    // Hide the base after the raise: a previously composed red pixel may not
+    // survive as stale data behind the remaining translucent popup.
+    layered.setSurfaceVisible(10, false);
+    if (!check(layeredComponents.capture->requestFrame({53, hyremote::Clock::now()}),
+               "hidden base frame admitted")
+        || !check(waitForFrame(layeredFrames, 3), "hidden base frame ready"))
+        return 17;
+    const QImage popupOnly = imageView(layeredFrames.at(2));
+    const QColor popupPixel = popupOnly.pixelColor(0, 0);
+    if (!check(popupOnly.size() == QSize(2, 2),
+               "hidden base is excluded from visible canvas")
+        || !check(popupPixel.alpha() == 128 && popupPixel.red() == 0
+                      && popupPixel.green() == 0 && popupPixel.blue() == 255,
+                  "popup output retains its own alpha with no stale base pixels")
+        || !check(layeredFrames.at(2).requestId == hyremote::CaptureRequestId{53},
+                  "new composition has new request identity"))
+        return 18;
+    layeredComponents.capture->stop();
+    std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide output truth\\n";
     return 0;
 }
