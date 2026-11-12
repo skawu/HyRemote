@@ -38,3 +38,32 @@ the planner only regenerates advice and cannot rerun existing evidence.
   context or CTest identity.
 * Local Codebuddy remains responsible for running *approved* tests on its
   existing machine; read-only suggestions are not license to start more tests.
+
+
+## Cross-cutting risk tags (second #970 slice)
+
+Source-file specificity alone cannot determine whether a change also affects
+authentication, the installed SDK ABI, or QML type registration. A planner
+caller can explicitly add one or more **registered additive risk tags**:
+
+```sh
+python tools/test/plan_tests.py --sha <full-head-SHA> \
+  --file src/runtime/src/quick/quick_gl_pbo_capture_source.cpp \
+  --gate G1 --issue 970 --risk security-auth
+```
+
+Supported tags are defined only in `tests/case_selection_rules.json` under
+`risk_rules`: `security-auth`, `public-sdk-abi`, `qml-registration`.
+They add the listed existing CTest identities on top of file-scope selections;
+unknown tags fail rather than falling through. Risk order and duplicates do not
+affect the plan hash. The risk tags are included in `plan_hash` identity.
+
+**This remains advisory, not an enforceable risk classifier.** A human or
+trusted caller must identify risks correctly; omitting a risk tag does not
+prove that the change is safe. Security-on tests have real CMake/platform
+capability guards, and an unavailable test is never a PASS or waiver.
+A later #970 gate must derive verified risk tags independently from diff
+semantics and product contracts, and cross-check actual CTest discovery and
+execution before claiming adequate coverage.
+
+No new CTest, Qt build, environment setup, GPU fixture or CI job is introduced.
