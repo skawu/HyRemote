@@ -1,0 +1,155 @@
+name: Qt6.8.3 public RHI eligibility and capture paths R2 (NON-PRODUCT)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt68-public-rhi-eligibility-r2.yml
+      - tools/perf/tests/qt68_rhi_public_eligibility/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-qt68-public:
+    name: MSVC Qt6.8.3 D3D11 visible-window public API / actual CPU pixel read
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Install exact Qt 6.8.3 MSVC2022 QtQuick
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = Join-Path $env:${{ runner.temp }} 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:${{ runner.temp }} 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Qt6.8.3 Quick unavailable' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build Qt6.8.3 public-only scenegraph and RHI resource probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_rhi_public_eligibility -B build-r2-qt68 -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release -DHYREMOTE_R2_BUILD_PRIVATE_METADATA_AUDIT=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & cmake --build build-r2-qt68 --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run visible D3D11 QtQuick resource audit and 3 public capture modes
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path tmp/r2 | Out-Null
+          foreach ($width in @(640, 1920)) {
+            $height = if ($width -eq 640) { 360 } else { 1080 }
+            foreach ($mode in @('rhi-resource-audit', 'scene-only', 'window-grab', 'item-grab')) {
+              $out = "tmp/r2/$mode-$width" + "x$height.jsonl"
+              Write-Host "R2_START ${{ github.event.pull_request.head.sha || github.sha }}=${{ github.event.pull_request.head.sha || github.sha }} MODE=$mode SIZE=$width x $height"
+              & .\build-r2-qt68\hyremote-qt68-public-rhi-eligibility.exe "--mode=$mode" "--width=$width" "--height=$height" "--stages=15" | Tee-Object -FilePath $out
+              if ($LASTEXITCODE -ne 0) { throw "R2 blocked: $mode $width x $height exit=$LASTEXITCODE" }
+            }
+          }
+      - name: Audit actual backend, phase pixels and no private readback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          files = sorted(Path("tmp/r2").glob("*.jsonl"))
+          assert len(files) == 8, files
+          for f in files:
+              data = f.read_text(encoding="utf-8-sig")
+              assert "R2_VERDICT=PASS_PUBLIC_QT68_SCOPED_PROBE" in data, f
+              marker = [line for line in data.splitlines() if line.startswith("R2_RESULT_JSON=")]
+              assert len(marker) == 1, (f, marker)
+              d = json.loads(marker[0].partition("=")[2])
+              assert d["qt"] == "6.8.3" and d["graphics_api_enum"] == 4, d
+              assert d["stages_completed"] == d["stages_expected"] == 15, d
+              assert d["after_frame_end"] >= 15 and d["scene_graph_loss"] is False, d
+              assert d["source_to_submitted_p95_ms"] > 0, d
+              assert d["source_to_accepted_p95_ms"] >= d["source_to_submitted_p95_ms"], d
+              assert d["qtgui_private_used"] is False and d["public_rhi_gpu_readback_qualified"] is False, d
+              assert d["readback_operations"] == 0 and d["qualified_for_product"] is False, d
+              if d["mode"] in ("window-grab", "item-grab"):
+                  assert d["stages_verified_pixels"] == 15 and d["capture_failures"] == 0, d
+                  assert d["capture_wall_p95_ms"] > 0, d
+              else:
+                  assert d["pixel_truth_verified"] is False, d
+                  assert d["stages_verified_pixels"] == 0, d
+              print("R2_QT68_PUBLIC=PASS", f, "cpu_ms=", d["process_cpu_ms"],
+                    "p95=", d["capture_wall_p95_ms"],
+                    "stage_to_submitted_p95=", d["source_to_submitted_p95_ms"],
+                    "stage_to_accepted_p95=", d["source_to_accepted_p95_ms"],
+                    "rhi_resource=", d["rhi_resource_observed"],
+                    "swapchain_seen=", d["swapchain_resource_observed"])
+          print("R2_CI_PASS_PUBLIC_CAPABILITIES_ONLY_NO_RHI_READBACK")
+          '@ | Set-Content -Path tmp/r2/audit.py -Encoding UTF8
+          python tmp/r2/audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Independently inspect actual default Qt Quick D3D11 SwapChain transfer source (PRIVATE KIT RESEARCH ONLY)
+        shell: pwsh
+        env:
+          QSG_RHI_BACKEND: d3d11
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & cmake -S tools/perf/tests/qt68_rhi_public_eligibility -B build-r2-private-inspection -G Ninja "-DCMAKE_PREFIX_PATH=$env:QT_PREFIX" -DCMAKE_BUILD_TYPE=Release -DHYREMOTE_RHI_PRIVATE_INSPECTION_ONLY=ON
+          if ($LASTEXITCODE -ne 0) { throw "Exact Qt 6.8.3 GuiPrivate research Kit not available or build impossible" }
+          & cmake --build build-r2-private-inspection --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw "Private read-only RHI flag inspection build failed" }
+          foreach ($width in @(640, 1920)) {
+            $height = if ($width -eq 640) { 360 } else { 1080 }
+            & .\build-r2-private-inspection\hyremote-qt68-public-rhi-eligibility.exe --mode=rhi-resource-audit "--width=$width" "--height=$height" --stages=15 | Tee-Object -FilePath ("tmp/r2/private-swapchain-$width" + "x$height.jsonl")
+            if ($LASTEXITCODE -ne 0) { throw "Native private inspection failed for width $width" }
+          }
+      - name: Fail closed on private borrowed swapchain eligibility (do not assume capability)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          @'
+          import json
+          from pathlib import Path
+          for f in sorted(Path("tmp/r2").glob("private-swapchain-*.jsonl")):
+              rows = [ln.split("=",1)[1] for ln in f.read_text(encoding="utf-8-sig").splitlines() if ln.startswith("R2_RESULT_JSON=")]
+              assert len(rows) == 1, (f, rows)
+              x = json.loads(rows[0])
+              assert x["private_inspection_only"] is True and x["qtgui_private_used"] is True, x
+              assert x["graphics_api_enum"] == 4 and x["swapchain_resource_observed"], x
+              assert x["swapchain_transfer_source_flag"] in (0,1), x
+              assert all(isinstance(x[k], int) and 0 <= x[k] <= 31 for k in ("command_list_stage_mask", "rhi_stage_mask", "swapchain_stage_mask")), x
+              assert x["readback_operations"] == 0 and x["public_rhi_gpu_readback_qualified"] is False, x
+              print("QT68_D3D11_DEFAULT_SWAPCHAIN_USED_AS_TRANSFER_SOURCE=", x["swapchain_transfer_source_flag"], "WIDTH=", x["size_px"][0])
+              print("QT68_D3D11_STAGE_MASKS: command_list=",x["command_list_stage_mask"],"rhi=",x["rhi_stage_mask"],"swapchain=",x["swapchain_stage_mask"])
+          assert len(list(Path("tmp/r2").glob("private-swapchain-*.jsonl"))) == 2
+          '@ | Set-Content -Path tmp/r2/private-audit.py -Encoding utf8
+          python tmp/r2/private-audit.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish small CPU/RHI/capture metadata, NOT a product package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2-qt68-public-rhi-capture-evidence
+          path: |
+            tmp/r2/*.jsonl
+            tmp/r2/private-swapchain-*.jsonl
+          if-no-files-found: warn
+          retention-days: 10

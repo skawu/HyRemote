@@ -1,0 +1,125 @@
+name: Qt6.8.3 OpenGL RHI framebuffer eligibility R2 (NON-PRODUCT)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt68-gl-rhi-existing-frame-r2.yml
+      - tools/perf/tests/qt68_gl_render_frame_r2/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qt68-linux-gl-rhi:
+    name: Qt6.8.3 Linux Xvfb/Mesa OpenGL-RHI basic/threaded real pixels
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt6-6.8.3-linux-gcc64-openGL-rhi-eligibility-v1
+      - name: Install runtime dependencies and exact Qt6.8.3 Linux Quick Kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ninja-build xvfb libgl1-mesa-dri libgl1-mesa-dev libglx-mesa0 libegl1 mesa-utils libxkbcommon-x11-0 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-randr0 libxcb-xfixes0 libxcb-glx0 libxcb-xkb1 libxcb-xinput0 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-render0 libx11-xcb1 libxcb1 libxkbcommon0
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          prefix="$RUNNER_TEMP/Qt/6.8.3/gcc_64"
+          if [ ! -f "$prefix/lib/libQt6Quick.so" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          test -f "$prefix/lib/libQt6Quick.so"
+          printf 'QT_PREFIX=%s\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'LD_LIBRARY_PATH=%s/lib\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'QT_QPA_PLATFORM_PLUGIN_PATH=%s/plugins/platforms\n' "$prefix" >> "$GITHUB_ENV"
+          printf 'QT_PLUGIN_PATH=%s/plugins\n' "$prefix" >> "$GITHUB_ENV"
+      - name: Check actual Qt6 platform plugin dynamic dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          ldd "$QT_PREFIX/plugins/platforms/libqxcb.so" | tee /tmp/qt68-xcb-ldd.txt
+          if grep -q 'not found' /tmp/qt68-xcb-ldd.txt; then
+            echo 'R2_GL_RHI=BLOCKED_XCB_QT_KIT_SYSTEM_DEPENDENCY'
+            exit 3
+          fi
+          echo 'R2_GL_XCB_LOADER=PASS'
+      - name: Compile actual Qt6.8.3 Scene Graph and OpenGL RHI frame readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/perf/tests/qt68_gl_render_frame_r2 -B build-r2-qt68-gl -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_PREFIX" -DHYREMOTE_GL_RHI_CAPTURE_AFTER_FRAME_END=ON
+          cmake --build build-r2-qt68-gl --parallel 2
+      - name: Run actual Qt6 OpenGL RHI 640x360 and 1920x1080 pixels
+        shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          QSG_RHI_BACKEND: opengl
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r2-gl
+          for loop in basic threaded; do
+            for geometry in '640 360' '1920 1080'; do
+              read -r width height <<< "$geometry"
+              for mode in render-baseline render-tap public-grab; do
+                echo "R2_GL_START mode=$mode loop=$loop size=$width x $height"
+                QSG_RENDER_LOOP="$loop" timeout 75s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' ./build-r2-qt68-gl/hyremote-qt68-gl-rhi-render-frame-r2 "--mode=$mode" "--width=$width" "--height=$height" | tee "tmp/r2-gl/$mode-$width-x$height-$loop.jsonl"
+              done
+            done
+          done
+      - name: Fail closed on Qt6.8.3 pixel errors and unsupported render loop
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          files = sorted(Path("tmp/r2-gl").glob("*.jsonl"))
+          assert len(files) == 12, files
+          for f in files:
+              lines = f.read_text().splitlines()
+              row = [x.removeprefix("R2_GL_RESULT_JSON=") for x in lines if x.startswith("R2_GL_RESULT_JSON=")]
+              assert len(row) == 1, (f, lines)
+              d = json.loads(row[0])
+              expected_verdict = ("PASS_QT68_RHI_OPENGL_NO_READBACK_CONTROL" if d["mode"] == "render-baseline" else "PASS_SCOPED_QT68_RHI_OPENGL_PIXEL_CORRECT")
+              assert "R2_GL_VERDICT=" + expected_verdict in lines, (f, lines)
+              assert d["qt"] == "6.8.3" and d["backend"] == "Qt6_RHI_OpenGL", d
+              assert d["tap_signal"] == "afterFrameEnd", d
+              assert d["stages_expected"] == d["stages_completed"] == 30, d
+              assert d["gl_errors"] == 0 and d["missing_gl_context"] == 0, d
+              assert d["qualified_for_product"] is False, d
+              assert d["render_loop"] in ("basic", "threaded"), d
+              if d["render_loop"] == "threaded":
+                  assert d["render_thread_distinct_from_gui"] is True, d
+              if d["mode"] == "render-baseline":
+                  assert d["pixel_truth_verified"] is False and d["render_tap_readbacks"] == 0, d
+                  assert d["quadrants_verified_per_frame"] == 0, d
+              else:
+                  assert d["pixel_truth_verified"] is True and d["stages_correct_pixels"] == 30, d
+                  assert d["quadrants_verified_per_frame"] == 4, d
+                  assert d["bad_pixel_frames"] == 0, d
+              if d["mode"] == "render-tap":
+                  assert d["request_scoped_readback"] is True, d
+                  assert d["render_tap_readbacks"] == 30, d
+                  assert d["no_demand_render_frames_no_readback"] >= 1, d
+                  assert d["readback_p95_ms"] > 0, d
+              print("R2_QT68_GL_RHI_SCOPED=PASS", f, "cpu_ms", d["process_cpu_ms"], "readback_p95", d["readback_p95_ms"])
+          print("R2_GL_RHI_PIXEL_TRUTH=PASS_SCOPED_NO_PRODUCT_ADMISSION")
+          PY
+      - name: Keep small independent scenegraph cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r2-qt68-gl-rhi-framebuffer-evidence
+          path: tmp/r2-gl/*.jsonl
+          if-no-files-found: warn
+          retention-days: 10
