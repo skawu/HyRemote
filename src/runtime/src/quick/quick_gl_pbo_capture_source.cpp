@@ -779,6 +779,7 @@ private:
                                     QQuickWindow *window,
                                     QOpenGLContext *renderCtx)
     {
+        Q_UNUSED(window);
         QOffscreenSurface *surface = nullptr;
         GlRetireWorker *existing = nullptr;
         QOpenGLContext *existingCtx = nullptr;
