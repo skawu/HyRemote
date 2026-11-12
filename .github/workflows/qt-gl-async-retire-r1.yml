@@ -65,11 +65,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp/r953
-          for mode in default cancel fullhd hide; do
+          for mode in default cancel fullhd hide lifecycle; do
             args=()
             if [ "$mode" = cancel ]; then args+=(--cancel); fi
             if [ "$mode" = fullhd ]; then args+=(--fullhd); fi
             if [ "$mode" = hide ]; then args+=(--hide); fi
+            if [ "$mode" = lifecycle ]; then
+              if [ "$QSG_RENDER_LOOP" = basic ]; then args+=(--replace-window); else args+=(--rebuild); fi
+            fi
             timeout 25s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r953/hyremote-qt-gl-async-retire-r1 "${args[@]}" | tee "tmp/r953/$mode.log"
             grep -q '^R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE$' "tmp/r953/$mode.log"
             grep -q '"extra_window_updates":0' "tmp/r953/$mode.log"
@@ -77,6 +80,7 @@ jobs:
             grep -q '"qualified_for_product":false' "tmp/r953/$mode.log"
             python - "$mode" "tmp/r953/$mode.log" <<'PY'
           import json
+          import os
           import sys
           from pathlib import Path
           mode, log_path = sys.argv[1:]
@@ -88,6 +92,13 @@ jobs:
           assert isinstance(result.get("read_framebuffer_binding"), int) and result["read_framebuffer_binding"] >= 0, result
           assert isinstance(result.get("sample_buffers"), int) and result["sample_buffers"] >= 0, result
           assert result["qualified_for_product"] is False, result
+          if mode == "lifecycle":
+              assert result["rebuild_verified"] is True, result
+              assert result["natural_frame_submissions"] == 2, result
+              assert result["stale_completions"] == 1, result
+              assert result["scene_graph_invalidations"] >= 1, result
+              assert result["scene_graph_initializations"] >= 2, result
+              assert result["window_replaced"] == (os.environ["QSG_RENDER_LOOP"] == "basic"), result
           print("R953_TARGET_OBSERVED=YES", mode, result["read_framebuffer_binding"], result["sample_buffers"])
           PY
             if [ "$mode" != cancel ]; then grep -q '"pixel_truth":true' "tmp/r953/$mode.log"; fi

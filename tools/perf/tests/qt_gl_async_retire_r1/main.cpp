@@ -1,6 +1,7 @@
 // #953: Public-Qt API, REAL Qt Quick OpenGL shared-context PBO retirement proof.
-// Non-product fixture. Exactly one naturally rendered frame submits glReadPixels
-// and GLsync; a worker-owned *shared* QOpenGLContext waits/maps/deletes them.
+// Non-product fixture. A naturally rendered frame submits glReadPixels and
+// GLsync; a worker-owned shared QOpenGLContext waits, maps and deletes them.
+// Lifecycle modes repeat this across one observed scene graph invalidation.
 // Critically: NO window->update() is issued to retire the fence. Qt5 and Qt6
 // differ only in the legal Qt scenegraph callback chosen below.
 // This is neither a drop-in CaptureSource nor a production safety qualification.
@@ -26,7 +27,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -60,8 +63,8 @@ QColor colorFor(int quadrant)
 
 class RealScene final : public QQuickItem {
 public:
-    RealScene(QQuickItem *parent, int width, int height)
-        : QQuickItem(parent), m_width(width), m_height(height)
+    RealScene(QQuickItem *parent, int width, int height, int paletteOffset = 0)
+        : QQuickItem(parent), m_width(width), m_height(height), m_paletteOffset(paletteOffset)
     {
         setFlag(ItemHasContents, true);
         setSize(QSizeF(width, height));
@@ -92,7 +95,8 @@ protected:
             QSGGeometry::updateRectGeometry(node->geometry(), rect);
             node->geometry()->markVertexDataDirty();
             node->markDirty(QSGNode::DirtyGeometry);
-            static_cast<QSGFlatColorMaterial *>(node->material())->setColor(colorFor(i));
+            static_cast<QSGFlatColorMaterial *>(node->material())->setColor(
+                colorFor((i + m_paletteOffset) % 4));
             node->markDirty(QSGNode::DirtyMaterial);
             child = child->nextSibling();
         }
@@ -101,6 +105,7 @@ protected:
 private:
     const int m_width;
     const int m_height;
+    const int m_paletteOffset;
 };
 
 bool qualifiedGl(QOpenGLContext *context)
@@ -124,6 +129,9 @@ struct Job {
     int width = 0;
     int height = 0;
     bool holdBeforeCurrentForHide = false;
+    unsigned generation = 0;
+    int paletteOffset = 0;
+    const std::atomic<int> *waitForInvalidation = nullptr;
 };
 
 class FenceWorker final : public QThread {
@@ -140,11 +148,21 @@ protected:
         // QOpenGLContext must be owned by this QThread; QOffscreenSurface is
         // only created/destroyed on GUI thread, then used here for makeCurrent.
         QOpenGLContext *context = job.shared;
+        rgba.clear();
+        reason = "NOT_STARTED";
+        gpuWaitMs = 0;
+        cpuMapCopyMs = 0;
+        contextWasCurrent = false;
         // Lifecycle stress only (NEVER a performance sample): permit the
         // GUI to hide/release its QQuickWindow while this independent shared
         // context owns the PBO/fence, before any GPU synchronization.
-        if (job.holdBeforeCurrentForHide)
+        if (job.waitForInvalidation) {
+            const auto deadline = Clock::now() + std::chrono::milliseconds(750);
+            while (job.waitForInvalidation->load() == 0 && Clock::now() < deadline)
+                QThread::msleep(1);
+        } else if (job.holdBeforeCurrentForHide) {
             QThread::msleep(40);
+        }
         if (!context || !job.surface || context->thread() != QThread::currentThread()
             || !context->makeCurrent(job.surface)) {
             reason = "SHARED_CONTEXT_MAKE_CURRENT_FAILED";
@@ -225,7 +243,7 @@ bool pixelTruth(const FenceWorker &worker)
         const int y = q / 2 ? h * 3 / 4 : h / 4;
         const unsigned char *p = worker.rgba.data()
             + (std::size_t(y) * w + x) * 4;
-        const QColor expected = colorFor(q);
+        const QColor expected = colorFor((q + worker.job.paletteOffset) % 4);
         if (std::abs(int(p[0]) - expected.red()) > 20
             || std::abs(int(p[1]) - expected.green()) > 20
             || std::abs(int(p[2]) - expected.blue()) > 20
@@ -240,12 +258,20 @@ int main(int argc, char **argv)
 {
     bool cancelBeforeDelivery = false;
     bool hideAfterSubmit = false;
+    bool rebuild = false;
+    bool replaceWindow = false;
     bool fullHd = false;
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--cancel")
             cancelBeforeDelivery = true;
         else if (std::string(argv[i]) == "--hide")
             hideAfterSubmit = true;
+        else if (std::string(argv[i]) == "--rebuild")
+            rebuild = true;
+        else if (std::string(argv[i]) == "--replace-window") {
+            rebuild = true;
+            replaceWindow = true;
+        }
         else if (std::string(argv[i]) == "--fullhd")
             fullHd = true;
         else {
@@ -253,6 +279,8 @@ int main(int argc, char **argv)
             return 9;
         }
     }
+    if (rebuild && (hideAfterSubmit || cancelBeforeDelivery || fullHd))
+        return 9;
 
     QSurfaceFormat fmt;
     fmt.setRenderableType(QSurfaceFormat::OpenGL);
@@ -273,21 +301,35 @@ int main(int argc, char **argv)
         return 10;
     }
 
-    QQuickWindow window;
-    window.setFormat(fmt);
-    window.setColor(Qt::black);
+    auto makeWindow = [&] {
+        auto created = std::make_unique<QQuickWindow>();
+        created->setFormat(fmt);
+        created->setColor(Qt::black);
+        if (rebuild) {
+            created->setPersistentSceneGraph(false);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+            created->setPersistentGraphics(false);
+#else
+            created->setPersistentOpenGLContext(false);
+#endif
+        }
+        return created;
+    };
+    auto window = makeWindow();
     const int expectedWidth = fullHd ? kFullHdWidth : kWidth;
     const int expectedHeight = fullHd ? kFullHdHeight : kHeight;
-    window.resize(expectedWidth, expectedHeight);
-    RealScene scene(window.contentItem(), expectedWidth, expectedHeight);
+    window->resize(expectedWidth, expectedHeight);
+    auto scene = std::make_unique<RealScene>(window->contentItem(), expectedWidth, expectedHeight);
     FenceWorker worker;
     std::atomic<unsigned> generation{1};
     std::atomic<int> submissions{0};
+    std::atomic<int> allowedSubmissions{1};
+    std::atomic<int> sceneGraphInitializations{0};
     std::atomic<int> sceneGraphInvalidations{0};
-    const auto invalidationConnection = QObject::connect(&window, &QQuickWindow::sceneGraphInvalidated,
-                     &window, [&sceneGraphInvalidations] {
-                         ++sceneGraphInvalidations;
-                     }, Qt::DirectConnection);
+    QMetaObject::Connection initializationConnection;
+    QMetaObject::Connection invalidationConnection;
+    QMetaObject::Connection renderConnection;
+    std::function<void()> connectWindow;
     const int extraWindowUpdates = 0; // this prototype makes NO update() calls
     bool nativeQualified = false;
     std::atomic<const char *> error{"NO_NATURAL_FRAME"};
@@ -297,6 +339,7 @@ int main(int argc, char **argv)
     std::string glVendor;
     std::string glRenderer;
     std::string glVersion;
+    int staleCompletions = 0;
 
     // Qt render callbacks can execute on the scenegraph's dedicated thread.
     // QCoreApplication::exit() is NOT thread-safe; always post the exit onto
@@ -309,14 +352,42 @@ int main(int argc, char **argv)
     QObject::connect(&worker, &QThread::finished, &app, [&] {
         worker.wait(); // synchronize ownership before inspecting its data
         const bool imageValid = pixelTruth(worker);
+        if (rebuild && submissions.load() == 1) {
+            if (worker.job.generation != generation.load())
+                ++staleCompletions;
+            if (!imageValid || !worker.contextWasCurrent || worker.reason != "OK"
+                || staleCompletions != 1
+                || sceneGraphInvalidations.load() == 0) {
+                std::cerr << "R953_REBUILD=FAIL_FIRST_RETIRE invalidations="
+                          << sceneGraphInvalidations.load() << " reason=" << worker.reason << '\n';
+                app.exit(32);
+                return;
+            }
+            constexpr int newWidth = 400;
+            constexpr int newHeight = 240;
+            if (replaceWindow) {
+                window = makeWindow();
+                connectWindow();
+            }
+            window->resize(newWidth, newHeight);
+            scene = std::make_unique<RealScene>(window->contentItem(), newWidth, newHeight, 1);
+            allowedSubmissions.store(2);
+            window->show();
+            return;
+        }
         std::cout << "R953_GL_VENDOR=" << glVendor
                   << " R953_GL_RENDERER=" << glRenderer
                   << " R953_GL_VERSION=" << glVersion << '\n';
-        const bool delivered = generation.load() == 1
+        const bool delivered = generation.load() == worker.job.generation
             && !cancelBeforeDelivery && !hideAfterSubmit;
+        const bool rebuilt = rebuild && sceneGraphInitializations.load() >= 2
+            && sceneGraphInvalidations.load() >= 1 && staleCompletions == 1
+            && delivered && worker.job.paletteOffset == 1
+            && worker.job.width == qRound(400 * window->devicePixelRatio())
+            && worker.job.height == qRound(240 * window->devicePixelRatio());
         const bool correct = (cancelBeforeDelivery || imageValid)
             && nativeQualified && worker.contextWasCurrent
-            && worker.reason == "OK" && submissions.load() == 1
+            && worker.reason == "OK" && (rebuild ? rebuilt : submissions.load() == 1)
             && extraWindowUpdates == 0;
         const bool suppressed = (cancelBeforeDelivery || hideAfterSubmit) && !delivered;
         std::cout << "R953_RESULT_JSON={\"qt\":\"" << QT_VERSION_STR
@@ -337,12 +408,16 @@ int main(int argc, char **argv)
                   << ",\"cancel_suppressed_delivery\":"
                   << (suppressed ? "true" : "false")
                   << ",\"hide_requested\":" << (hideAfterSubmit ? "true" : "false")
-                  << ",\"window_hidden\":" << (!window.isVisible() ? "true" : "false")
+                  << ",\"window_hidden\":" << (!window->isVisible() ? "true" : "false")
                   << ",\"scene_graph_invalidations\":" << sceneGraphInvalidations.load()
+                  << ",\"scene_graph_initializations\":" << sceneGraphInitializations.load()
+                  << ",\"stale_completions\":" << staleCompletions
+                  << ",\"rebuild_verified\":" << (rebuilt ? "true" : "false")
+                  << ",\"window_replaced\":" << (replaceWindow ? "true" : "false")
                   << ",\"reason\":\"" << worker.reason
                   << "\",\"qualified_for_product\":false}" << std::endl;
         if (correct && (!(cancelBeforeDelivery || hideAfterSubmit) || suppressed)
-            && (!hideAfterSubmit || !window.isVisible())) {
+            && (!hideAfterSubmit || !window->isVisible())) {
             std::cout << "R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE" << std::endl;
             app.exit(0);
         } else {
@@ -352,7 +427,8 @@ int main(int argc, char **argv)
     }, Qt::QueuedConnection);
 
     const auto onFrame = [&] {
-        if (submissions.load() != 0)
+        const int priorSubmissions = submissions.load();
+        if (priorSubmissions >= allowedSubmissions.load())
             return;
         QOpenGLContext *render = QOpenGLContext::currentContext();
         if (!qualifiedGl(render)) {
@@ -363,11 +439,11 @@ int main(int argc, char **argv)
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         // Qt6 afterRendering is before endFrame/present. Raw OpenGL commands
         // need explicit Qt RHI state isolation; close on every exit path.
-        window.beginExternalCommands();
+        window->beginExternalCommands();
         struct ExternalCommandsGuard {
             QQuickWindow &window;
             ~ExternalCommandsGuard() { window.endExternalCommands(); }
-        } externalCommandsGuard{window};
+        } externalCommandsGuard{*window};
 #endif
         auto *shared = new QOpenGLContext;
         shared->setFormat(render->format());
@@ -379,9 +455,9 @@ int main(int argc, char **argv)
             return;
         }
 
-        const qreal dpr = window.devicePixelRatio();
-        const int width = qRound(window.width() * dpr);
-        const int height = qRound(window.height() * dpr);
+        const qreal dpr = window->devicePixelRatio();
+        const int width = qRound(window->width() * dpr);
+        const int height = qRound(window->height() * dpr);
         if (width <= 0 || height <= 0 || width > 3840 || height > 2160) {
             delete shared;
             error.store("INVALID_FRAME_GEOMETRY", std::memory_order_release);
@@ -459,8 +535,10 @@ int main(int argc, char **argv)
             failFromRender(15);
             return;
         }
-        worker.job = {shared, &surface, pbo, fence, width, height,
-                      hideAfterSubmit};
+        const bool firstRebuildFrame = rebuild && priorSubmissions == 0;
+        worker.job = {shared, &surface, pbo, fence, width, height, hideAfterSubmit,
+                      generation.load(), priorSubmissions,
+                      firstRebuildFrame ? &sceneGraphInvalidations : nullptr};
         nativeQualified = true;
         submissions.fetch_add(1);
         // Even in cancellation, the worker must retire the GL resources
@@ -468,38 +546,53 @@ int main(int argc, char **argv)
         if (cancelBeforeDelivery || hideAfterSubmit)
             generation.fetch_add(1);
         worker.start();
-        if (hideAfterSubmit) {
-            QMetaObject::invokeMethod(&app, [&window] {
-                window.hide();
-                window.releaseResources(); // public Qt5/Qt6 lifecycle API
+        if (hideAfterSubmit || firstRebuildFrame) {
+            QMetaObject::invokeMethod(&app, [&] {
+                window->hide();
+                if (replaceWindow) {
+                    scene.reset();
+                    window.reset();
+                } else {
+                    window->releaseResources();
+                }
             }, Qt::QueuedConnection);
         }
         // No window->update(), timer-poll-on-render or extra Qt frame.
     };
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    // Observe Qt6 scenegraph output before endFrame may swap/discard the
-    // window back buffer. A PASS here remains a non-product, driver-scoped
-    // proof; redirected/MSAA frame targets require separate qualification.
-    QObject::connect(&window, &QQuickWindow::afterRendering,
-                     &window, onFrame, Qt::DirectConnection);
-#else
-    QObject::connect(&window, &QQuickWindow::afterRendering,
-                     &window, onFrame, Qt::DirectConnection);
-#endif
+    connectWindow = [&] {
+        initializationConnection = QObject::connect(
+            window.get(), &QQuickWindow::sceneGraphInitialized, window.get(),
+            [&] { ++sceneGraphInitializations; }, Qt::DirectConnection);
+        invalidationConnection = QObject::connect(
+            window.get(), &QQuickWindow::sceneGraphInvalidated, window.get(), [&] {
+                if (rebuild)
+                    ++generation;
+                ++sceneGraphInvalidations;
+            }, Qt::DirectConnection);
+        renderConnection = QObject::connect(
+            window.get(), &QQuickWindow::afterRendering, window.get(), onFrame,
+            Qt::DirectConnection);
+    };
+    connectWindow();
     QTimer::singleShot(6000, &app, [&] {
         if (submissions.load() == 0) {
             std::cerr << "R953_VERDICT=BLOCKED_NO_NATURAL_OPENGL_FRAME " << error.load(std::memory_order_acquire) << '\n';
             app.exit(16);
+        } else if (rebuild) {
+            std::cerr << "R953_REBUILD=FAIL_DEADLINE submissions=" << submissions.load() << '\n';
+            app.exit(33);
         }
     });
-    window.show();
+    window->show();
     const int exitCode = app.exec();
     if (worker.isRunning())
         worker.wait(); // bounded 750ms GPU wait, no runaway DLL worker
     // Disconnect before captured state is destroyed. QQuickWindow may emit
     // sceneGraphInvalidated while its own destructor runs afterwards.
     QObject::disconnect(invalidationConnection);
+    QObject::disconnect(initializationConnection);
+    QObject::disconnect(renderConnection);
     // The offscreen surface remains live until worker stopped and context
     // was destroyed in the correct worker thread.
     return exitCode;
