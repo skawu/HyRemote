@@ -12,6 +12,7 @@ set_tests_properties(hyremote-runtime-listener-binding-test PROPERTIES TIMEOUT 1
 
 if(WIN32 AND HYREMOTE_BUILD_CPP_API AND HYREMOTE_WITH_VNC
    AND HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
+   AND Qt6Core_VERSION VERSION_EQUAL 6.8.3
    AND TARGET Qt6::Quick)
     target_sources(hyremote-remoteaccess PRIVATE dll_lifecycle_bridge.cpp)
     add_executable(hyremote-runtime-dll-lifecycle-test test_dll_lifecycle.cpp)

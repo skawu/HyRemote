@@ -55,9 +55,6 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
         renderingPath = QuickRenderingPath::Software;
         break;
     case QSGRendererInterface::OpenGL:
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    case QSGRendererInterface::OpenGLRhi:
-#endif
         backend = QuickCaptureBackend::OpenGL;
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
         renderingPath = QuickRenderingPath::Qt5Direct;
@@ -66,37 +63,44 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
 #endif
         break;
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    case QSGRendererInterface::OpenGLRhi:
+        backend = QuickCaptureBackend::OpenGL;
+        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
+        break;
     case QSGRendererInterface::Direct3D11Rhi:
+        backend = QuickCaptureBackend::Direct3D11;
+        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
+        break;
+    case QSGRendererInterface::Direct3D12:
+        backend = QuickCaptureBackend::Direct3D12;
+        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
+        break;
+    case QSGRendererInterface::VulkanRhi:
+        backend = QuickCaptureBackend::Vulkan;
+        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
+        break;
+    case QSGRendererInterface::MetalRhi:
+        backend = QuickCaptureBackend::Metal;
+        renderingPath = QuickRenderingPath::Qt5EarlyRhi;
+        break;
 #else
     case QSGRendererInterface::Direct3D11:
-#endif
         backend = QuickCaptureBackend::Direct3D11;
         renderingPath = QuickRenderingPath::Qt6Rhi;
         break;
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    // Qt5 Direct3D12Rhi is handled above as an early-RHI path.
-#else
     case QSGRendererInterface::Direct3D12:
         backend = QuickCaptureBackend::Direct3D12;
         renderingPath = QuickRenderingPath::Qt6Rhi;
         break;
-#endif
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    case QSGRendererInterface::VulkanRhi:
-#else
     case QSGRendererInterface::Vulkan:
-#endif
         backend = QuickCaptureBackend::Vulkan;
         renderingPath = QuickRenderingPath::Qt6Rhi;
         break;
-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
-    case QSGRendererInterface::MetalRhi:
-#else
     case QSGRendererInterface::Metal:
-#endif
         backend = QuickCaptureBackend::Metal;
         renderingPath = QuickRenderingPath::Qt6Rhi;
         break;
+#endif
     default:
         break;
     }
