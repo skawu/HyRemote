@@ -452,26 +452,36 @@ public:
             s->retiringWorker = nullptr;
             s->sharedContext = nullptr; // the worker deletes its own context
             s->gpuPending = false;
-            surface = s->offscreen;
-            s->offscreen = nullptr;
+            if (detached) {
+                // Its queued finished handler owns deletion and s->offscreen.
+                surface = nullptr;
+            } else {
+                surface = s->offscreen;
+                s->offscreen = nullptr;
+            }
         }
-        std::vector<GlRetireWorker *> workers;
-        if (worker)
-            workers.push_back(worker);
-        if (detached && detached != worker)
-            workers.push_back(detached);
         std::vector<GlRetireWorker *> pending;
-        for (auto *w : workers) {
-            w->requestStop();
+        if (worker) {
+            worker->requestStop();
             // The worker aborts its fence poll on requestStop(); this 1s
             // bound is a safety net, not the expected path.
-            if (w->wait(1000)) {
-                w->deleteLater();
+            if (worker->wait(1000)) {
+                worker->deleteLater();
                 ++g_quickGlPboWorkersRetired;
             } else {
                 s->stopTimedOut = true;
-                pending.push_back(w);
+                pending.push_back(worker);
             }
+        }
+        if (detached) {
+            // Never delete this worker here: the completion task connected in
+            // ensureSessionWorker owns it and the offscreen surface. Waiting
+            // here still bounds the caller and proves quiescence.
+            detached->requestStop();
+            detached->wait(1000);
+            if (!detached->isFinished())
+                s->stopTimedOut = true;
+            return;
         }
         if (pending.empty()) {
             if (surface) {
