@@ -1005,9 +1005,15 @@ private:
                 return;
             }
             s->gpuPending = false;
-            s->cpuConversionPending = false;
-            if (!result.pixels)
+            // Keep the conversion slot reserved until finishCpuConversion()
+            // has adopted the CPU buffer AND claimed the requests belonging
+            // to this readback. Clearing it here permits onRender() to install
+            // a second batch in s->converting while the first frame is still
+            // being normalized, mislabeling old pixels with new request IDs.
+            if (!result.pixels) {
+                s->cpuConversionPending = false;
                 revoked.swap(s->converting);
+            }
         }
         if (result.pixels) {
             finishCpuConversion(s, result.job.generation,
