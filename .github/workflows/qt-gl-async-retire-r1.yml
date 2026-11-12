@@ -75,6 +75,21 @@ jobs:
             grep -q '"extra_window_updates":0' "tmp/r953/$mode.log"
             grep -q '"shared_context":true' "tmp/r953/$mode.log"
             grep -q '"qualified_for_product":false' "tmp/r953/$mode.log"
+            python - "$mode" "tmp/r953/$mode.log" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          mode, log_path = sys.argv[1:]
+          lines = Path(log_path).read_text().splitlines()
+          results = [line.split("=", 1)[1] for line in lines if line.startswith("R953_RESULT_JSON=")]
+          verdicts = [line for line in lines if line.startswith("R953_VERDICT=")]
+          assert len(results) == 1 and verdicts == ["R953_VERDICT=PASS_SCOPED_SHARED_CONTEXT_GPU_RETIRE"], (mode, verdicts, results)
+          result = json.loads(results[0])
+          assert isinstance(result.get("read_framebuffer_binding"), int) and result["read_framebuffer_binding"] >= 0, result
+          assert isinstance(result.get("sample_buffers"), int) and result["sample_buffers"] >= 0, result
+          assert result["qualified_for_product"] is False, result
+          print("R953_TARGET_OBSERVED=YES", mode, result["read_framebuffer_binding"], result["sample_buffers"])
+          PY
             if [ "$mode" != cancel ]; then grep -q '"pixel_truth":true' "tmp/r953/$mode.log"; fi
             if [ "$mode" = fullhd ]; then
               grep -q '"frame_width":1920' "tmp/r953/$mode.log"
