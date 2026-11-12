@@ -43,8 +43,9 @@ struct QuickGlPboSessionSelfTest {
     bool ok = false;
     bool pixelsOk = false;
     bool zeroViewerNoReadback = false;
-    unsigned allocations = 0;
-    unsigned reuses = 0;
+    unsigned buffersCreated = 0;  // glGenBuffers calls
+    unsigned bufferDataCalls = 0; // glBufferData calls
+    unsigned reuses = 0;          // submissions that reused the PBO
     unsigned workersCreated = 0;
     unsigned workersRetired = 0;
     unsigned invalidations = 0;
@@ -56,6 +57,20 @@ runQuickGlPboSessionSelfTest();
 
 // Number of real sceneGraphInvalidated deliveries observed by the source.
 HYREMOTE_QUICK_GL_TEST_EXPORT unsigned quickGlPboInvalidationCount();
+
+// P1 (#962 review): inject a 5s retire delay, then requestStop+wait. Proves
+// stop() is bounded by the worker's abort check, not by the 750ms fence
+// ceiling or an unbounded join.
+struct QuickGlPboStopProbe {
+    bool ran = false;
+    bool ok = false;
+    bool timedOut = false;
+    double joinMs = 0;
+    std::string detail;
+};
+
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboStopProbe
+runQuickGlPboStopAbortProbe(int delayMs);
 
 #undef HYREMOTE_QUICK_GL_TEST_EXPORT
 

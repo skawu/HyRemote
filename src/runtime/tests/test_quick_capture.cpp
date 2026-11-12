@@ -2033,14 +2033,16 @@ void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
     }
     CHECK(result.pixelsOk);
     CHECK(result.zeroViewerNoReadback);
-    CHECK(result.allocations == 2);
+    CHECK(result.buffersCreated == 2);
+    CHECK(result.bufferDataCalls == 2);
     CHECK(result.reuses == 1);
     CHECK(result.workersCreated == 2);
     CHECK(result.workersRetired == 2);
     CHECK(result.invalidations == 1);
     CHECK(result.ok);
     std::cerr << "WIN962_SESSION_SELFTEST=" << result.detail
-              << " alloc=" << result.allocations
+              << " genBuffers=" << result.buffersCreated
+              << " bufferData=" << result.bufferDataCalls
               << " reuse=" << result.reuses
               << " workers=" << result.workersCreated
               << "/" << result.workersRetired
@@ -2081,6 +2083,66 @@ void testQuickGlPboRealSceneGraphInvalidationSignal(bool requireGl)
     CHECK(terminal.load() == 1);
     source->stop();
 }
+
+// P1 (#962 review): a 5s slow retirement must still abort and join well under
+// the 500ms bound, proving stop() does not inherit the 750ms fence ceiling.
+void testQuickGlPboStopIsBounded(bool requireGl)
+{
+    const auto probe = HyRemote::detail::runQuickGlPboStopAbortProbe(5000);
+    if (!probe.ran) {
+        std::cerr << "WIN962_STOP_PROBE=SKIP detail=" << probe.detail << std::endl;
+        if (requireGl)
+            CHECK(probe.ran);
+        return;
+    }
+    CHECK(!probe.timedOut);
+    CHECK(probe.ok);
+    std::cerr << "WIN962_STOP_PROBE=" << probe.detail
+              << " join_ms=" << probe.joinMs << std::endl;
+}
+
+// P1 (#962 review): stop() may arrive from a worker/transport thread. The
+// QOffscreenSurface must still be destroyed on the GUI thread without
+// deadlocking the caller or the event loop.
+void testQuickGlPboStopFromNonGuiThread(bool requireGl)
+{
+    QQuickWindow window;
+    auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
+    CHECK(source != nullptr);
+    std::atomic<int> terminal{0};
+    const bool started = source->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (!frame.storage)
+                ++terminal;
+        },
+        [](const hyremote::CaptureEvent &) {});
+    if (!started) {
+        std::cerr << "WIN962_NONGUI_STOP=SKIP detail=start-unavailable" << std::endl;
+        if (requireGl)
+            CHECK(started);
+        return;
+    }
+    CHECK(source->requestFrame({601, hyremote::Clock::now()}));
+    QCoreApplication::processEvents();
+
+    std::atomic<bool> done{false};
+    std::thread caller([&] {
+        source->stop();
+        done.store(true);
+    });
+    const auto startedAt = std::chrono::steady_clock::now();
+    while (!done.load()) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - startedAt).count() > 2000)
+            break;
+    }
+    caller.join();
+    CHECK(done.load());
+    std::cerr << "WIN962_NONGUI_STOP=" << (done.load() ? "PASS" : "TIMEOUT")
+              << std::endl;
+}
 #endif // HYREMOTE_TEST_QUICK_GL_PBO
 
 int main(int argc, char **argv)
@@ -2093,6 +2155,8 @@ int main(int argc, char **argv)
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
         testQuickGlPboSessionReuseAndInvalidationRecovery(true);
         testQuickGlPboRealSceneGraphInvalidationSignal(true);
+        testQuickGlPboStopIsBounded(true);
+        testQuickGlPboStopFromNonGuiThread(true);
         HyRemote::detail::resetFactories();
         if (failures != 0)
             std::cerr << failures << " GL PBO session checks failed\n";
@@ -2103,6 +2167,8 @@ int main(int argc, char **argv)
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     testQuickGlPboSessionReuseAndInvalidationRecovery(false);
     testQuickGlPboRealSceneGraphInvalidationSignal(false);
+    testQuickGlPboStopIsBounded(false);
+    testQuickGlPboStopFromNonGuiThread(false);
 #endif
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();
