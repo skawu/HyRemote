@@ -17,3 +17,8 @@
 - [禁止对挂起进程调用 PrintWindow](feedback_printwindow_suspended_hang.md) — 根因：NtSuspendProcess 后截图无界阻塞；必须 try/finally 恢复并加超时
 - [CodeBuddy 项目级 Skill 发现入口实测](project_codebuddy_skill_discovery.md) — 只发现 `.codebuddy/skills`（无需重载），`.agents/skills` 返回 not found；升级须指定为前者
 - [测试事前治理：逐项论证 + Human 确认后才执行](feedback_test_preapproval.md) — 五项必要性说明；禁止自行扩矩阵/重复全套件/无限复测；代码审查与设计仍自主
+- [沟通风格：简洁大白话](feedback_communication_style.md) — 回复要短、先结论后细节，别堆术语和长表格
+- [HyRemote 任务的技术底层总目标](feedback_hyremote_core_technical_goal.md) — 目的须锚定「底层实现 Qt5.15+ LTS 高性能低延迟远程访问」，勿泛化到治理/协作层
+- [Qt 技术判断以精确版本 Qt 源码为最高依据](feedback_qt_source_first.md) — 用 C:\Qt\6.8.3\Src\qtbase / qtbase v5.15.2，不靠文章论坛；标注源码证实/推断
+- [本机 #949/Qt 验证夹具与环境要点](feedback_win949_local_harness.md) — MSVC14.44/cl 直用、Ninja/CMake 入 PATH、Qt Kit、HYREMOTE_ENABLE_CPU_PROBE、Qt6 Gui/Qt5 API
+- [固定 SHA 证据/性能矩阵长任务的落地方式](feedback_fixed_sha_evidence_runs.md) — checkout 建 tmp worktree、工具按字节恢复、统计内联复算、脚本必须登记 script_inventory
