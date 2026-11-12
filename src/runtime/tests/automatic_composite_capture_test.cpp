@@ -152,6 +152,48 @@ private:
     std::optional<hyremote::CaptureRequest> m_request;
 };
 
+// Emits a late teardown diagnostic to exercise retired child callbacks.
+// A replaced adapter must not report failures for its new SurfaceId owner.
+class StopEventCapture final : public hyremote::CaptureSource
+{
+public:
+    explicit StopEventCapture(QRgb color) : m_solid(color, 4, 4) {}
+
+    hyremote::CaptureCapabilities capabilities() const override
+    {
+        return m_solid.capabilities();
+    }
+
+    bool start(hyremote::FrameReadyHandler onFrame,
+               hyremote::CaptureEventHandler onEvent) override
+    {
+        m_onEvent = std::move(onEvent);
+        return m_solid.start(std::move(onFrame), {});
+    }
+
+    void stop() noexcept override
+    {
+        m_solid.stop();
+        if (m_onEvent) {
+            hyremote::CaptureEvent event;
+            event.code = hyremote::CaptureEventCode::BackendFailure;
+            event.message = "retired adapter shutdown, not new surface failure";
+            event.recoverable = false;
+            m_onEvent(event);
+            m_onEvent = {};
+        }
+    }
+
+    bool requestFrame(const hyremote::CaptureRequest &request) override
+    {
+        return m_solid.requestFrame(request);
+    }
+
+private:
+    SolidCapture m_solid;
+    hyremote::CaptureEventHandler m_onEvent;
+};
+
 bool check(bool condition, const char *message)
 {
     if (!condition)
@@ -560,6 +602,56 @@ int main(int argc, char **argv)
         return 26;
     interruptedComponents.capture->stop();
     interrupted.removeSurfaceUnavailableHandler(baseInvalidationToken);
+
+    QObject oldQtWindow;
+    QObject newQtWindow;
+    CompositeTarget retired;
+    retired.upsertSurface(30, &oldQtWindow, QRect(0, 0, 4, 4), true);
+    const HyRemote::detail::BuiltinTargetResolver retirementResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &oldQtWindow) {
+                result.supported = true;
+                result.capture = std::make_unique<StopEventCapture>(qRgba(255, 0, 0, 255));
+            } else if (target == &newQtWindow) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255), 4, 4);
+            }
+            return result;
+        };
+    auto retirementComponents = retired.createTargetComponents(false, retirementResolver);
+    std::vector<hyremote::RemoteFrame> retirementFrames;
+    int retirementEvents = 0;
+    if (!check(retirementComponents.supported && retirementComponents.capture,
+               "retired child test available")
+        || !check(retirementComponents.capture->start(
+                      [&](hyremote::RemoteFrame frame) {
+                          retirementFrames.push_back(std::move(frame));
+                      },
+                      [&](const hyremote::CaptureEvent &) { ++retirementEvents; }),
+                  "retired child test starts")
+        || !check(retirementComponents.capture->requestFrame({60, hyremote::Clock::now()}),
+                  "retired child initial request")
+        || !check(waitForFrame(retirementFrames, 1),
+                  "retired child initial frame"))
+        return 29;
+    retired.upsertSurface(30, &newQtWindow, QRect(0, 0, 4, 4), true);
+    if (!check(retirementComponents.capture->requestFrame({61, hyremote::Clock::now()}),
+               "new same-id child request")
+        || !check(waitForFrame(retirementFrames, 2),
+                  "new same-id child completes"))
+        return 30;
+    const QImage freshOwner = imageView(retirementFrames.at(1));
+    if (!check(retirementEvents == 0,
+               "retiring old Qt adapter must not report failure for new owner")
+        || !check(freshOwner.pixelColor(0, 0) == QColor(0, 255, 0, 255),
+                  "new child must own the delivered pixels after old stop")
+        || !check(retirementFrames.at(1).requestId == hyremote::CaptureRequestId{61},
+                  "new child frame request identity is fresh"))
+        return 31;
+    retirementComponents.capture->stop();
     std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide/output-identity truth\n";
     return 0;
 }
