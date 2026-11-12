@@ -165,6 +165,34 @@
   "exception": [
     "A case name here is an existing TEST_CATALOG.md CTest identity; capability guards still control registration.",
     "This read-only plan is not acceptance, cannot override existing CI classifier/branch protection, and cannot authorize a skipped mandatory gate.",
-    "A source change with no matching rule is an error; manual impact review is required before assigning additional cases."
+    "A source change with no matching rule is an error; manual impact review is required before assigning additional cases.",
+    "Risk rules are additive across all changed files; a most-specific source path match never cancels declared cross-cutting ABI/security/QML test obligations."
+  ],
+  "risk_rules": [
+    {
+      "id": "security-auth",
+      "cases": [
+        "hyremote-security-descriptor-test",
+        "hyremote-vnc-auth-test",
+        "hyremote-rfb-vnc-auth-handshake-test"
+      ],
+      "reason": "Credential/auth changes require descriptor and security-on wire/crypto cases; unsupported security-on capability blocks acceptance"
+    },
+    {
+      "id": "public-sdk-abi",
+      "cases": [
+        "hyremote-remoteaccess-test",
+        "hyremote-cpp-installed-consumers"
+      ],
+      "reason": "Installed C++ SDK ABI/source consumer contract requires clean installed consumer test"
+    },
+    {
+      "id": "qml-registration",
+      "cases": [
+        "hyremote-qml-module-test",
+        "hyremote-qml-installed-consumer"
+      ],
+      "reason": "QML URI/type registration and installed import contract must both be verified"
+    }
   ]
 }
