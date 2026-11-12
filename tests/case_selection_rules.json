@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "authority": [
+    "docs/internal/test-strategy.md",
+    "docs/internal/test-system-architecture.md",
+    "tests/TEST_CATALOG.md",
+    "tests/EXECUTION_MANUAL.md"
+  ],
+  "rules": [
+    {
+      "id": "quick-native",
+      "prefixes": [
+        "src/runtime/src/quick/",
+        "src/runtime/tests/test_quick_capture.cpp"
+      ],
+      "cases": [
+        "hyremote-quick-capture-test",
+        "hyremote-runtime-dll-lifecycle-test"
+      ],
+      "reason": "Qt Quick native/public capture and GL worker lifecycle; DLL case is Windows capability-guarded"
+    },
+    {
+      "id": "core",
+      "prefixes": [
+        "src/core/"
+      ],
+      "cases": [
+        "hyremote-core-test-frame-lifetime",
+        "hyremote-core-test-mailbox",
+        "hyremote-core-test-transport-handoff",
+        "hyremote-core-test-session-lifecycle"
+      ],
+      "reason": "Core owned frame, queue and session contracts"
+    },
+    {
+      "id": "runtime",
+      "prefixes": [
+        "src/runtime/"
+      ],
+      "cases": [
+        "hyremote-viewer-capture-demand-test",
+        "hyremote-runtime-diagnostics-test"
+      ],
+      "reason": "Shared Runtime admission and diagnostics; manual impact review must add affected cases"
+    },
+    {
+      "id": "rfb",
+      "prefixes": [
+        "src/integrations/cpp/tests/rfb_",
+        "src/runtime/src/rfb/"
+      ],
+      "cases": [
+        "hyremote-rfb-wire-robustness-test",
+        "hyremote-rfb-multi-client-input-test"
+      ],
+      "reason": "RFB wire and multi-viewer input correctness"
+    },
+    {
+      "id": "cpp-facade",
+      "prefixes": [
+        "src/integrations/cpp/include/",
+        "src/integrations/cpp/src/"
+      ],
+      "cases": [
+        "hyremote-remoteaccess-test",
+        "hyremote-cpp-installed-consumers"
+      ],
+      "reason": "Public C++ SDK source/installed consumer contract"
+    },
+    {
+      "id": "cmake",
+      "prefixes": [
+        "cmake/",
+        "build.cmd",
+        "CMakeLists.txt"
+      ],
+      "cases": [
+        "hyremote-build-authority-selftest",
+        "hyremote-release-readiness-facts-layout"
+      ],
+      "reason": "Build/configure and repository authority; full gate may be required by existing manual"
+    },
+    {
+      "id": "governance",
+      "prefixes": [
+        ".github/",
+        "tests/release-readiness/"
+      ],
+      "cases": [
+        "hyremote-ci-scope-self-test",
+        "hyremote-branch-name-gate-self-test"
+      ],
+      "reason": "CI/release governance regression"
+    },
+    {
+      "id": "docs",
+      "prefixes": [
+        "docs/",
+        "README.md"
+      ],
+      "cases": [
+        "hyremote-release-readiness-facts-layout"
+      ],
+      "reason": "Documentation contracts only; unrelated docs need no Qt runtime run"
+    },
+    {
+      "id": "test-inventory",
+      "prefixes": [
+        "tests/",
+        "tools/test/"
+      ],
+      "cases": [
+        "hyremote-build-authority-selftest"
+      ],
+      "reason": "Test registration/selector authority; affected test logic must be added by owner"
+    }
+  ],
+  "exception": [
+    "A case name here is an existing TEST_CATALOG.md CTest identity; capability guards still control registration.",
+    "This read-only plan is not acceptance, cannot override existing CI classifier/branch protection, and cannot authorize a skipped mandatory gate.",
+    "A source change with no matching rule is an error; manual impact review is required before assigning additional cases."
+  ]
+}
