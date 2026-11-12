@@ -1,0 +1,271 @@
+name: Windows Qt 6.8.3 diagnostics and reference package build (NOT physical qualification)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/quick-overlap-windows-smoke.yml
+      - src/runtime/tests/test_quick_overlap_profile.cpp
+      - tools/perf/prepare_quick_overlap_probe.py
+      - tools/perf/assess_quick_overlap.py
+      - tools/perf/run_quick_overlap_windows.py
+      - tools/perf/sample_windows_process_cpu.py
+      - tools/perf/prepare_windows_generic_pair.py
+      - tools/perf/fixtures/windows_dynamic_generic/Main.qml
+      - tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py
+      - tools/perf/observe_windows_viewer_pixels.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-qt-quick-diag-compile:
+    name: Windows hosted / Qt 6.8.3 / compile and software smoke only
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Reuse exact Qt 6.8.3 MSVC Kit
+        uses: actions/cache@v4
+        id: qt-cache
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+
+      - name: Install/validate exact Windows Qt Quick and build tools
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) { throw 'Exact Qt 6.8.3 Quick Kit missing' }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          python -m py_compile tools/perf/prepare_quick_overlap_probe.py tools/perf/assess_quick_overlap.py tools/perf/run_quick_overlap_windows.py tools/perf/sample_windows_process_cpu.py tools/perf/prepare_windows_generic_pair.py tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py tools/perf/observe_windows_viewer_pixels.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/assess_quick_overlap.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/run_quick_overlap_windows.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tools/perf/observe_windows_viewer_pixels.py --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build real Qt CaptureSource diagnostic against pinned after revision
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '5095d0bc3bb07966c03dad77296f6ec04a631adc'
+          $tree = Join-Path $env:RUNNER_TEMP 'qt-overlap-after'
+          git worktree add --detach $tree $sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C $tree rev-parse HEAD).Trim() -ne $sha) { throw 'Wrong pinned source' }
+          Copy-Item src/runtime/tests/test_quick_overlap_profile.cpp (Join-Path $tree 'src/runtime/tests/test_quick_overlap_profile.cpp')
+          python tools/perf/prepare_quick_overlap_probe.py $tree
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location $tree
+          try {
+            & .\build.cmd test --mode=runtime "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-overlap --tests --no-examples --clean -j4 "--cmake=HYREMOTE_BUILD_QUICK_ADAPTER=ON" "--cmake=HYREMOTE_ENABLE_CPU_PROBE=ON"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $binaries = @(Get-ChildItem -Path (Join-Path $tree 'build-overlap/runtime/tests') -Filter 'hyremote-quick-overlap-profile.exe' -Recurse -File)
+            if ($binaries.Count -ne 1) { throw "Expected exactly 1 diagnostic binary; got $($binaries.Count)" }
+            "WIN_HOSTED_DIAGNOSTIC_BIN=$($binaries[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } finally {
+            Pop-Location
+          }
+
+      # Hosted Windows CI already compiled the real Qt source-pinned diagnostic
+      # and ran all 58 historical CTests. It cannot prove local interactive
+      # D3D11 hardware, WARP exclusion or actual Viewer paint. Do not execute
+      # the benchmark with offscreen QPA and mislabel the result as native.
+      - name: Declare test boundary without synthetic performance claims
+        shell: pwsh
+        run: |
+          Write-Host 'WINDOWS_DIAGNOSTIC_COMPILE_AND_CTEST=PASS'
+          Write-Host 'WINDOWS_INTERACTIVE_D3D11_A_B_A=NOT_RUN'
+          Write-Host 'WINDOWS_REAL_VIEWER_PERFORMANCE=NOT_RUN'
+
+
+  windows-generic-reference-packages:
+    name: Windows hosted / Generic Qt Quick reference pair / ${{ matrix.variant }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: site-source-baseline
+            source_sha: 6a4b7b373ae1dce1f161771d5caab1cdb51a45d0
+          - variant: refactor-candidate
+            source_sha: 5095d0bc3bb07966c03dad77296f6ec04a631adc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Restore exact Qt6.8.3 MSVC2022_64 Kit
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-windows-msvc2022_64-quick-overlap-v1
+      - name: Validate or install exact Windows Qt Quick Kit
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          $prefix = Join-Path $env:RUNNER_TEMP 'Qt/6.8.3/msvc2022_64'
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir (Join-Path $env:RUNNER_TEMP 'Qt')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (!(Test-Path (Join-Path $prefix 'bin/Qt6Quick.dll'))) {
+            throw 'Qt6.8.3 MSVC2022_64 Quick SDK missing'
+          }
+          "QT_PREFIX=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $prefix 'bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build and install source-pinned Generic product with identical Qt-only app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = '${{ matrix.source_sha }}'
+          $label = '${{ matrix.variant }}'
+          $tree = Join-Path $env:RUNNER_TEMP ('hyremote-' + $label)
+          git worktree add --detach $tree $sha
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((git -C $tree rev-parse HEAD).Trim() -ne $sha) {
+            throw "Wrong frozen product source identity: $label"
+          }
+          $appSourceBlobs = @{
+            'examples/learning/03-generic/quick-app/main.cpp' = '750d44a22610ef3b463da90b8927d0acd9fabfc1'
+            'examples/learning/03-generic/quick-app/Main.qml' = '3b7d504ef6dd67eeb114cb53245b507573cf3fd7'
+            'examples/learning/03-generic/quick-app/CMakeLists.txt' = 'd85454eddbda9ea21952382607e6806d14b7ec88'
+            'examples/hyremote_branding.cpp' = '6a9451007e9127090c19198394434c075720c5f6'
+            'logo/hyremote-branding.qrc' = 'efa696fdb3d28a1589950049bce4c58023064b8d'
+            'logo/huayan-logo-single.png' = 'c92958abf1b8301957e790aa769f5a3d5eca9c2c'
+            'logo/hyremote-app-icon.rc' = 'e2fac482056641eb76e549bc1afadda8cd5a1d77'
+            'logo/hyremote-app.ico' = '61368523b5bebb481abfb9245f45c99755cd156f'
+          }
+          foreach ($item in $appSourceBlobs.GetEnumerator()) {
+            $actual = (git -C $tree rev-parse "HEAD:$($item.Key)").Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -ne $item.Value) {
+              throw "Reference Qt Quick application source differs: $($item.Key)"
+            }
+          }
+          Push-Location $tree
+          try {
+            & .\build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-reference-pair --no-tests --clean -j4
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+          $installed = Join-Path $tree 'build-reference-pair/install'
+          $app = Join-Path $installed 'bin/hyremote-learning-03-quick.exe'
+          if (!(Test-Path $app)) { throw 'Actual installed Generic Qt Quick application missing' }
+          $generic = @(Get-ChildItem $installed -Recurse -File -Filter '*hyremote*.dll' |
+            Where-Object { $_.FullName -match '[\\/]generic[\\/]' })
+          if ($generic.Count -lt 1) {
+            throw 'Missing actual Generic plugin deployment; cannot publish plain-Qt-only package'
+          }
+          $dest = Join-Path $env:GITHUB_WORKSPACE ('windows-product-evidence/' + $label)
+          New-Item -ItemType Directory -Path $dest -Force | Out-Null
+          Copy-Item -Path $installed -Destination (Join-Path $dest 'install') -Recurse -Force
+          $appHash = (Get-FileHash $app -Algorithm SHA256).Hash
+          $pluginPaths = @($generic | ForEach-Object {
+            $_.FullName.Substring($installed.Length + 1).Replace('\', '/')
+          })
+          $identity = @{
+            schema = 'hyremote-windows-generic-product-pair/1'
+            label = $label
+            source_sha = $sha
+            qt_kit = 'Qt 6.8.3 MSVC2022_64'
+            build_type = 'Release'
+            built_frontends = 'cpp,generic (historical C++ learning examples require the C++ facade)'
+            generic_route = 'Qt Generic plugin; native windows platform preserved (not Transparent QPA proxy)'
+            app_executable = 'install/bin/hyremote-learning-03-quick.exe'
+            app_sha256 = $appHash
+            app_source_git_blobs = $appSourceBlobs
+            installed_generic_plugin_paths = $pluginPaths
+            reference_app_is_identical_between_versions = $true
+            actual_viewer_qualification = 'NOT_RUN'
+            actual_windows_d3d11_performance = 'NOT_RUN'
+            site_binary_equivalence = 'UNVERIFIED'
+            source_age = 'Pinned historical SHA; not a claim of final shipping version'
+          }
+          $identity | ConvertTo-Json -Depth 6 |
+            Out-File -FilePath (Join-Path $dest 'product-identity.json') -Encoding utf8
+          Write-Host "GENERIC_PRODUCT_PACKAGE_BUILT=$label SOURCE_SHA=$sha APP_SHA256=$appHash"
+
+          # Build a second, full-size A-B-A *application fixture* in each
+          # pinned product worktree. HyRemote Runtime/Generic sources and
+          # historical product SHA remain exactly unchanged.
+          $fixtureApp = Join-Path $env:GITHUB_WORKSPACE 'tools/perf/fixtures/windows_dynamic_generic/Main.qml'
+          $fixtureScript = Join-Path $env:GITHUB_WORKSPACE 'tools/perf/fixtures/windows_dynamic_generic/apply_fixture.py'
+          $dynamicDest = Join-Path $env:GITHUB_WORKSPACE ('windows-product-dynamic/' + $label)
+          New-Item -ItemType Directory -Path $dynamicDest -Force | Out-Null
+          python $fixtureScript --worktree $tree --fixture $fixtureApp --manifest (Join-Path $dynamicDest 'fixture-identity.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location $tree
+          try {
+            & .\build.cmd install --integrations=cpp,generic --examples "--qt-prefix=$env:QT_PREFIX" --build-type=Release --build-dir=build-dynamic-pair --no-tests --clean -j4
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally { Pop-Location }
+          $dynamicInstall = Join-Path $tree 'build-dynamic-pair/install'
+          $dynamicExe = Join-Path $dynamicInstall 'bin/hyremote-learning-03-quick.exe'
+          if (!(Test-Path $dynamicExe)) { throw "Dynamic executable missing: $label" }
+          $dynamicGeneric = @(Get-ChildItem $dynamicInstall -Recurse -File -Filter '*hyremote*.dll' |
+            Where-Object { $_.FullName -match '[\\/]generic[\\/]' })
+          if ($dynamicGeneric.Count -lt 1) { throw 'Dynamic reference package has no real Generic plugin' }
+          Copy-Item -Path $dynamicInstall -Destination (Join-Path $dynamicDest 'install') -Recurse -Force
+          $dynamicHash = (Get-FileHash $dynamicExe -Algorithm SHA256).Hash
+          @{
+            schema = 'hyremote-windows-dynamic-generic-reference/1'
+            source_sha = $sha
+            label = $label
+            app_only_test_fixture = $true
+            product_runtime_unmodified = $true
+            stage = 'A-B-A'
+            scene = '1920x1080 full-color blue-red-blue 1200ms per stage'
+            app_sha256 = $dynamicHash
+            generic_plugin_count = $dynamicGeneric.Count
+            physical_windows_d3d11 = 'NOT_RUN'
+            real_viewer_screen_pixels = 'NOT_OBSERVED'
+            viewer_cpu = 'NOT_MEASURED'
+            synthetic_source_to_real_viewer_p95 = 'NOT_MEASURED'
+            site_customer_application = 'NOT_TESTED'
+          } | ConvertTo-Json -Depth 4 |
+            Out-File -FilePath (Join-Path $dynamicDest 'dynamic-product-identity.json') -Encoding utf8
+          Write-Host "GENERIC_DYNAMIC_PACKAGE_BUILT=$label SOURCE_SHA=$sha APP_SHA256=$dynamicHash"
+
+      - name: Preserve real installed product reference package (not performance approval)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-generic-${{ matrix.variant }}-${{ matrix.source_sha }}
+          path: windows-product-evidence/${{ matrix.variant }}/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve dynamic 1080p A-B-A Generic test-only application package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-generic-dynamic-${{ matrix.variant }}-${{ matrix.source_sha }}
+          path: windows-product-dynamic/${{ matrix.variant }}/
+          if-no-files-found: error
+          retention-days: 14
