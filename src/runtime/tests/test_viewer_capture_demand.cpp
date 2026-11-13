@@ -207,6 +207,72 @@ bool expectOneShotIdleRelease()
     return true;
 }
 
+// #967 review P2: a Runtime may start and never see a Viewer. The one
+// clientless bootstrap frame can still fill a CaptureSource idle cache, and
+// there is NO >0->0 transition to release it. The common gate must deliver a
+// one-shot IdleRelease itself, keep the bootstrap geometry for ServerInit,
+// park afterwards, and still admit a later reconnect promptly.
+bool expectClientlessBootstrapIdleRelease()
+{
+    Gate gate;
+    gate.start();
+    if (!check(gate.waitForCapture() == Gate::WaitResult::Capture,
+               "clientless bootstrap capture was not admitted"))
+        return false;
+    gate.frameQueued(true);
+    if (!check(gate.waitForCapture() == Gate::WaitResult::IdleRelease,
+               "clientless bootstrap did not deliver an idle-resource release"))
+        return false;
+
+    // One edge is one release: waitForViewer() must park rather than spin,
+    // and a reconnect must wake it with fresh pixels.
+    std::promise<bool> completion;
+    auto result = completion.get_future();
+    std::thread waiter([&] { completion.set_value(gate.waitForViewer()); });
+    const bool parked = result.wait_for(80ms) == std::future_status::timeout;
+    gate.setViewerCount(1);
+    const bool woke = result.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    if (!check(parked && woke && result.get(),
+               "bootstrap idle release repeated or reconnect was not admitted"))
+        return false;
+    gate.stop();
+    return true;
+}
+
+// An unusable bootstrap must keep demanding frames. A Viewer that arrives
+// before the scheduler consumes the latched edge must drop it, not release
+// pixels it is about to request.
+bool expectBootstrapReleaseDroppedOnReconnect()
+{
+    Gate gate;
+    gate.start();
+    gate.frameQueued(false);
+    if (!check(gate.waitForCapture() == Gate::WaitResult::Capture,
+               "unusable bootstrap geometry stopped the next capture"))
+        return false;
+    gate.frameQueued(true);
+    gate.setViewerCount(1);
+    if (!check(gate.waitForCapture() == Gate::WaitResult::Capture,
+               "stale bootstrap release survived an early reconnect"))
+        return false;
+
+    Gate late;
+    late.start();
+    if (!check(late.waitForCapture() == Gate::WaitResult::Capture,
+               "late-callback bootstrap capture was not admitted"))
+        return false;
+    late.frameQueued(true);
+    if (!check(late.waitForCapture() == Gate::WaitResult::IdleRelease,
+               "late bootstrap callback did not latch the idle release"))
+        return false;
+    late.stop();
+    gate.stop();
+    return true;
+}
+
 } // namespace
 
 int main()
@@ -215,6 +281,10 @@ int main()
         return 18;
     if (!expectOneShotIdleRelease())
         return 19;
+    if (!expectClientlessBootstrapIdleRelease())
+        return 20;
+    if (!expectBootstrapReleaseDroppedOnReconnect())
+        return 21;
     Gate gate;
     enterStaticGate(gate);
     if (!check(Gate::kStaticProbeInterval == 250ms,
