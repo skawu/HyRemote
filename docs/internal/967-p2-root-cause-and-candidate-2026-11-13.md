@@ -110,8 +110,17 @@ The shared encoded buffer exists only while >=2 Normal Viewers are being served
 in one frame. It is released by `frameAvailable()` at the start of every new
 frame, by `releaseIdleFrameCaches()` on the last disconnect / initial
 clientless bootstrap edge (#997), by `failDecoration()` when viewers are
-dropped, and by `shutdown()`. A single Viewer never allocates it. No change to
-`CaptureSource::releaseIdleResources()`, no new idle timer or viewer counter.
+dropped, and by `shutdown()`. A single Viewer never allocates it.
+
+Independent review P2 (PR #998) found that standalone transports keep raw
+bootstrap pixels by design (`releaseIdleFrameBuffers=false`), so their
+disconnect path never reaches `releaseIdleFrameCaches()`; two Viewers leaving
+would otherwise leave one extra encoded framebuffer (about 32 MiB at 3840x2160
+Raw) until another frame is published. The disconnect handler now clears
+`m_sharedUpdate` whenever fewer than two Normal Viewers remain, **independently
+of the raw-frame retention policy**, covering 2->1 and 1->0. No change to
+`CaptureSource::releaseIdleResources()`, no new idle timer or per-backend
+viewer counter.
 
 ## 6. FIELD_CANDIDATE_STATUS
 

@@ -617,6 +617,14 @@ public:
         m_security.frameBackpressureObserver(blocked, noDemand);
     }
 
+    std::size_t normalViewerCount() const
+    {
+        return static_cast<std::size_t>(std::count_if(
+            m_clients.begin(), m_clients.end(), [](const auto &entry) {
+                return entry.second->phase == ClientPhase::Normal;
+            }));
+    }
+
     void releaseIdleFrameCaches()
     {
         // Caller MUST hold the product opt-in: standalone transports must retain
@@ -884,6 +892,14 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                // #967 review P2: the shared encoded framebuffer is useful only
+                // while at least two Normal Viewers can consume one frame.
+                // Standalone transports deliberately KEEP raw bootstrap pixels
+                // (releaseIdleFrameBuffers=false), so this cache must be dropped
+                // independently of that raw-frame policy, including 2->1 and
+                // 1->0 disconnects with no further published frames.
+                if (normalViewerCount() < 2)
+                    m_sharedUpdate.reset();
                 publishCaptureBackpressure();
                 if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
                     // 2→1 always retains, 1→0 releases true raw bytes only for
@@ -2017,10 +2033,7 @@ private:
         // #967: only a multi-Viewer frame can save a second whole-frame
         // encode. A single Viewer keeps the exact old path and never retains
         // an extra encoded framebuffer, so #790/#996 live-byte bounds hold.
-        const bool canShare = frame->storage
-            && std::count_if(m_clients.begin(), m_clients.end(), [](const auto &entry) {
-                   return entry.second->phase == ClientPhase::Normal;
-               }) >= 2;
+        const bool canShare = frame->storage && normalViewerCount() >= 2;
         const bool reused = canShare && m_sharedUpdate
             && m_sharedUpdate->matches(
                 frame->storage, client.pixels, client.preferredEncoding,
