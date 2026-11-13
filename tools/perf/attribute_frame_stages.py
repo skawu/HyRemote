@@ -31,6 +31,7 @@ import os
 from pathlib import Path
 
 from analyze_frame_trace import analyze
+from aggregate_cpu_probe import load as load_cpu_probe, measure as measure_cpu_probe
 
 
 def percentile(values, p):
@@ -271,14 +272,46 @@ def self_test():
     print("PASS frame stage attribution self-test (positive + negative)")
 
 
+def public_cpu_breakdown(path, warmup_ms, seconds):
+    snapshots = load_cpu_probe(path)
+    measurement = measure_cpu_probe(snapshots, warmup_ms, seconds)
+    observed = {}
+    for stage in ("quick_grab_submit", "quick_grab_ready_wall", "quick_convert"):
+        counters = measurement["stages"].get(stage)
+        observed[stage] = counters if counters and counters["calls"] else "NOT_INSTRUMENTED"
+    return {
+        "host_pid": snapshots[0]["pid"],
+        "semantics": {
+            "quick_grab_submit": "synchronous grab call scope including submit tracing",
+            "quick_grab_ready_wall": "async elapsed from grab start to GUI ready handler observation",
+            "quick_convert": "publishImage format-conversion scope",
+        },
+        "observed_counter_deltas": observed,
+        "qt_render_to_image": "NOT_INSTRUMENTED",
+        "qt_completion_event_queue_wait": "NOT_INSTRUMENTED",
+        "viewer_decode": "NOT_MEASURED",
+        "physical_present": "NOT_MEASURED",
+        "interval_policy": "overlapping aggregate counters; do not subtract or pair per request",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--matrix", type=Path, help="matrix run directory")
     parser.add_argument("--out", type=Path, help="run-output directory for JSON/CSV")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--public-cpu-probe", type=Path, help="read existing runtime CPU JSONL only")
+    parser.add_argument("--warmup-ms", type=int, default=5000)
+    parser.add_argument("--seconds", type=int, help="duration of the CPU counter window")
     args = parser.parse_args()
     if args.self_test:
         self_test()
+        return
+    if args.public_cpu_probe:
+        if not args.seconds or args.seconds < 1 or args.warmup_ms < 0 or args.matrix or args.out:
+            parser.error("CPU probe mode requires --seconds and no matrix output")
+        print(json.dumps(public_cpu_breakdown(args.public_cpu_probe, args.warmup_ms, args.seconds),
+                         indent=2, sort_keys=True))
         return
     if not args.matrix or not args.out:
         parser.error("--matrix and --out are required unless --self-test")
