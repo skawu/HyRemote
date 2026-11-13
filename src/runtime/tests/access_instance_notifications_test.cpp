@@ -537,8 +537,13 @@ void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
     for (int i = 0; i < 400 && state->framesQueued.load() < 1; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->framesQueued.load() == 1);
-    // A listener that has never served a Viewer is not a 0-viewer *edge*.
-    CHECK(state->idleCaptureReleases.load() == 0);
+    // #996/#967 review P2: a clientless bootstrap frame can fill a source's
+    // idle pixel/GPU cache. With no >0->0 transition ever happening, the
+    // common gate must deliver ONE release after a usable bootstrap; the
+    // transport has already recorded the ServerInit geometry by then.
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 1);
 
     emitTransport(state, hyremote::TransportEventCode::ClientConnected);
     for (int i = 0; i < 400 && state->captureRequests.load() < 1; ++i)
@@ -546,15 +551,15 @@ void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
     CHECK(state->captureRequests.load() >= 1);
 
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
-    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 1; ++i)
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    CHECK(state->idleCaptureReleases.load() == 1);
+    CHECK(state->idleCaptureReleases.load() == 2);
 
     // A duplicate/unreachable disconnect is not a second edge: one transition
     // must not ask the source to release twice.
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    CHECK(state->idleCaptureReleases.load() == 1);
+    CHECK(state->idleCaptureReleases.load() == 2);
 
     // Reconnecting Viewer requires capture again, and the next disconnect is a
     // new edge: the release contract is per transition, not one-shot forever.
@@ -564,9 +569,9 @@ void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->captureRequests.load() > idleRequests);
     emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
-    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 3; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    CHECK(state->idleCaptureReleases.load() == 2);
+    CHECK(state->idleCaptureReleases.load() == 3);
 
     instance.stop();
     CHECK(instance.state() == AccessState::Stopped);

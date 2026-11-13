@@ -1,120 +1,136 @@
-# #967 P1 user candidate — one common Qt-backend path
+# #967 P1 — single user candidate (CORRECTED): initial zero-viewer lifecycle fix only
 
-Date: 2026-11-13
+Date: 2026-11-13, revised after [PR #997 review 5891712978](https://github.com/skawu/HyRemote/pull/997#pullrequestreview-5891712978)
 Base: `develop@0f5e8333c27556e25d8cbbec98b2bc543532d7ab` (#995 + #996 merged)
-Design freeze: `14c5eb2b0efaa3e05b26685d9724e12d91791945`
-Scope: ONE user candidate for #789 / #567 / #790 under the single cross-Qt-backend
-architecture. This is not a second Feature version and not a release approval.
+Status: source-level correctness fix with existing-CTest evidence. **No performance
+improvement is claimed.** Physical-device and Viewer evidence remains
+`NOT_RUN_OWNER_DEPENDENCY`.
 
-`SOURCE_SHA` is the exact final head of the single implementation PR. It is
-reported in the #967 handoff comment and in the PR description (GitHub is the
-single continuation anchor); a file cannot contain the hash of the commit that
-contains it. All other candidate identity below is content-addressed and fixed.
+`SOURCE_SHA` is the exact final head of PR #997 and is reported in the PR
+description / review reply (GitHub is the single continuation anchor; a file
+cannot contain the hash of the commit that contains it). All other candidate
+identity below is content-addressed and fixed.
 
-## 1. Frozen candidate source manifest
+## 1. Decision and corrected scope
+
+```text
+DEFAULT_ROUTE_OPTIMIZATION = NO_PRODUCT_PATCH_JUSTIFIED (WITHDRAWN)
+PR #997 PRODUCT CHANGE      = initial zero-viewer SDK-owned resource release only
+#789_CPU                    = NOT_MEASURED; no Host CPU improvement claimed
+#567_VIEWER                 = NOT_MEASURED; RFB/wire/H2/Raw/TRLE untouched
+#790_RETAINED_BYTES         = source-level correctness fix at initial 0 viewers;
+                              field RSS/PSS NOT_MEASURED
+PRODUCT_GO                  = NO
+```
+
+The earlier claim that the default public Qt route "removes repeated whole-frame
+encoding/sending" was wrong and has been retracted. The byte-identical frame
+reuse implementation and all of its assertions were removed from this PR;
+`quick_target.cpp` and `test_quick_capture.cpp` are restored exactly to the
+`develop` baseline. See `docs/internal/967-p1-design-freeze-2026-11-13.md` §2-3
+for the source evidence and the insufficient, `UNSTABLE_BASELINE` probe result.
+
+## 2. Required source manifest
 
 Content hashes are `git hash-object` blobs of the source files at `SOURCE_SHA`:
 
 | File | Blob |
 | --- | --- |
-| `src/runtime/src/quick/quick_frame_reuse.hpp` | `3bc39c98992d63423276851d6a294d93d6dd2633` |
-| `src/runtime/src/quick/quick_target.cpp` | `88f072b57f4beccc5f309a2bd38c2393d9cabd30` |
-| `src/runtime/tests/test_quick_capture.cpp` | `efec3bdb0b8473bbc751ef76b9d11b0ed535b677` |
-| `docs/internal/967-p1-design-freeze-2026-11-13.md` | `f04e4a21c195d857cfb89f3efe5a00f1051980ea` |
+| `src/runtime/src/detail/viewer_capture_demand.hpp` | `7bebf0163c441e8a0ee64bc6d682dcf46496b07f` |
+| `src/runtime/tests/test_viewer_capture_demand.cpp` | `0d5685795d74c67699cd3179e1ee51686beff2c1` |
+| `src/runtime/tests/access_instance_notifications_test.cpp` | `fde11797dd2f5a2ca48b10cf3b49a3c43ac1a24b` |
+| `docs/internal/967-p1-design-freeze-2026-11-13.md` | `006f9d9eee12d3234bf7f26a1cc22e10a9d42439` |
 
-Also required: this candidate package document. `CaptureSource`, `RemoteFrame`,
-`FrameStorage`, `rfb_transport.cpp`, `rfb_delivery_state.hpp`, `rfb_trle.hpp`,
-the watermark compositor/decorator, `composite_target.cpp`, `access_instance.cpp`
-and all native GL/D3D11 providers are **unchanged by this increment**. The
-#991/H2 served-frame snapshot, per-viewer accumulated/committed damage,
-Raw/TRLE and `bytesToWrite()==0` / `m_encodingSocket` backpressure remain the
-correctness baseline. No new capability table, no new Runtime, no per-SoC code.
+Also required: this candidate package document. **No new product header, no
+new cache, no new CaptureSource hook, no RFB/transport/watermark/native-provider
+change.** `quick_frame_reuse.hpp` does not exist in this candidate.
 
-## 2. Target Kit, product route and graphics backend
+## 3. Target Kit, route and graphics backend
 
-- Windows x86_64, Qt 6.8.3 `msvc2022_64` on the local canonical build profile;
-  Qt 5.15.2 is covered by the existing exact-head PR CI lane.
-- Product route: public Qt `grabToImage()`. Startup log identity is
-  `HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_QT_FALLBACK`. Native GL PBO and
-  D3D11 staging remain opt-in / default OFF; no automatic native preference is
-  added and the #995 `Admitted/Transient/Unsupported + Reason` table is untouched.
-- Qualification truth: Qt 5.15.2 DirectGL and Qt 6.8.3 desktop GL small-target
-  real-GPU PASS (native, default OFF); Windows D3D11 static-1V CPU/private-bytes
-  gain with viewer latency `NOT_QUALIFIED`; Qt 6 GLES/EGLFS, redirected FBO,
-  high DPI, multi-GPU and other RHI remain `NOT_QUALIFIED` and stay on the
-  public Qt fallback. No EGLFS or ARM64 claim is made from a Windows result.
-- C++/QML/Generic/QPA all use this same Quick `CaptureSource` through the Shared
-  Runtime; the capability-selected Adaptive source uses it as `m_public`.
+- Windows x86_64, Qt 6.8.3 `msvc2022_64` local canonical profile; Qt 5.15.2
+  covered by the existing exact-head PR CI lane.
+- Route: public Qt `grabToImage()` fallback
+  (`HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_QT_FALLBACK`). Native GL PBO and
+  D3D11 staging remain opt-in / default OFF; no automatic native preference.
+- The fix lives in the **Shared Runtime demand gate**, so it is common to
+  C++/QML/Generic/QPA and every Qt graphics backend. It contains no Qt API,
+  no backend capability decision and no per-device branch.
+- Qualification truth is unchanged: Qt 5.15.2 DirectGL / Qt 6.8.3 desktop GL
+  small-target real-GPU PASS (native OFF), Windows D3D11 static-1V CPU/private
+  bytes gain with viewer latency `NOT_QUALIFIED`, Qt 6 GLES/EGLFS, redirected
+  FBO, high DPI, multi-GPU and other RHI `NOT_QUALIFIED` on the public fallback.
+  Windows results are not extrapolated to ARM64.
 
-## 3. Install and rollback identity
+## 4. Install and rollback identity
 
 - Install: `build.cmd build` / `build.cmd install` at `SOURCE_SHA` with the same
   `build.yml` profile and the configured workspace `build` tree. No public SDK
-  header, ABI, configuration file, schema or Viewer-side change: the installed
-  SDK identity and all existing examples/consumers are unchanged.
-- Rollback: revert the single implementation PR (or `git revert` its commits)
-  and rebuild with the same entry. The previous product baseline is
-  `develop@0f5e8333`. No data migration and no persisted state is introduced.
+  header, ABI, configuration file, schema or Viewer-side change.
+- Rollback: revert PR #997 (or `git revert` its commits) and rebuild with the
+  same entry; the previous product baseline is `develop@0f5e8333`. No data
+  migration or persisted state is introduced.
 - Release delta: `release/v0.3.5.0@b0680d5df4f76d8b84b02a1b950030a65a89ddca`
-  and the OPEN selective backport PR #876 (`f5971906`, five files) do **not**
-  contain this change. This increment does not widen #876's five-file
-  whitelist, does not backmerge all of `develop`, and does not bypass the
-  protected-branch topology check or the independent-App-bound required
-  ruleset. A `develop` merge is not release qualification; #95 owns that gate.
+  and the OPEN selective backport PR #876 (`f5971906`, five files) do not
+  contain this change. The whitelist is not widened, no full `develop`
+  backmerge, no admin bypass, no topology-check or independent-App ruleset
+  bypass. `develop` merge is not release qualification; #95 owns that gate.
 
-## 4. What the candidate actually changes
+## 5. What the candidate actually changes
 
-Qt returns a new QImage (and therefore a new `FrameStorage`) for every
-`grabToImage()` even when the scene did not change a single visible byte. On the
-default public path shared by every Qt graphics backend, that fresh identity
-forced a whole-frame watermark recomposition, a whole-frame visible-pixel
-comparison and a whole-frame encode/send on every accepted static frame.
+`ViewerCaptureDemand::start()` begins at `m_viewers = 0` and
+`waitForCapture()` deliberately admits ONE clientless bootstrap capture so RFB
+can complete ServerInit for a first client. That frame can fill a
+`CaptureSource` idle cache (GL PBO, D3D11 staging, composite). Because no
+`>0 -> 0` transition ever occurred, `setViewerCount()` never latched an
+`IdleRelease`, so those SDK-owned bytes stayed pinned for the whole run when no
+Viewer ever connected — a real #996 invariant hole, independent of the
+withdrawn optimization.
 
-The candidate publishes a NEW `RemoteFrame` (own request identity, PTS and
-completion time) whose immutable `FrameStorage` is shared with the previously
-published frame **only when the visible RGBA bytes and the geometry are exactly
-equal**. Downstream, the already-existing storage-identity fast paths then skip
-the repeated decoration/compare/encode. Any changed byte allocates a new owner
-and takes the unchanged full-delivery path. The one-slot cache is released on
-the same single zero-viewer edge as #996, and on start/stop/generation changes.
+`frameQueued()` now latches the same one-shot `m_idleReleasePending` when a
+usable clientless bootstrap frame is queued. `waitForCapture()` delivers it on
+the capture scheduler thread, and `ObservedCaptureSource::requestFrame()` calls
+`CaptureSource::releaseIdleResources()` for every backend. The transport has
+already recorded the ServerInit geometry, so the first handshake is unchanged;
+an early reconnect drops the stale edge; a later reconnect gets fresh pixels.
+No per-backend viewer counter, timer or platform branch is added.
 
-Deterministic source-level effect: repeated whole-frame CPU work on unchanged
-scenes is removed. It is NOT a measured CPU percentage on any device. No
-already-written TCP byte is truncated, no FBU request behaviour is changed,
-and no standard-VNC physical atomic present is promised.
+This is a **correctness fix**, not a CPU optimization. It does not change wire
+bytes, damage, encoding, capture pacing, or any visible pixel.
 
-## 5. Verification and honest gaps (no new research loop)
+## 6. Verification and honest gaps
 
-- Assertions inside the existing `quick-capture` CTest target: equal pixels
-  reuse; one changed visible byte does not reuse; padded stride with equal
-  visible bytes is equivalent; geometry/generation changes do not reuse;
-  zero-viewer `release()` drops the SDK-owned reference.
-- One canonical `build.cmd test` at the exact head, plus exact-head PR CI on the
-  existing Qt6/Qt5 lanes. No 9x120s matrix, no new synthetic suite, no
-  temporary probe program and no separate test research cycle.
-- `NOT_MEASURED`: Host physical GPU counters (no Host PID), Viewer decode and
-  physical present, real EGLFS/RK3588 CPU/PSS, and real large-page A->B visual
-  convergence on customer hardware. Socket queued is not Viewer present.
+- Existing CTest targets only, canonical `build.cmd test` with bounded filters:
+  `viewer-capture-demand` 1/1, `runtime-notifications` 1/1,
+  `hyremote-quick-capture` 3/3 (including both DPR variants).
+- New assertions cover start -> bootstrap -> 0V idle, 0->1->0, late
+  callback/reconnect, unusable bootstrap geometry, and the end-to-end
+  `idleCaptureReleases` sequence. The old assertion "a listener that has never
+  served a Viewer is not a 0-viewer edge" encoded the defect and was replaced.
+- Exact-head PR CI on the existing Qt6/Qt5 lanes; no 9x120s matrix, no new
+  synthetic suite, no temporary probe program, no new executable script.
+- `NOT_MEASURED`: Host CPU change, GUI responsiveness, Viewer P95, physical
+  present, RFB wire byte delta, real EGLFS/RK3588 CPU/PSS, field A->B large-page
+  convergence. The one existing 1080p public-grab probe run at the
+  pre-withdrawal head was `UNSTABLE_BASELINE` (A1/A2 spread 36.36% > 15%), so
+  per test governance no CPU claim is made and no resampling is performed.
 - If the test-side Codebuddy cannot independently prove the running SHA, write
   `RUNTIME_SHA=NOT_VERIFIED` and do not attribute any observation to this code.
 
-## 6. Single-link A/B handoff
+## 7. Single-link A/B handoff (unchanged)
 
 - Development Codebuddy A owns the user's existing integration workflow, build
   and owner reporting. The User decides and performs the upgrade manually.
 - Test Codebuddy B only measures the currently running program: independent
   desensitised 0V/1V CPU, one authorized A->B->A page convergence, last
-  disconnect CPU/RSS/PSS/threads, and reconnect. B needs no build manifest
-  from A and does not upgrade for the User.
-- The User is not asked to repeat the earlier multi-round test programme.
-  Human participates only for a real customer-site change authorization or a
-  major release-scope decision; ordinary code, build, test and PR need no Human.
+  disconnect CPU/RSS/PSS/threads, and reconnect. B needs no build manifest from
+  A and does not upgrade for the User.
+- The User is not asked to repeat earlier multi-round testing. Human
+  participates only for a real customer-site change authorization or a major
+  release-scope decision.
 
-## 7. Acceptance is not "PR merged"
+## 8. Acceptance is not "PR merged"
 
-The issue stays OPEN until the same-SHA evidence shows: #789 Host CPU really
-improves without worse Viewer P95; #567 large pages show no persistent stale
-frame overlay/top-bottom split and converge acceptably; #790 0V SDK-owned
-live bytes are released with bounded long-run resources/threads. Remaining
-allocator high-water must be attributed with evidence and a clear scope.
-Any failure keeps the issue open and names the shortest next source fix.
+#789 / #567 / #790 stay OPEN until same-SHA field evidence shows real CPU
+improvement without worse Viewer P95, acceptable large-page convergence, and
+bounded 0V SDK-owned live bytes / threads. Remaining allocator high-water needs
+evidence and a clear scope. This candidate does **not** claim those outcomes.

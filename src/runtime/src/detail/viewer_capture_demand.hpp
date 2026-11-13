@@ -83,6 +83,17 @@ public:
             m_bootstrapFrameQueued = usableForServerInit;
             if (!usableForServerInit)
                 resetIdleLocked();
+            // #996/#967: a clientless bootstrap frame can fill a CaptureSource's
+            // idle pixel/GPU cache (GL PBO, D3D11 staging, composite). If no
+            // Viewer ever connects there is NO >0->0 transition to latch
+            // setViewerCount(), so those SDK-owned bytes would stay pinned for
+            // the whole run. Deliver the SAME one-shot IdleRelease from this
+            // common gate instead of adding a per-backend viewer counter. The
+            // geometry is recorded by the transport before the release, so
+            // ServerInit and a later reconnect are unchanged; a Viewer that
+            // arrives first makes waitForCapture() drop the stale edge.
+            if (usableForServerInit && !m_stopped && m_viewers == 0)
+                m_idleReleasePending = true;
         }
         m_changed.notify_all();
     }

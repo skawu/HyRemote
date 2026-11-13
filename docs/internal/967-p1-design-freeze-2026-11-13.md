@@ -1,123 +1,124 @@
-# #967 P1 implementation design freeze — one common Qt-backend architecture
+# #967 P1 — review disposition: default-route optimization WITHDRAWN
 
-Date: 2026-11-13
+Date: 2026-11-13, revised after [PR #997 review 5891712978](https://github.com/skawu/HyRemote/pull/997#pullrequestreview-5891712978)
 Base: `develop@0f5e8333c27556e25d8cbbec98b2bc543532d7ab` (#995 + #996 merged)
-Authority: #967 comment 6852819210 (section 1) and #594 comment 6846405899 (Human route decision)
-Scope: freeze the remaining design delta, then implement P1 product source. D0/D1 (#995)
-and D2/D3 (#996) are completed, merged and deliberately NOT re-done.
+Original freeze SHA `14c5eb2b0efaa3e05b26685d9724e12d91791945` is **superseded** by this
+disposition. Authorities: #967 comment 6852819210, #594 comment 6846405899.
 
-## 1. Frozen invariants (unchanged by this increment)
+## 1. Decision
 
-One Qt-free Core + one Shared Runtime. All four integrations (C++/QML/Generic/QPA)
-share `CaptureSource / RemoteFrame / FrameStorage / PTS / Damage` and the request
-identity. Capability-driven `Admitted / Transient / Unsupported + Reason`
-(`quick_capture_capability.hpp`) selects capture; capture -> encode -> per-viewer
-pending merge -> TCP delivery; 0/1/2 viewer resource release; public Qt
-`grabToImage()` fallback always available. There is no second runtime, no
-per-SoC/per-Qt-version capture algorithm and no new capability table.
+```text
+DEFAULT_ROUTE_OPTIMIZATION = NO_PRODUCT_PATCH_JUSTIFIED (WITHDRAWN)
+PR #997 PRODUCT CHANGE      = initial zero-viewer SDK-owned resource release only
+```
 
-Backend qualification is stated per backend, never inferred from a different RHI:
+The "share byte-identical public Qt grab pixels across frames" implementation
+(`quick_frame_reuse.hpp`, the `QuickFrameReuseCache` call in `quick_target.cpp`,
+its assertions and every performance claim) has been **removed** from this PR.
+`quick_target.cpp` and `test_quick_capture.cpp` are restored exactly to
+`develop@0f5e8333`. No default-path pixel comparison, no new cache, no extra
+SDK-owned frame reference remains.
 
-| Backend / Kit | Native status | Product route in this increment |
-| --- | --- | --- |
-| Qt 5.15.2 DirectGL | small-target real GPU PASS, default OFF | public Qt fallback unchanged |
-| Qt 6.8.3 desktop GL-RHI | small-target real GPU PASS, default OFF | public Qt fallback unchanged |
-| Qt 6.8.3 D3D11 staging | Windows static-1V CPU/private-bytes gain, viewer latency `NOT_QUALIFIED` | public Qt fallback unchanged |
-| Qt 6 GLES / EGLFS, redirected FBO, high DPI, other RHI | `NOT_QUALIFIED` | public Qt fallback; no native claim |
+## 2. Why the original performance premise was wrong
 
-## 2. The single frozen design delta
+1. **The default path never encoded or sent identical full-screen frames.**
+   `rfb_transport.cpp:654-675` compares each new served frame against the last
+   actually observed frame; `rfb_delivery_state.hpp:445-545` returns empty
+   damage for equal visible RGB, including the existing
+   `previousPresentedFrameUnchanged` contiguous bulk `memcmp` fast path;
+   `RfbWorker::trySendUpdate` (`rfb_transport.cpp:1934-1950`) cancels an empty
+   incremental update **before any rectangle is encoded or written**. With the
+   watermark OFF (the product default) there was no repeated whole-frame
+   Raw/TRLE encode or TCP write to remove.
+2. **The frozen Runtime design says the comparison belongs on the RFB worker.**
+   `viewer_capture_demand.hpp:109-110` states that `noteFrameChange()` is fed
+   by the worker's exact `changedRfbTiles()` result precisely to avoid "a
+   duplicate 1920x1080 comparison in the Qt GUI capture path". The withdrawn
+   implementation contradicted this invariant.
+3. **It added GUI-thread work instead of deleting work.** The removed
+   `QuickFrameReuseCache::publish()` ran inside `publishImage()`, i.e. in the Qt
+   GUI grab-completion callback, and performed up to `1920*1080*4 = 8.29 MiB`
+   of `memcmp` per accepted grab under its own mutex. The only saving was that
+   the RFB worker could take a storage-identity fast path instead of its own
+   existing bulk `memcmp`. Net effect: one whole-frame comparison **moved from
+   the RFB worker to the GUI thread**, plus a mutex and one extra pinned frame.
+   The GUI thread owns Qt rendering and input, so this is a responsiveness
+   risk, not a demonstrated Host CPU reduction.
+4. **A conditional watermark-ON benefit was never measured.** With a static
+   server-side watermark the worker does recompose one full frame per accepted
+   grab, so a correct cross-layer decision might help there. This is a
+   different, conditional claim. It was not proven and is not claimed here.
 
-(A) **Session-state and selection.** `AdaptiveQuickCaptureSource::State`
-(`generation/surfaceEpoch/nativeEnabled/pending/failures`) plus the one
-`evaluateQuickCaptureCapability()` table are the ONLY session/state owners.
-Product selection is: public Qt baseline first; a native provider is preferred
-only when its exact backend facts are proven; every failure falls back one-way
-to public Qt. Experimental native switches remain default OFF. This increment
-adds no backend, no new capability table and no "experiment fully on" route.
+## 3. Measured evidence is explicitly insufficient, not favourable
 
-(B) **What is controllable in a whole-screen A -> B paint.** The controllable
-Host cost is the work repeated on every accepted frame: whole-frame pixel
-ownership, watermark recomposition, whole-frame visible-pixel comparison and
-whole-frame Raw/TRLE encoding. Viewer decode / physical present remain
-`NOT_MEASURED` and are never claimed as an RFB stage. Frozen rule: when the
-source frame's visible RGBA bytes are **byte-for-byte equal** to the previously
-published frame with the same geometry/format/alpha/DPR, publish a NEW
-`RemoteFrame` (new request identity, PTS and completion time) that shares the
-SAME immutable `FrameStorage`; otherwise take the unchanged existing path.
-Consequences of that single rule, all already supported by existing code:
+One short run of the **existing** 1080p public-grab probe
+(`runPublicQuickProfile()` in `test_quick_capture.cpp`, evaluated by
+`tools/perf/assess_quick_public_profile.py`) at the pre-withdrawal head
+`030c031b` produced:
 
-- `changedRfbTiles()` returns empty damage on `previous->storage == current.storage`;
-- `WatermarkReuseCache` hits on the same source storage, so no 8 MiB allocate,
-  no whole-frame memcpy and no QPainter recomposition;
-- no RFB rectangle is selected, encoded or written, so no repeated full-screen
-  bytes and no stale pending update is created;
-- any real byte change still uses the #991/H2 served-frame snapshot, per-viewer
-  accumulated/committed damage, `coalesceRfbDamageForPaint`, Raw/TRLE and the
-  `bytesToWrite()==0` / `m_encodingSocket` backpressure unchanged;
-- no already-written TCP byte is truncated, no FBU request is left unanswered
-  by a new protocol behaviour (an empty incremental update was already legal).
+```text
+PUBLIC_BASELINE_STABILITY = UNSTABLE_BASELINE
+A1_A2_CPU_SPREAD_PERCENT  = 36.36   (gate: <= 15)
+CASE public_static_a1     PROCESS_CPU_MS=406.250  REQUEST_P95_MS=21.841
+CASE public_a_split_b_a   PROCESS_CPU_MS=593.750  REQUEST_P95_MS=21.117
+CASE public_static_a2     PROCESS_CPU_MS=281.250  REQUEST_P95_MS=26.040
+renderer = software, context = HOSTED_SYNTHETIC_NOT_DEVICE_OR_NATIVE_GAIN
+```
 
-(C) **#996 release invariant.** The one-slot equivalence cache is a new
-SDK-owned pixel reference. It MUST clear on the same single zero-viewer edge via
-`CaptureSource::releaseIdleResources()`, and on `start()`/`stop()`/generation
-change. It never pins pixels after the last Viewer leaves; allocator high-water
-is still not an SDK leak. No `malloc_trim`, no board-specific release.
+Per the repository test-governance rule, a static A1/A2 drift above 15% is
+`UNSTABLE`: no performance claim may be made, and no resampling until it
+passes is allowed. The probe also has no Viewer, no RFB wire and no watermark
+ON arm, so it cannot establish Host CPU, GUI responsiveness, wire bytes or
+P95 business case. **No A/B number is used to justify the withdrawn code.**
 
-A zero-viewer edge can arrive while a Qt grab is still queued or in flight, so
-clearing alone is insufficient: that late completion must not repopulate the
-cache. The cache latches `idle` on release/stop, refuses to retain ANY candidate
-while idle, and resumes only on a real `requestFrame()` (the next Viewer
-demand). Late completions still publish their own fresh `RemoteFrame`; only the
-cache refill is refused. This is the same deferred-release idea as the GL/D3D11
-`QuickIdleRelease` latch, with no timer, viewer counter or platform branch.
+## 4. The only product change left in PR #997
 
-(D) **Success conditions (CPU and latency are one gate).** Host CPU must not
-rise; Viewer freshness must not degrade (reuse only on exact pixel equality);
-no GPU fence wait or Qt render-thread blocking is added (the comparison is a
-CPU read of an already completed Qt grab); 0-viewer SDK-owned bytes stay
-released; RFB correctness (#991/H2 A->B/S->B regressions) stays intact. A CPU
-win with worse Viewer P95 is a failure. Physical present and Host GPU counters
-remain `NOT_MEASURED`.
+`ViewerCaptureDemand::start()` begins with `m_viewers = 0` and
+`waitForCapture()` deliberately admits ONE bootstrap capture so RFB can finish
+ServerInit for a first client without deadlock. `frameQueued(true)` used to
+only record that geometry. A frame that no Viewer will ever consume can fill a
+`CaptureSource` idle cache (GL PBO, D3D11 staging, composite), and because no
+`>0 -> 0` transition ever happens, `setViewerCount()` never latches
+`IdleRelease`. Those SDK-owned bytes stayed pinned for the whole run. This is a
+real #996 invariant hole, independent of the withdrawn optimization.
 
-## 3. Implementation boundary (one product PR)
+Fix: `frameQueued()` latches the SAME one-shot `m_idleReleasePending` when a
+usable clientless bootstrap frame is queued. `waitForCapture()` delivers it on
+the capture scheduler thread; `ObservedCaptureSource::requestFrame()` then calls
+`CaptureSource::releaseIdleResources()` for every backend. The transport has
+already recorded the ServerInit geometry, so the first handshake is unchanged;
+a Viewer arriving before the scheduler consumes the latch makes
+`waitForCapture()` drop the stale edge; a later reconnect still gets fresh
+pixels. No per-backend viewer counter, timer or Qt-version branch is added.
 
-- `src/runtime/src/quick/quick_frame_reuse.hpp` (new, Runtime-private, Qt-free):
-  exact visible-pixel equivalence + one-slot cache with generation and release.
-- `src/runtime/src/quick/quick_target.cpp`: the public Qt Quick `CaptureSource`
-  (used by the default route AND by `AdaptiveQuickCaptureSource::m_public`,
-  therefore by every Qt graphics backend) calls the cache and implements
-  `releaseIdleResources()`.
-- `src/runtime/tests/test_quick_capture.cpp`: assertions inside the existing
-  `quick-capture` CTest target only. No new test target, matrix or probe.
+Assertions (existing CTest targets only): `test_viewer_capture_demand.cpp`
+covers start -> bootstrap -> 0V idle, the 0->1->0 edge, late callback/reconnect
+and unusable bootstrap geometry; `access_instance_notifications_test.cpp` now
+asserts an end-to-end `idleCaptureReleases == 1` right after the clientless
+bootstrap, then `== 2` / `== 3` across disconnect and reconnect. The previous
+assertion "A listener that has never served a Viewer is not a 0-viewer edge"
+encoded the defect and was deliberately replaced.
 
-`rfb_transport.cpp`, `rfb_delivery_state.hpp`, `rfb_trle.hpp`,
-`watermark_*`, `composite_target.cpp` and all native providers are NOT changed.
-This is not a second #567 "old frame pretending to be new" fix: the wire is
-byte-identical for equal pixels, and unchanged for changed pixels.
+## 5. Corrected claims
 
-## 4. Verification and falsification (no new research loop)
+- No claim that the default public Qt route removes repeated whole-frame
+  encoding, transmission or CPU work. It does not.
+- `#789_CPU = NOT_MEASURED`; no Host CPU improvement is claimed by this PR.
+- `#567_VIEWER = NOT_MEASURED`; RFB/wire/H2/Raw/TRLE behaviour is untouched.
+- `#790_RETAINED_BYTES`: source-level correctness fix for initial 0 viewers,
+  proven by existing CTest assertions; no RSS/PSS field claim.
+- Backend qualification is unchanged: Qt5 DirectGL / Qt6 desktop GL small-target
+  real-GPU PASS (native default OFF), Windows D3D11 static-1V CPU/private-bytes
+  gain with viewer latency `NOT_QUALIFIED`, Qt6 GLES/EGLFS, redirected FBO,
+  high DPI and other RHI `NOT_QUALIFIED` on the public Qt fallback. No ARM64
+  extrapolation, no automatic native promotion, no new capability table.
+- `PRODUCT_GO = NO` for #789/#567/#790; PR merge / green CI is not field GO.
 
-Existing CTest assertions (equal pixels reuse / one-byte change does not reuse /
-geometry change does not reuse / padded stride / 0V release / generation),
-one canonical `build.cmd test`, exact-head PR CI on the existing Qt6/Qt5 lanes.
+## 6. Verification
 
-The pre-existing deferred-request test used `frames[0].storage != frames[1].storage`
-as an implementation proxy for "one owner per GUI batch". This increment
-deliberately changes that implementation detail, so the proxy is replaced by
-the actual product contract checks that remain: distinct request IDs / request
-times, the mandatory updated B-page pixel, and equal geometry whenever a
-storage is shared, plus the new regression that ANY changed visible byte must
-get a new owner. No threshold, timing tolerance or performance number is
-relaxed; the old pixel/freshness assertions are untouched.
-and source review of the unchanged H2/Raw/TRLE path. No 9x120s matrix, no new
-synthetic suite, no temporary probe program. Falsifiers: a byte change that is
-not delivered, a decorated frame that loses its watermark, or a 0-viewer cache
-that retains bytes. Missing real Viewer/device evidence is reported as
-`NOT_MEASURED` / `NOT_RUN_OWNER_DEPENDENCY`, never as PASS.
-
-## 5. Product behaviour decision
-
-No major product behaviour change: visible pixels, wire bytes, default route,
-native switches and release semantics are unchanged. No Human decision is
-required for this increment; Human is only involved for release scope or a real
-customer-site authorization.
+Existing CTest targets only, through the canonical `build.cmd test` entry with
+bounded filters: `viewer-capture-demand` 1/1, `runtime-notifications` 1/1,
+`hyremote-quick-capture` 3/3 (including the two DPR variants). Exact-head PR
+CI on the existing Qt6/Qt5 lanes. No 9x120s matrix, no new synthetic suite, no
+temporary probe program, no new executable script. No watermark-ON A/B was
+invented to keep the optimization alive.
