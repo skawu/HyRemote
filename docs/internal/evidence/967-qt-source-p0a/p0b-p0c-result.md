@@ -60,9 +60,9 @@ Host `marker→swap` P50 0.73 ms; Host `capture_request→submit` P95 0.058 ms.
 
 Both segments reproduce the older `a43b76e1` baseline cadence (6-7 ms
 `marker→swap`, 1.7 ms `req→submit` P95, 10 ms `submit→source` P95), not the
-~60 ms cadence of the `99e6fd1e` set. That older set's three-arm Viewer P95
-increase is therefore a display-session drift, not a product regression after
-#980. RSS P50 differs by 59.5 MB, recorded as a start-up allocation OBS; it is
+~60 ms cadence of the `99e6fd1e` set. That older set's three-arm Viewer P95 increase is **consistent with**
+a non-reproducible display-session or measurement-environment drift; these
+A/A runs do not prove its exact cause or exclude every product effect. RSS P50 differs by 59.5 MB, recorded as a start-up allocation OBS; it is
 not used as a comparability failure because cadence, sample count, QSG identity
 and Viewer detection all agree.
 
@@ -112,14 +112,15 @@ extra work did not trigger the `TemporarilyUnavailable` public-fallback path.
 `render_callback` equals `frame_swaps` exactly in both B segments, confirming
 that nearly every GL request drives one Qt render frame and one swap.
 
-Every segment produced **37** RFB socket updates. The 21-87 extra GL capture
-requests and 255-291 GPU submissions therefore produced no additional Viewer
-payload: they were discarded by RFB compare. A constant 37 also means the
-Viewer P95 differences above cannot be explained by a different number of
-updates.
+Every segment produced **37** RFB socket-queue events. The additional GL
+capture work did **not increase counted socket updates**, consistent with
+unchanged-content suppression by RFB compare; count equality alone does not
+prove identical payload, delivery timing or Viewer presentation. Nor does it
+exclude latency effects from extra Qt rendering or GPU work.
 
 Falsifiable candidate H: GL forced updates drive extra Qt frames and therefore
-the Viewer P95 tail. The data does not support it. b-first has 37 more explicit
+the Viewer P95 tail. The five short segments do not establish this as a
+reproducible explanation; nor do they exclude a scheduling effect. b-first has 37 more explicit
 renders (13%) than b-last but is 68.12 ms worse at Viewer P95, while b-last is
 32.6 ms better than public despite still doing 257 forced renders. The metric
 that tracks Viewer P95 across all five segments is the `marker→swap` phase
@@ -162,8 +163,8 @@ precondition for a code change is not met.
   `qquickwindow.cpp:3391-3420` as the replacement for `resetOpenGLState()` that
   does **not** reset GL state. The code saves and restores `GL_PACK_ALIGNMENT`,
   `GL_PACK_ROW_LENGTH`, `GL_PACK_SKIP_ROWS`, `GL_PACK_SKIP_PIXELS` and the PACK
-  buffer binding at `:1182-1188` and `:1275-1279`, so there is no state leak
-  into subsequent scene-graph rendering.
+  buffer binding at `:1182-1188` and `:1275-1279`, which protects those explicitly handled pixel-pack states; the current
+  evidence does **not** establish absence of all possible GL state leaks.
 * The #980 arm lifecycle fix already keeps one forced update per render frame
   through the `updateKeepsArm` regression; b-last and all public segments show
   the normal 6-7 ms `marker→swap`, so no persistent high-frequency update
