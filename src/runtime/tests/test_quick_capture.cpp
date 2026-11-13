@@ -37,6 +37,7 @@
 #include <time.h>
 #endif
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -52,6 +53,7 @@
 #include "quick/quick_readback_batch.hpp"
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
+#include "quick/quick_frame_reuse.hpp"
 #include "quick/quick_capture_single_flight.hpp"
 #include "quick/quick_grab_geometry.hpp"
 #include "quick/quick_idle_release.hpp"
@@ -2323,6 +2325,89 @@ void testQuickGlPboIdleSubmissionRejectionKeepsEdge()
 }
 #endif // HYREMOTE_TEST_QUICK_GL_PBO
 
+// #967 P1: the common public-Qt path may share immutable pixels ONLY for
+// byte-identical visible content, never across a zero-viewer edge, a changed
+// geometry or a new capture generation. GPU-free, inside the existing CTest.
+static hyremote::FrameGeometry quickReuseGeometry(std::uint32_t width, float dpr = 1.0F)
+{
+    hyremote::FrameGeometry geometry;
+    geometry.size = {width, 2U};
+    geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+    geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
+    geometry.planeCount = 1U;
+    geometry.devicePixelRatio = dpr;
+    return geometry;
+}
+
+static std::shared_ptr<hyremote::CpuFrameStorage> quickReusePlane(
+    std::size_t stride, std::uint8_t fill)
+{
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(stride, 2U);
+    if (!storage)
+        return {};
+    auto *data = storage->mutablePlane(0);
+    if (!data)
+        return {};
+    for (std::size_t i = 0; i < storage->totalBytes(); ++i)
+        data[i] = std::byte{fill};
+    return storage;
+}
+
+void testQuickFrameReuseIsExactAndIdleSafe()
+{
+    const auto geometry = quickReuseGeometry(4U);
+    const std::size_t packed = 4U * 4U;
+    const auto first = quickReusePlane(packed, 0x31);
+    const auto identical = quickReusePlane(packed, 0x31);
+    const auto padded = quickReusePlane(packed + 8U, 0x31);
+    CHECK(first && identical && padded);
+    if (!first || !identical || !padded)
+        return;
+
+    // Padded rows with identical visible bytes are equivalent; padding never
+    // reaches the RFB wire. A changed geometry is not.
+    CHECK(HyRemote::detail::quickFramePixelsEqual(*first, *padded, geometry));
+    CHECK(!HyRemote::detail::quickFrameGeometryEquivalent(
+        geometry, quickReuseGeometry(4U, 2.0F)));
+
+    HyRemote::detail::QuickFrameReuseCache cache;
+    cache.reset(7U);
+    CHECK(cache.publish(first, geometry, 7U) == first);
+    CHECK(cache.publish(identical, geometry, 7U) == first);
+    CHECK(cache.publish(padded, geometry, 7U) == first);
+
+    // One changed visible byte must create a new owner, and the cache must
+    // remember the changed picture instead of replaying the old one.
+    identical->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(identical, geometry, 7U) == identical);
+    const auto changedCopy = quickReusePlane(packed, 0x31);
+    CHECK(changedCopy);
+    if (!changedCopy)
+        return;
+    changedCopy->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(changedCopy, geometry, 7U) == identical);
+
+    // A new capture generation and the single zero-viewer edge both drop the
+    // SDK-owned pixel reference exactly like #996 requires.
+    const auto afterGeneration = quickReusePlane(packed, 0x31);
+    CHECK(afterGeneration);
+    if (!afterGeneration)
+        return;
+    afterGeneration->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(afterGeneration, geometry, 8U) == afterGeneration);
+    cache.release();
+    const auto afterRelease = quickReusePlane(packed, 0x31);
+    CHECK(afterRelease);
+    if (!afterRelease)
+        return;
+    afterRelease->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(afterRelease, geometry, 8U) == afterRelease);
+
+    CHECK(!HyRemote::detail::quickFramePixelsEqual(
+        *first, *first, quickReuseGeometry(0U)));
+    std::cerr << "WIN967_QUICK_FRAME_REUSE=PASS" << std::endl;
+}
+
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
@@ -2369,6 +2454,7 @@ int main(int argc, char **argv)
     testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
     testAdaptiveQuickMalformedNativeFramesTriggerFallback();
     testQuickIdleReleaseLatchIsDeferredAndOneShot();
+    testQuickFrameReuseIsExactAndIdleSafe();
     testAdaptiveQuickForwardsZeroViewerRelease();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();

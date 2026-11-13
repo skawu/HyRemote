@@ -35,6 +35,7 @@
 #include "detail/perf_probe.hpp"
 #include "detail/qt_window_system_input.hpp"
 #include "quick/quick_image_frame_storage.hpp"
+#include "quick/quick_frame_reuse.hpp"
 #include "quick/quick_capture_backend.hpp"
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
 #  include "quick/quick_gl_pbo_capture_source.hpp"
@@ -133,6 +134,7 @@ public:
         // ready/timer callbacks from a prior lifetime must not publish into
         // new handlers even if the same CaptureSource is started again.
         ++m_state->generation;
+        m_state->frameReuse.reset(m_state->generation);
         m_state->pendingRequests.clear();
         m_state->singleFlight.reset();
         m_state->onFrame = std::move(onFrame);
@@ -146,6 +148,7 @@ public:
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
         ++m_state->generation;
+        m_state->frameReuse.reset(m_state->generation);
         m_state->pendingRequests.clear();
         m_state->singleFlight.reset();
         m_state->onFrame = {};
@@ -189,6 +192,14 @@ public:
         return true;
     }
 
+    // #790/#996: the Shared Runtime owns the ONE zero-viewer edge. The public
+    // Qt route now owns one reusable frame reference, so it must release it on
+    // that same edge instead of inventing an idle timer or a viewer counter.
+    void releaseIdleResources() noexcept override
+    {
+        m_state->frameReuse.release();
+    }
+
 private:
     static constexpr unsigned int kMaxGrabAttempts = 3U;
 
@@ -203,6 +214,9 @@ private:
         std::size_t callbacksInFlight = 0;
         std::vector<hyremote::CaptureRequest> pendingRequests;
         QuickCaptureSingleFlight singleFlight;
+        // #967 P1: exact-pixel reuse for the public Qt grab. Cleared by the
+        // same single zero-viewer edge as every other SDK-owned pixel buffer.
+        QuickFrameReuseCache frameReuse;
         hyremote::FrameReadyHandler onFrame;
         hyremote::CaptureEventHandler onEvent;
     };
@@ -519,13 +533,23 @@ private:
         // that rounding does not change the logical Composite canvas DPR.
         prototype.geometry.devicePixelRatio = static_cast<float>(expectedDpr);
         prototype.storage = std::move(storage);
+        // #967 P1: Qt hands back a fresh QImage for every grab even when not a
+        // single visible byte changed. Publish exact-equivalent pixels through
+        // the SAME immutable storage so the common downstream path (watermark
+        // recomposition, full-frame damage compare, Raw/TRLE encode and send)
+        // is not repeated. The completion below still gets its own identity,
+        // request time and completion timestamp; no old frame is replayed.
+        prototype.storage = state->frameReuse.publish(
+            prototype.storage, prototype.geometry, batch->generation);
         prototype.timing.ptsSource = hyremote::PtsSource::Completion;
         prototype.timing.completionTime = completion;
         prototype.damage = hyremote::Damage::fullFrame();
 
-        // One Qt offscreen render, ONE CPU conversion and ONE immutable
-        // FrameStorage owner; distinct Core completions retain their original
-        // request identities. Qt readback is never reused across GUI batches.
+        // One Qt offscreen render and ONE CPU conversion per GUI batch. An
+        // unchanged scene may now share the previous immutable pixels across
+        // batches; distinct Core completions still retain their own request
+        // identities and timestamps. A real byte change always gets a new
+        // owner and takes the unchanged full-delivery path.
         for (const auto &request : batch->requests) {
             hyremote::RemoteFrame frame = prototype;
             frame.timing.requestTime = request.requestTime;
