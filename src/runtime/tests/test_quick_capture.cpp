@@ -2023,6 +2023,38 @@ void testD3d11TargetAdmission()
                   << std::endl;
 }
 
+// #967 D0/D1: the capture capability table is shared by every Qt backend, so
+// it is asserted once, GPU-free, on every Kit. A new backend must appear here
+// as a row, not as a third hand-written state machine.
+void testCaptureCapabilityContract()
+{
+    const auto result = HyRemote::detail::runQuickCaptureCapabilityRegression();
+    CHECK(result.ran);
+    CHECK(result.publicAlwaysAdmitted);
+    CHECK(result.missingApiIsTransient);
+    CHECK(result.apiMismatchIsUnsupported);
+    CHECK(result.missingContextIsTransient);
+    CHECK(result.unsupportedContextIsUnsupported);
+    CHECK(result.missingTargetIsTransient);
+    CHECK(result.redirectedTargetIsUnsupported);
+    CHECK(result.multisampleIsUnsupported);
+    CHECK(result.non2dIsUnsupported);
+    CHECK(result.formatIsUnsupported);
+    CHECK(result.geometryMismatchIsTransient);
+    CHECK(result.reasonsAreDistinct);
+    CHECK(result.admittedRowIsClean);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_CAPABILITY=FAIL detail=" << result.detail
+                  << " public=" << result.publicAlwaysAdmitted
+                  << " api=" << result.apiMismatchIsUnsupported
+                  << " ctx=" << result.unsupportedContextIsUnsupported
+                  << " redirected=" << result.redirectedTargetIsUnsupported
+                  << " msaa=" << result.multisampleIsUnsupported << std::endl;
+    else
+        std::cerr << "WIN967_CAPABILITY=PASS rows=10 backends=3" << std::endl;
+}
+
 }  // namespace
 
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
@@ -2247,6 +2279,7 @@ int main(int argc, char **argv)
     testAdoptReadbackStorageNoSecondFullFrame();
     testReadbackFrameStorageRowOrderAndPitch();
     testQuickRendererCapabilityRouting();
+    testCaptureCapabilityContract();
     testD3d11TargetAdmission();
     testQuickFactoryAndOwnedFrame();
     testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels();

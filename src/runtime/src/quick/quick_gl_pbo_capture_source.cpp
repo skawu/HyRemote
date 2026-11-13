@@ -3,6 +3,7 @@
 // NOT RELEASE QUALIFIED. Reads only a non-multisampled default framebuffer
 // before swap; other window targets retain the public Qt fallback.
 #include "quick/quick_gl_pbo_capture_source.hpp"
+#include "quick/quick_capture_capability.hpp"
 #include "quick/quick_gl_pbo_map_policy.hpp"
 #include "quick/quick_readback_timing.hpp"
 #include "quick/quick_readback_batch.hpp"
@@ -83,6 +84,38 @@ constexpr int kNormalFrameOpportunityMs = QuickReadbackTiming::glFallbackRenderD
 
 // Qt 5.15 direct OpenGL draws into the current target before afterRendering.
 // Qt 6 RHI flushes recorded work when entering external commands at that point.
+// #967 D0/D1: backend-specific wording for the shared capability table. The
+// OpenGL family (Qt5 direct GL, Qt6 GL-RHI, GLES/EGLFS) keeps its own
+// operator-facing sentences; the verdict itself is decided once, in
+// quick_capture_capability.hpp.
+inline const char *glReasonText(QuickCaptureReason reason) noexcept
+{
+    switch (reason) {
+    case QuickCaptureReason::None:
+        return "Qt OpenGL render target is capturable";
+    case QuickCaptureReason::ApiNotReported:
+    case QuickCaptureReason::ApiMismatch:
+        return "Qt render pass is not the OpenGL graphics API";
+    case QuickCaptureReason::ContextNotReady:
+        return "Qt OpenGL render context is not available yet";
+    case QuickCaptureReason::ContextUnsupported:
+        return "Qt OpenGL/ES 3+ render context cannot do PBO/fence readback";
+    case QuickCaptureReason::TargetNotReady:
+        return "Qt OpenGL render target is not resolvable yet";
+    case QuickCaptureReason::RedirectedTarget:
+        return "Qt renders into a redirected OpenGL render target (FBO)";
+    case QuickCaptureReason::Multisampled:
+        return "multisampled OpenGL render target";
+    case QuickCaptureReason::Non2dTarget:
+        return "OpenGL render target is not a single-level 2D surface";
+    case QuickCaptureReason::UnsupportedFormat:
+        return "unsupported OpenGL render target format";
+    case QuickCaptureReason::GeometryMismatch:
+        return "OpenGL render target size does not match window x DPR";
+    }
+    return "Qt OpenGL render target is not qualified for direct readback";
+}
+
 inline bool hasRequiredPboFenceApi(const QOpenGLContext *ctx) noexcept
 {
     if (!ctx)
@@ -754,7 +787,8 @@ private:
         s.pixelHeight = 0;
     }
 
-    static void onInvalidated(const std::shared_ptr<State> &s, bool sceneGraph = true)
+    static void onInvalidated(const std::shared_ptr<State> &s, bool sceneGraph = true,
+                              const char *reason = nullptr)
     {
         RenderCallbackGuard callback(*s);
         if (!callback.entered)
@@ -803,8 +837,10 @@ private:
         }
         if (!revoked.empty())
             reportUnavailable(s, generation, std::move(revoked),
-                              sceneGraph ? "Qt GL Scene Graph surface invalidated"
-                                         : "Qt GL render target is not qualified for direct readback");
+                              reason ? reason
+                              : (sceneGraph
+                                     ? "Qt GL Scene Graph surface invalidated"
+                                     : "Qt GL render target is not qualified for direct readback"));
     }
 
     static void reportUnavailable(const std::shared_ptr<State> &s,
@@ -1101,9 +1137,22 @@ private:
         // Qt's render thread. An unsupported context is a terminal native
         // failure NOW, not a 750ms dead-end followed by another timeout.
         auto *renderer = window->rendererInterface();
-        if (!ctx || !renderer
-            || renderer->graphicsApi() != QSGRendererInterface::OpenGL
-            || !hasRequiredPboFenceApi(ctx)) {
+        // #967 D0/D1: express the OpenGL entry conditions through the shared
+        // capability table instead of four ad-hoc comparisons. A null context
+        // is TRANSIENT (the next Qt frame can still enter with one) and must
+        // not spend a permanent native-to-public fallback; a wrong RHI or a
+        // context that cannot do PBO/fence readback is a capability verdict.
+        QuickCaptureFacts entryFacts;
+        entryFacts.backend = QuickCaptureCapabilityBackend::OpenGlReadback;
+        entryFacts.apiReported = renderer != nullptr;
+        entryFacts.apiMatches = renderer
+            && renderer->graphicsApi() == QSGRendererInterface::OpenGL;
+        entryFacts.contextReady = ctx != nullptr;
+        entryFacts.contextSupported = ctx != nullptr && hasRequiredPboFenceApi(ctx);
+        const auto entryAdmission = evaluateQuickCaptureCapability(entryFacts);
+        if (entryAdmission.verdict == QuickCaptureVerdict::Transient)
+            return;
+        if (entryAdmission.verdict != QuickCaptureVerdict::Admitted) {
             std::vector<hyremote::CaptureRequest> unsupported;
             std::uint64_t generation = 0;
             {
@@ -1127,13 +1176,17 @@ private:
             }
             if (!unsupported.empty())
                 reportUnavailable(s, generation, std::move(unsupported),
-                                  "Qt OpenGL/ES 3+ render context unavailable");
+                                  glReasonText(entryAdmission.reason));
             return;
         }
         auto *gl = ctx->extraFunctions();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         if (!window->renderTarget().isNull()) {
-            onInvalidated(s, false);
+            QuickCaptureFacts redirected;
+            redirected.backend = QuickCaptureCapabilityBackend::OpenGlReadback;
+            redirected.redirectedTarget = true;
+            onInvalidated(s, false,
+                          glReasonText(evaluateQuickCaptureCapability(redirected).reason));
             return;
         }
         window->beginExternalCommands();
@@ -1146,8 +1199,16 @@ private:
         GLint samples = -1;
         gl->glGetIntegerv(kReadFramebuffer, &readFramebuffer);
         gl->glGetIntegerv(GL_SAMPLE_BUFFERS, &samples);
-        if (readFramebuffer != 0 || samples != 0) {
-            onInvalidated(s, false);
+        // #967 D0/D1: FBO-redirected and multisampled targets are both
+        // permanent for this surface, but they are DIFFERENT causes and must be
+        // reported as such instead of one shared "not qualified" string.
+        QuickCaptureFacts surface;
+        surface.backend = QuickCaptureCapabilityBackend::OpenGlReadback;
+        surface.redirectedTarget = readFramebuffer != 0;
+        surface.multisampled = samples != 0;
+        const auto surfaceAdmission = evaluateQuickCaptureCapability(surface);
+        if (surfaceAdmission.verdict != QuickCaptureVerdict::Admitted) {
+            onInvalidated(s, false, glReasonText(surfaceAdmission.reason));
             return;
         }
         HYREMOTE_P1_SCOPE(QuickGlRenderCallback);
