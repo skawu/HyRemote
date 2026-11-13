@@ -72,8 +72,12 @@ Canonical entry only (`build.cmd`, single workspace build tree, no manual CMake)
 - Real-GL release probe (`runQuickGlPboIdleReleaseProbe`, printed as
   `WIN790_IDLE_RELEASE=`): the state drops the PBO name, the retire worker deletes
   it in the context that created it, and the next request allocates a live buffer.
-  It runs in the dedicated GL-RHI lane (`requireGl`), where a missing context is a
-  failure rather than a skip. On a workstation without that lane it reports SKIP.
+  It is executed by `hyremote-quick-gl-pbo-session-test`, which is registered only
+  for UNIX + `HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON` with an Xvfb/xcb platform
+  (`requireGl`, so a missing context fails instead of skipping).
+  **NOT_RUN_LOCAL_GL_LANE**: this workstation has no desktop GL context and no
+  authorized second build tree, and no hosted PR lane builds that combination, so
+  the probe compiles here but does not execute. It must not be reported as PASS.
 - Qt 5.15.2: `NOT_RUN_LOCAL_KIT` — this workstation's single authorized build tree is
   the Qt 6.8.3 Kit; Qt5 product compile is covered by the PR CI matrix, not by a
   second local build directory.
