@@ -18,13 +18,30 @@ from pathlib import Path
 PAIRS = (
     ("request_to_source", "capture_request", "source_completed"),
     ("grab_submit_to_source", "quick_grab_submitted", "source_completed"),
+    # #967: split the public Qt grab chain at the two new GUI-thread points.
+    # The Qt render-thread toImage() body stays NOT_INSTRUMENTED; only the
+    # returned->ready wall is observable from public Qt callbacks.
+    ("grab_submit_to_returned", "quick_grab_submitted", "quick_grab_returned"),
+    ("grab_returned_to_ready", "quick_grab_returned", "quick_grab_ready"),
+    ("grab_ready_to_source", "quick_grab_ready", "source_completed"),
     ("gpu_submit_to_ready", "gpu_readback_submitted", "gpu_readback_ready"),
+    ("gpu_ready_to_source", "gpu_readback_ready", "source_completed"),
     ("source_to_core_dispatch", "source_completed", "core_frame_queued"),
     ("core_to_rfb_worker", "core_frame_queued", "rfb_observed"),
     ("rfb_compare_to_encode", "rfb_compared", "rfb_encoded"),
     ("rfb_encode_to_socket_queue", "rfb_encoded", "rfb_socket_queued"),
     ("capture_request_to_socket_queue", "capture_request", "rfb_socket_queued"),
 )
+
+# Same-request grab stages repeat when publishImage() rejects a ready image and
+# retryLater() runs the grab again. These pairs must use the nearest preceding
+# earlier event; the earliest-start rule would charge the retry gap to the
+# wrong stage.
+NEAREST_PAIRS = frozenset({
+    "grab_submit_to_returned",
+    "grab_returned_to_ready",
+    "grab_ready_to_source",
+})
 
 
 def percentile(values, p):
@@ -81,6 +98,21 @@ def analyze(records):
             starts = steps[earlier]
             ends = steps[later]
             if not starts or not ends:
+                continue
+            if metric in NEAREST_PAIRS:
+                # The same request can retry a grab after publishImage()
+                # rejects a ready image. Pair each later event with its
+                # nearest preceding earlier event so a retry gap is not
+                # charged to Qt rendering or image adoption.
+                start_times = sorted(int(x["at_ns"]) for x in starts)
+                for event in ends:
+                    last = int(event["at_ns"])
+                    index = bisect.bisect_right(start_times, last) - 1
+                    if index < 0:
+                        impossible += 1
+                        continue
+                    out[metric].append(
+                        (last - start_times[index]) / 1_000_000.0)
                 continue
             first = min(int(x["at_ns"]) for x in starts)
             per_viewer = {
@@ -204,10 +236,23 @@ def self_test():
         point("rfb_encoded", 14_500_000, viewer=2, update=1),
         point("rfb_socket_queued", 17_000_000, viewer=2, update=1),
         {"schema": 3, "type": "frame_trace_overflow", "pid": 42, "dropped": 3},
+        # #967 public grab chain on an independent request identity:
+        # submit 3.0, returned 3.5, ready 10.0, source 11.0 ms.
+        # No request_ns on purpose: it must not add a second
+        # core_issue_to_runtime_admit sample.
+        point("capture_request", 2_000_000, request=2),
+        point("quick_grab_submitted", 3_000_000, request=2),
+        point("quick_grab_returned", 3_500_000, request=2),
+        point("quick_grab_ready", 10_000_000, request=2),
+        point("source_completed", 11_000_000, request=2),
     ]
     result = analyze(data)
     assert result["trace_events_dropped"] == 3
     assert result["intervals"]["gpu_submit_to_ready"]["p50_ms"] == 5.0
+    assert result["intervals"]["gpu_ready_to_source"]["p50_ms"] == 2.0
+    assert result["intervals"]["grab_submit_to_returned"]["p50_ms"] == 0.5
+    assert result["intervals"]["grab_returned_to_ready"]["p50_ms"] == 6.5
+    assert result["intervals"]["grab_ready_to_source"]["p50_ms"] == 1.0
     assert result["intervals"]["capture_request_to_socket_queue"]["n"] == 2
     assert result["intervals"]["capture_request_to_socket_queue"]["p50_ms"] == 14.5
     assert result["intervals"]["qt_activity_hint_to_request"]["p50_ms"] == 1.0
@@ -218,6 +263,33 @@ def self_test():
     assert result["intervals"]["render_pts_to_source"]["p50_ms"] == 1.0
     assert result["intervals"]["render_pts_to_socket_queue"]["p50_ms"] == 7.5
     assert result["content_change_to_present"] == "NOT_MEASURED"
+    # Negative: without quick_grab_ready the returned->ready interval must be
+    # absent rather than inferred from a later stage.
+    without_ready = analyze([
+        point("capture_request", 1_000_000, request=3),
+        point("quick_grab_submitted", 2_000_000, request=3),
+        point("quick_grab_returned", 2_500_000, request=3),
+        point("source_completed", 10_000_000, request=3),
+    ])
+    assert without_ready["intervals"]["grab_returned_to_ready"]["n"] == 0
+    assert without_ready["intervals"]["grab_ready_to_source"]["n"] == 0
+    assert without_ready["intervals"]["grab_submit_to_returned"]["p50_ms"] == 0.5
+    # Retry: publishImage() rejected the first ready image, so the same request
+    # re-runs submitted/returned/ready. Nearest-preceding pairing must keep the
+    # 1 ms adoption and 5 ms render, not charge the 100 ms retry gap.
+    retried = analyze([
+        point("capture_request", 1_000_000, request=4),
+        point("quick_grab_submitted", 2_000_000, request=4),
+        point("quick_grab_returned", 3_000_000, request=4),
+        point("quick_grab_ready", 8_000_000, request=4),
+        point("quick_grab_submitted", 108_000_000, request=4),
+        point("quick_grab_returned", 109_000_000, request=4),
+        point("quick_grab_ready", 114_000_000, request=4),
+        point("source_completed", 115_000_000, request=4),
+    ])
+    assert retried["intervals"]["grab_submit_to_returned"]["p50_ms"] == 1.0
+    assert retried["intervals"]["grab_returned_to_ready"]["p50_ms"] == 5.0
+    assert retried["intervals"]["grab_ready_to_source"]["p50_ms"] == 1.0
     print("PASS frame trace analyzer self-test")
 
 

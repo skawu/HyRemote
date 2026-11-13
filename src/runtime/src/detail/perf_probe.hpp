@@ -164,6 +164,8 @@ enum class FrameStep : std::uint8_t {
     QtActivityIgnoredAlreadyActive,
     CaptureRequest,
     QuickGrabSubmitted,
+    QuickGrabReturned, // grabToImage() returned; Qt accepted a render, not content
+    QuickGrabReady,    // ready() dispatched on GUI; toImage() already ran
     GpuReadbackSubmitted,
     GpuReadbackReady,
     SourceCompleted,
@@ -184,6 +186,7 @@ inline constexpr std::array<const char *, static_cast<std::size_t>(FrameStep::Co
                     "qt_activity_ignored_backpressure",
                     "qt_activity_ignored_already_active",
                     "capture_request", "quick_grab_submitted",
+                    "quick_grab_returned", "quick_grab_ready",
                     "gpu_readback_submitted", "gpu_readback_ready",
                     "source_completed", "composite_completed",
                     "core_frame_queued", "rfb_observed", "rfb_compared",

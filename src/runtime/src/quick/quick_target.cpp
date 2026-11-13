@@ -622,6 +622,12 @@ private:
             retryLater(state, batch, attempt, 100);
             return;
         }
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+        // #967: the synchronous grabToImage() call has returned. Qt accepted
+        // one offscreen render; this is NOT content readiness.
+        for (const auto &request : batch->requests)
+            HYREMOTE_P1_TRACE_REQUEST(QuickGrabReturned, request);
+#endif
 
         QObject *dispatcher = QCoreApplication::instance();
         if (!dispatcher)
@@ -635,6 +641,13 @@ private:
                 if (grab->finished)
                     return;
                 grab->finished = true;
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+                // #967: ready() reached the GUI thread through Qt's event
+                // loop. The render-thread toImage() has completed, but this
+                // frame has not taken the QImage yet.
+                for (const auto &request : batch->requests)
+                    HYREMOTE_P1_TRACE_REQUEST(QuickGrabReady, request);
+#endif
                 QObject::disconnect(grab->readyConnection);
                 // The old QTimer::singleShot(2000, ...) always stayed queued
                 // for two seconds even if the image completed in milliseconds.
