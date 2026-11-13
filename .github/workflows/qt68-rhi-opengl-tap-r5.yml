@@ -1,0 +1,112 @@
+name: Qt6.8.3 OpenGL RHI existing-frame capture R5 (NON-PRODUCT)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - .github/workflows/qt68-rhi-opengl-tap-r5.yml
+      - tools/perf/tests/qt68_rhi_opengl_tap_r5/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qt68-linux-opengl-rhi:
+    name: Linux Qt6.8.3 OpenGL RHI basic/threaded real glReadPixels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/cache@v4
+        id: qt-cache
+        with:
+          path: ${{ runner.temp }}/Qt
+          key: qt-6.8.3-linux-gcc64-quick-public-v1
+      - name: Install Qt 6.8.3 and public OpenGL RHI dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          if [ "${{ steps.qt-cache.outputs.cache-hit }}" != "true" ]; then
+            python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir "$RUNNER_TEMP/Qt"
+          fi
+          test -f "$RUNNER_TEMP/Qt/6.8.3/gcc_64/lib/libQt6Quick.so"
+          bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+      - name: Compile public Qt6 OpenGL RHI rendered-frame readback program
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S tools/perf/tests/qt68_rhi_opengl_tap_r5 -B build-r5-qt68 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            "-DCMAKE_PREFIX_PATH=$RUNNER_TEMP/Qt/6.8.3/gcc_64"
+          cmake --build build-r5-qt68 --parallel 2
+      - name: Run actual RHI OpenGL framebuffer readback and equivalent scene-only/grab control
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: xcb
+          QSG_RHI_BACKEND: opengl
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          QT_OPENGL: desktop
+        run: |
+          set -euo pipefail
+          mkdir -p tmp/r5
+          for loop in basic threaded; do
+            for geometry in '640 360' '1920 1080'; do
+              read -r w h <<< "$geometry"
+              for mode in render-baseline render-tap public-grab; do
+                echo "R5_START loop=$loop mode=$mode pixels=$w x $h"
+                QSG_RENDER_LOOP="$loop" timeout 90s xvfb-run -a -s '-screen 0 2560x1440x24 +extension GLX' \
+                  ./build-r5-qt68/hyremote-qt68-rhi-opengl-r5 \
+                  --mode="$mode" --width="$w" --height="$h" | tee "tmp/r5/$loop-$mode-$w-x-$h.jsonl"
+              done
+            done
+          done
+      - name: Fail closed if Qt6 RHI framebuffer read yields stale pixels or GPU errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths=sorted(Path('tmp/r5').glob('*.jsonl'))
+          assert len(paths)==12,paths
+          for p in paths:
+              content=p.read_text()
+              jlines=[line for line in content.splitlines() if line.startswith('R5_RESULT_JSON=')]
+              assert len(jlines)==1,(p,content)
+              j=json.loads(jlines[0].partition('=')[2])
+              assert j["qt"] == "6.8.3" and j["backend"] == "Qt6_RHI_OpenGL",j
+              assert j["stages_completed"] == j["stages_expected"] == 30,j
+              assert j["render_loop"] in ("basic","threaded"),j
+              assert j["gl_errors"] == j["missing_gl_context"] == 0,j
+              if j["render_loop"] == "threaded":
+                  assert j["render_thread_distinct_from_gui"],j
+              if j["mode"] == "render-baseline":
+                  assert j["stages_correct_pixels"] == 0 and not j["pixel_truth_verified"],j
+                  assert 'R5_VERDICT=PASS_QT68_OPENGL_RHI_NO_READBACK_CONTROL' in content,p
+              elif j["mode"] == "render-tap":
+                  assert j["stages_correct_pixels"] == 30 and j["pixel_truth_verified"],j
+                  assert j["render_tap_readbacks"] >= 30,j
+                  assert j["no_demand_render_frames_no_readback"] >= 1,j
+                  assert 'R5_VERDICT=PASS_SCOPED_QT68_OPENGL_RHI_PIXEL_CORRECT' in content,p
+              else:
+                  assert j["stages_correct_pixels"] == 30 and j["pixel_truth_verified"],j
+                  assert j["public_grab_p95_ms"] >= 0,j
+                  assert 'R5_VERDICT=PASS_SCOPED_QT68_OPENGL_RHI_PIXEL_CORRECT' in content,p
+              print('R5_OPENGL_RHI=PASS_SCOPED',p,'readback_p95',j['readback_p95_ms'],'grab_p95',j['public_grab_p95_ms'],'cpu_ms',j['process_cpu_ms'])
+          print('R5=QUALIFIED_QT68_MESA_OPENGL_RHI_PIXELS_ONLY_NOT_EGLFS_OR_PRODUCT')
+          PY
+      - name: Preserve small, read-only measurement logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r5-qt68-mesa-rhi-opengl-pixel-evidence
+          path: tmp/r5/*.jsonl
+          if-no-files-found: warn
+          retention-days: 10
