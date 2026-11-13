@@ -511,7 +511,7 @@ if(HYREMOTE_REMOTEACCESS_WITH_QUICK)
     set_tests_properties(hyremote-quick-capture-test PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software"
     )
-    if(UNIX AND NOT APPLE)
+    if(UNIX AND NOT APPLE AND HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
         # #962 review B1/B2: the offscreen QPA cannot create a desktop GL
         # context, so the PBO-reuse/invalidation-recovery self-test would be
         # skipped. Run the same binary on the native xcb platform (CI starts

@@ -2201,8 +2201,8 @@ int main(int argc, char **argv)
     // Dedicated Linux xcb/Xvfb lane: the offscreen QPA used by the normal
     // Quick suite cannot create a desktop GL context, so reuse/recovery must
     // have its own native-platform registration.
-#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
         testQuickGlPboSessionReuseAndInvalidationRecovery(true);
         testQuickGlPboFallbackPolicy();
         testQuickGlPboMapPolicy();
@@ -2213,8 +2213,11 @@ int main(int argc, char **argv)
         if (failures != 0)
             std::cerr << failures << " GL PBO session checks failed\n";
         return failures == 0 ? 0 : 1;
-    }
+#else
+        std::cerr << "GL PBO session coverage requested but the provider is disabled\n";
+        return 1;
 #endif
+    }
     testQuickProfileClockDoesNotMeasureSleepAsCpu();
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     testQuickGlPboSessionReuseAndInvalidationRecovery(false);
