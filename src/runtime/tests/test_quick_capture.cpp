@@ -2151,6 +2151,21 @@ void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
               << " workers=" << result.workersCreated
               << "/" << result.workersRetired
               << " invalidations=" << result.invalidations << std::endl;
+
+    // #790: the zero-viewer release is real GL work, not just a state flag.
+    const auto idle = HyRemote::detail::runQuickGlPboIdleReleaseProbe();
+    if (idle.ran) {
+        CHECK(idle.ok);
+        std::cerr << "WIN790_IDLE_RELEASE=" << idle.detail
+                  << " hook=" << idle.hookInvoked
+                  << " released=" << idle.bufferReleased
+                  << " deleted=" << idle.bufferDeleted
+                  << " recreated=" << idle.bufferRecreated << std::endl;
+    } else {
+        std::cerr << "WIN790_IDLE_RELEASE=SKIP detail=" << idle.detail << std::endl;
+        if (requireGl)
+            CHECK(idle.ran); // the dedicated GL lane must prove the release.
+    }
 }
 
 // #967: static-surface traces proved the GL route spent ~42ms waiting for a

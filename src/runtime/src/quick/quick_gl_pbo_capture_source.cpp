@@ -1831,6 +1831,102 @@ QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)
     return out;
 }
 
+QuickGlPboIdleReleaseProbe runQuickGlPboIdleReleaseProbe()
+{
+    QuickGlPboIdleReleaseProbe out;
+
+    QSurfaceFormat fmt;
+    fmt.setRenderableType(QSurfaceFormat::OpenGL);
+    fmt.setVersion(3, 3);
+    fmt.setProfile(QSurfaceFormat::CoreProfile);
+
+    QOffscreenSurface surface;
+    surface.setFormat(fmt);
+    surface.create();
+    if (!surface.isValid()) {
+        out.detail = "offscreen-surface-unavailable";
+        return out;
+    }
+
+    auto *render = new QOpenGLContext;
+    render->setFormat(fmt);
+    if (!render->create() || !render->makeCurrent(&surface)) {
+        delete render;
+        out.detail = "render-context-unavailable";
+        return out;
+    }
+    auto *gl = render->extraFunctions();
+    gl->initializeOpenGLFunctions();
+
+    constexpr int kW = 64;
+    constexpr int kH = 32;
+    const std::size_t bytes = std::size_t(kW) * kH * 4u;
+    GLuint pbo = 0;
+    gl->glGenBuffers(1, &pbo);
+    gl->glBindBuffer(kPackTarget, pbo);
+    gl->glBufferData(kPackTarget, GLsizeiptr(bytes), nullptr, kStreamRead);
+    gl->glBindBuffer(kPackTarget, 0);
+
+    auto *shared = new QOpenGLContext;
+    shared->setFormat(fmt);
+    shared->setShareContext(render);
+    if (!shared->create() || !QOpenGLContext::areSharing(render, shared)) {
+        delete shared;
+        gl->glDeleteBuffers(1, &pbo);
+        render->doneCurrent();
+        delete render;
+        out.detail = "worker-setup-unavailable";
+        return out;
+    }
+
+    auto *worker = new GlRetireWorker(shared, &surface,
+        [](GlRetireResult &&) {});
+    std::atomic<GLuint> livePbo{pbo};
+    std::atomic<int> hookCalls{0};
+    shared->moveToThread(worker);
+    worker->ownBuffer(pbo);
+    // Mirrors the source hook: only the worker thread may delete, and the
+    // state stops referencing the name before the deletion happens.
+    worker->setIdleReleaseHook([&]() -> GLuint {
+        ++hookCalls;
+        return livePbo.exchange(0);
+    });
+    worker->start();
+    out.ran = true;
+    worker->requestIdleRelease();
+
+    for (int i = 0; i < 400 && livePbo.load() != 0; ++i)
+        QThread::msleep(5);
+    out.hookInvoked = hookCalls.load() > 0;
+    out.bufferReleased = livePbo.load() == 0;
+    worker->requestStop();
+    worker->wait();
+    delete worker;
+
+    out.bufferDeleted = !gl->glIsBuffer(pbo);
+    if (!out.bufferDeleted)
+        gl->glDeleteBuffers(1, &pbo);
+
+    // The next request must allocate again; GL may hand back the same number,
+    // so only "it is a live buffer" is asserted.
+    GLuint next = 0;
+    gl->glGenBuffers(1, &next);
+    out.bufferRecreated = next != 0 && gl->glIsBuffer(next);
+    if (next)
+        gl->glDeleteBuffers(1, &next);
+
+    render->doneCurrent();
+    delete render;
+
+    out.ok = out.hookInvoked && out.bufferReleased && out.bufferDeleted
+        && out.bufferRecreated;
+    out.detail = out.ok ? "PASS"
+        : (!out.hookInvoked ? "HOOK_NOT_CALLED"
+        : (!out.bufferReleased ? "STATE_NOT_RELEASED"
+        : (!out.bufferDeleted ? "PBO_NOT_DELETED" : "NOT_RECREATED")));
+    return out;
+}
+
 QuickGlPboSessionSelfTest runQuickGlPboSessionSelfTest()
 {
     QuickGlPboSessionSelfTest out;

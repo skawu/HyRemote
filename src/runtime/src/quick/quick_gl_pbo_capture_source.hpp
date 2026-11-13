@@ -117,6 +117,23 @@ struct QuickGlPboResourceCounts {
 };
 HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboResourceCounts quickGlPboResourceCounts();
 
+// #790: real offscreen GL proof of the zero-viewer idle release. The worker
+// deletes the one full-frame PBO in the context that created it, the source
+// state stops referencing it, and the next request allocates a usable buffer
+// again. It runs in the same dedicated GL lane as the #962 session self-test.
+struct QuickGlPboIdleReleaseProbe {
+    bool ran = false;
+    bool ok = false;
+    bool hookInvoked = false;
+    bool bufferReleased = false;
+    bool bufferDeleted = false;
+    bool bufferRecreated = false;
+    std::string detail;
+};
+
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboIdleReleaseProbe
+runQuickGlPboIdleReleaseProbe();
+
 // P1 (#962 review): inject a 5s retire delay, then requestStop+wait. Proves
 // stop() is bounded by the worker's abort check, not by the 750ms fence
 // ceiling or an unbounded join.
