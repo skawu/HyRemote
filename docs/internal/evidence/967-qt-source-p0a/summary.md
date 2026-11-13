@@ -103,15 +103,15 @@ about 4.5 hours, so these are different desktop sessions.
 
 | Qt stage (tagged source) | Existing probe | Observed symptom |
 | --- | --- | --- |
-| `polishAndSync` / `syncAndRender` (facts 10, 11, 15) | `capture_request` -> `quick_grab_submitted` / `gpu_readback_submitted` | Public arms 2.1-2.2 ms P95 in A, 25-28 ms in B; GL 145 ms in A (zombie fallback arm, fixed in #980), 49 ms in B. |
-| `renderSceneGraph` afterRendering + `toImage()` (facts 1, 2, 12, 13) | `submit -> source_completed` | ~10 ms P95 in A for **all three arms**, ~48-51 ms in B for **all three arms**. The public arm uses Qt's own render-thread `toImage()`, so this is a Qt render-thread / GPU-completion cost, not a GL-route cost. |
+| Qt render scheduling / frame opportunity (facts 10, 11, 15) | `capture_request` -> `quick_grab_submitted` (logged **before** invoking `grabToImage()`), or GL `gpu_readback_submitted` (logged at native readback submission) | Public arm 2.1-2.2 ms P95 in A, 25-28 ms in B measures time until **submission call begins**, not Qt polish/sync/render or GPU execution. GL 145 ms in A (fallback arm fault) and 49 ms in B measures a different native-stage boundary; these two route intervals are not equivalent Qt render spans. |
+| Qt asynchronous grab / GL readback completion (facts 1, 2, 12, 13) | route-specific `submit -> source_completed` | ~10 ms P95 in A and ~48-51 ms in B across all three arms; **public** interval begins before `grabToImage()` and ends after `ready()` GUI dispatch and `publishImage()` conversion, including scheduling, Qt rendering, readback and event delivery. **GL** interval begins at native readback submission and includes worker completion. These are not interchangeable GPU or render-thread timings, and cannot exclude GUI/event-loop scheduling as a cause. |
 | `rhi->endFrame` / `swapBuffers` -> `fireFrameSwapped` (facts 7-11) | `CHANGE` marker -> next `FRAME_SWAPPED` tick | A: 5.9-7.2 ms P50 with ~1 ms spread. B: 60.0-60.3 ms P50 with ~3 ms spread, all three arms. A near-constant 54 ms phase shift, not a random tail. |
-| `QCoreApplication::postEvent(Event_Grab_Completed)` -> `ready()` (facts 12-14) | `source_completed -> core_frame_queued` | 0.03-0.04 ms in A, 0.29-0.40 ms in B. Ten times slower but still sub-millisecond; not the P95 driver. |
+| Source delivery into Core (not Qt `ready()` delivery) | `source_completed -> core_frame_queued` | 0.03-0.04 ms P95 in A and 0.29-0.40 ms in B, measured **after** the public Qt `ready()` handler and `publishImage()` have run; this cannot measure the earlier `postEvent -> ready()` latency. |
 | `sceneGraphInvalidated` (fact 16) | none | NOT_INSTRUMENTED. Resource rebuild and worker/context retirement cannot be placed on the timeline. |
 
 ## NOT_INSTRUMENTED / NOT_VERIFIED / not claimed
 
-- `NOT_INSTRUMENTED`: Qt internal polish / synchronize / render / `endFrame` timestamps, window expose and visibility state, occlusion, DPI and refresh-rate record, `sceneGraphInvalidated` events, worker/context rebuild, Viewer decode, physical display present.
+- `NOT_INSTRUMENTED`: Qt internal polish / synchronize / render / `endFrame` timestamps, Qt `postEvent -> ready()` delivery, GUI-thread `publishImage()` conversion boundary, window expose and visibility state, occlusion, DPI and refresh-rate record, `sceneGraphInvalidated` events, worker/context rebuild, Viewer decode, physical display present.
 - `NOT_VERIFIED`: any D3D11 staging path conclusion (separate code path, not exercised by these OpenGL traces); any Qt 5.15.2 device-level claim (only tagged source, no Qt5 run).
 - `physical_present` stays `NOT_MEASURED`. `frameSwapped` (facts 7-8) is a frame-submission signal, not screen light-out. `rfb_socket_queued` is a socket write, not Viewer decode or present.
 - Host monotonic ns is never subtracted from a Viewer QPC timestamp.
