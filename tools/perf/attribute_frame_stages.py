@@ -278,7 +278,7 @@ def public_cpu_breakdown(path, warmup_ms, seconds):
     observed = {}
     for stage in ("quick_grab_submit", "quick_grab_ready_wall", "quick_convert"):
         counters = measurement["stages"].get(stage)
-        observed[stage] = counters if counters and counters["calls"] else "NOT_INSTRUMENTED"
+        observed[stage] = counters if counters is not None else "NOT_INSTRUMENTED"
     return {
         "host_pid": snapshots[0]["pid"],
         "semantics": {
