@@ -50,6 +50,14 @@
 #include "transport/rfb_transport.hpp"
 #include "detail/viewer_capture_demand.hpp"
 
+#ifdef HYREMOTE_TEST_QUICK_RFB
+#include <QGuiApplication>
+#include <QQuickWindow>
+#include "detail/component_factories.hpp"
+#include "hyremote/core/session.hpp"
+#include "staged_quick_probe_item.hpp"
+#endif
+
 namespace {
 
 int failures = 0;
@@ -4841,8 +4849,158 @@ void runHighEntropyTrleRawPackingProfile(const QString &filePath)
     }
 }
 
+#ifdef HYREMOTE_TEST_QUICK_RFB
+void testQuickRfbPageConsistency(std::int32_t encoding, bool staged)
+{
+    constexpr std::uint16_t width = 640, height = 360;
+    QQuickWindow window;
+    window.resize(width, height);
+    StagedQuickProbeItem item(window.contentItem());
+    item.setWidth(width);
+    item.setHeight(height);
+    std::atomic<int> rendered{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        rendered.store(item.paintedStage());
+    }, Qt::DirectConnection);
+    window.show();
+
+    const auto waitFor = [](const auto &predicate) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!predicate() && timer.elapsed() < 4000) {
+            QCoreApplication::processEvents();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return predicate();
+    };
+    const auto matches = [](const auto &pixel, int stage) {
+        for (std::uint16_t y = 0; y < height; ++y)
+            for (std::uint16_t x = 0; x < width; ++x) {
+                const bool newPage = stage == 2 || (stage == 1 && x < width / 2);
+                if (pixel(x, y) != (newPage ? StagedQuickProbeItem::B : StagedQuickProbeItem::A))
+                    return false;
+            }
+        return true;
+    };
+    auto target = HyRemote::detail::createTargetComponents(&window, false);
+    const quint16 port = freePort();
+    if (!target.capture || !port) {
+        CHECK(false);
+        return;
+    }
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = width;
+    security.initialFramebufferHeight = height;
+    std::atomic<unsigned> observedStages{0};
+    std::atomic<bool> invalidSource{false};
+    // Pass through unchanged. Observe the actual frame delivered by Core.
+    security.frameDecorator = [&](const hyremote::RemoteFrame &frame,
+                                  hyremote::RemoteFrame &output, QString &) {
+        const auto plane = frame.storage ? frame.storage->mapRead(0) : std::nullopt;
+        const int lastRendered = rendered.load();
+        if (frame.requestId && *frame.requestId && frame.id && plane && plane->data
+            && frame.geometry.size.width == width && frame.geometry.size.height == height
+            && frame.geometry.pixelFormat == hyremote::PixelFormat::Rgba8888
+            && plane->stride >= width * 4U) {
+            const auto pixel = [&](unsigned x, unsigned y) {
+                const auto *p = reinterpret_cast<const unsigned char *>(plane->data)
+                    + y * plane->stride + x * 4U;
+                return (unsigned(p[0]) << 16) | (unsigned(p[1]) << 8) | unsigned(p[2]);
+            };
+            for (int stage = 0; stage <= lastRendered; ++stage) {
+                if ((stage != 1 || staged) && matches(pixel, stage)) {
+                    const auto bit = 1U << stage;
+                    if (!(observedStages.fetch_or(bit) & bit))
+                        std::cout << "QUICK_RFB_SOURCE stage=" << stage << " request=" << *frame.requestId
+                                  << " frame=" << frame.id << '\n';
+                    output = frame;
+                    return true;
+                }
+            }
+        }
+        invalidSource.store(true);
+        output = frame;
+        return true;
+    };
+    hyremote::SessionConfig config;
+    config.capture.targetFramesPerSecond = 30;
+    hyremote::Session session(config);
+    if (!session.setCaptureSource(std::move(target.capture))
+        || !session.setTransport(HyRemote::detail::createRfbTransport(
+            QHostAddress::LocalHost, port, security))
+        || !session.start()) {
+        CHECK(false);
+        return;
+    }
+
+    QTcpSocket socket;
+    std::uint16_t actualWidth = 0, actualHeight = 0;
+    if (!connectRawRfb(socket, port, false, &actualWidth, &actualHeight)
+        || actualWidth != width || actualHeight != height
+        || !sendSetEncodings(socket, {encoding})) {
+        CHECK(false);
+        return;
+    }
+    TestFramebuffer framebuffer;
+    framebuffer.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    const auto decode = [&] {
+        return waitFor([&] { return socket.bytesAvailable() > 0; })
+            && readFramebufferUpdate(socket, framebuffer, rectangles)
+            && !rectangles.empty()
+            && std::all_of(rectangles.begin(), rectangles.end(),
+                           [=](const UpdateRect &rect) { return rect.encoding == encoding; });
+    };
+    const auto decodedStage = [&] {
+        for (int stage = 0; stage <= 2; ++stage) {
+            if ((observedStages.load() & (1U << stage))
+                && matches([&](unsigned x, unsigned y) { return framebuffer.get(x, y); }, stage))
+                return stage;
+        }
+        return -1;
+    };
+    if (!waitFor([&] { return observedStages.load() & 1U; })
+        || !sendUpdateRequest(socket, false, 0, 0, width, height)
+        || !decode() || decodedStage() != 0
+        || !sendUpdateRequest(socket, true, 0, 0, width, height)) {
+        CHECK(false);
+        return;
+    }
+    for (int stage = staged ? 1 : 2; stage <= 2; ++stage) {
+        item.setStage(stage);
+        if (!waitFor([&] { return rendered.load() == stage; })) {
+            CHECK(false);
+            return;
+        }
+    }
+    if (!waitFor([&] { return observedStages.load() & (1U << 2); }) || !decode()) {
+        CHECK(false);
+        return;
+    }
+    const int incrementalStage = decodedStage();
+    CHECK(incrementalStage >= 0);
+    if (incrementalStage >= 0 && incrementalStage < 2)
+        CHECK(sendUpdateRequest(socket, true, 0, 0, width, height) && decode() && decodedStage() == 2);
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height) && decode() && decodedStage() == 2);
+    CHECK(!invalidSource.load());
+    std::cout << "QUICK_RFB_PAGE encoding=" << encoding << " staged=" << staged
+              << " incremental_stage=" << incrementalStage
+              << " source_mask=" << observedStages.load() << '\n';
+}
+#endif
+
 int main(int argc, char **argv)
 {
+#ifdef HYREMOTE_TEST_QUICK_RFB
+    if (argc == 2 && std::string(argv[1]) == "--quick-rfb-page-consistency") {
+        QGuiApplication app(argc, argv);
+        for (const auto encoding : {0, 15}) {
+            testQuickRfbPageConsistency(encoding, false);
+            testQuickRfbPageConsistency(encoding, true);
+        }
+        return failures == 0 ? 0 : 1;
+    }
+#endif
     QCoreApplication app(argc, argv);
 
     const QByteArray trleRawPath = qgetenv("HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE");
