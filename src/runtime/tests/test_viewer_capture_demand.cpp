@@ -159,12 +159,62 @@ void enterStaticGate(Gate &gate)
         gate.noteFrameChange(false);
 }
 
+// #790: the zero-viewer edge is a latched, one-shot release decision taken on
+// the capture scheduler thread. It must never become a capture request, must
+// not repeat for the same transition, and must be dropped if a Viewer returned.
+bool expectOneShotIdleRelease()
+{
+    Gate gate;
+    enterStaticGate(gate);
+
+    std::promise<Gate::WaitResult> first;
+    auto firstResult = first.get_future();
+    std::thread waiter([&] { first.set_value(gate.waitForCapture()); });
+    const bool parked = firstResult.wait_for(40ms) == std::future_status::timeout;
+    gate.setViewerCount(0);
+    const bool woke = firstResult.wait_for(2s) == std::future_status::ready;
+    if (!woke)
+        gate.stop();
+    waiter.join();
+    if (!check(parked && woke && firstResult.get() == Gate::WaitResult::IdleRelease,
+               "zero-viewer edge did not deliver one idle-resource release"))
+        return false;
+
+    // One edge is one release: the producer parks again instead of looping.
+    std::promise<Gate::WaitResult> second;
+    auto secondResult = second.get_future();
+    std::thread secondWaiter([&] { second.set_value(gate.waitForCapture()); });
+    const bool parkedAgain = secondResult.wait_for(80ms) == std::future_status::timeout;
+    gate.setViewerCount(1);
+    const bool admitted = secondResult.wait_for(2s) == std::future_status::ready;
+    if (!admitted)
+        gate.stop();
+    secondWaiter.join();
+    if (!check(parkedAgain && admitted
+                   && secondResult.get() == Gate::WaitResult::Capture,
+               "idle release repeated or a reconnected Viewer was not admitted"))
+        return false;
+
+    // A Viewer that reconnects before the scheduler consumes the latch keeps
+    // its pixels: the stale edge must be dropped, not replayed.
+    gate.setViewerCount(0);
+    gate.setViewerCount(1);
+    if (!check(gate.waitForCapture() == Gate::WaitResult::Capture,
+               "stale zero-viewer release survived a reconnect"))
+        return false;
+
+    gate.stop();
+    return true;
+}
+
 } // namespace
 
 int main()
 {
     if (!testQtActivityClassification())
         return 18;
+    if (!expectOneShotIdleRelease())
+        return 19;
     Gate gate;
     enterStaticGate(gate);
     if (!check(Gate::kStaticProbeInterval == 250ms,

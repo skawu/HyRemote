@@ -54,6 +54,7 @@
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
 #include "quick/quick_grab_geometry.hpp"
+#include "quick/quick_idle_release.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -80,6 +81,7 @@ public:
     bool running = false;
     bool startsSuccessfully = true;
     bool acceptsRequests = true;
+    int releaseCalls = 0; // #790 zero-viewer idle-resource releases
     std::vector<hyremote::CaptureRequestId> accepted;
     std::mutex callbackMutex;
     hyremote::FrameReadyHandler onFrame;
@@ -112,6 +114,9 @@ public:
         onFrame = {};
         onEvent = {};
     }
+    // #790: the adaptive wrapper owns no pixels, so its only legal behaviour is
+    // to forward the one zero-viewer edge to both providers.
+    void releaseIdleResources() noexcept override { ++releaseCalls; }
     bool requestFrame(const hyremote::CaptureRequest &req) override
     {
         if (!running || !acceptsRequests)
@@ -328,6 +333,64 @@ void testAdaptiveQuickMalformedNativeFramesTriggerFallback()
     backup->complete(73, true);
     CHECK(frames.size() == 3 && frames.back().storage);
     source.stop();
+}
+
+// #790: one shared deferred-release decision for every pixel-retaining backend.
+// The zero-viewer edge must survive an accepted in-flight readback and must be
+// consumed exactly once, so a backend cannot free a buffer that is still mapped
+// nor free twice for one transition.
+void testQuickIdleReleaseLatchIsDeferredAndOneShot()
+{
+    HyRemote::detail::QuickIdleRelease release;
+    CHECK(!release.pending());
+    CHECK(!release.take()); // nothing latched: keep the allocation
+
+    CHECK(release.latch());
+    CHECK(!release.latch()); // repeated edge never queues a second free
+    CHECK(release.pending());
+    CHECK(release.take()); // the first genuinely-idle point consumes it
+    CHECK(!release.pending());
+
+    // Freeing again must not happen for the same edge.
+    CHECK(!release.take());
+
+    // A later zero-viewer transition is a genuinely new edge.
+    CHECK(release.latch());
+    CHECK(release.take());
+    CHECK(!release.take());
+
+    // start()/stop() is a hard boundary; an unclaimed edge must not leak.
+    CHECK(release.latch());
+    release.clear();
+    CHECK(!release.pending());
+    CHECK(!release.take());
+}
+
+void testAdaptiveQuickForwardsZeroViewerRelease()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(nullptr, std::move(native),
+                                                        std::move(publicQt));
+
+    // A source that was never started must not touch either provider.
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 0);
+    CHECK(backup->releaseCalls == 0);
+
+    CHECK(source.start([](hyremote::RemoteFrame) {},
+                       [](const hyremote::CaptureEvent &) {}));
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 1);
+    CHECK(backup->releaseCalls == 1);
+
+    // After stop the providers are retired; a late edge is inert.
+    source.stop();
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 1);
+    CHECK(backup->releaseCalls == 1);
 }
 
 void testAdaptiveQuickStopDrainsForwardedCoreCallback()
@@ -2275,6 +2338,8 @@ int main(int argc, char **argv)
     testNativeReadbackBatchTimeoutIsOneFailure();
     testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
     testAdaptiveQuickMalformedNativeFramesTriggerFallback();
+    testQuickIdleReleaseLatchIsDeferredAndOneShot();
+    testAdaptiveQuickForwardsZeroViewerRelease();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
     testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();
