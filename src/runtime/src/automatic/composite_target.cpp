@@ -142,18 +142,29 @@ public:
     // and stop() may retire the child concurrently.
     void releaseIdleResources() noexcept override
     {
-        std::vector<std::shared_ptr<ChildRuntime>> children;
-        {
-            std::lock_guard<std::mutex> lock(m_state->mutex);
-            if (!m_state->active)
-                return;
-            children.reserve(m_state->children.size());
-            for (const auto &entry : m_state->children)
-                children.push_back(entry.second);
-        }
-        for (const auto &child : children) {
-            if (child && child->capture)
-                child->capture->releaseIdleResources();
+        // #790 review (P1): this is the memory-reclamation path on the capture
+        // scheduler, so a bad_alloc from the snapshot must degrade to "children
+        // keep their buffer until the next edge or stop()" instead of
+        // std::terminate (the #992 failure class). Child callbacks still run
+        // outside the state lock; on failure no child state was mutated, the
+        // next zero-viewer edge or stop() retries.
+        try {
+            std::vector<std::shared_ptr<ChildRuntime>> children;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active)
+                    return;
+                children.reserve(m_state->children.size());
+                for (const auto &entry : m_state->children)
+                    children.push_back(entry.second);
+            }
+            for (const auto &child : children) {
+                if (child && child->capture)
+                    child->capture->releaseIdleResources();
+            }
+        } catch (...) {
+            // Allocation failed: drop this edge, never unwind out of the
+            // noexcept virtual.
         }
     }
 

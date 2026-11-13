@@ -2308,6 +2308,19 @@ void testQuickGlPboStopFromNonGuiThread(bool requireGl)
     std::cerr << "WIN962_NONGUI_STOP=" << (done.load() ? "PASS" : "TIMEOUT")
               << std::endl;
 }
+
+// #790 review P1: the idle-release submission is reachable from a noexcept
+// virtual, so a rejected enqueue must keep the latched edge (retry at the next
+// idle point) and an accepted one must consume it exactly once. GPU-free.
+void testQuickGlPboIdleSubmissionRejectionKeepsEdge()
+{
+    const auto probe = HyRemote::detail::runQuickGlPboIdleSubmissionProbe();
+    CHECK(probe.ran);
+    CHECK(probe.ok);
+    CHECK(probe.rejectedKeepsEdge);
+    CHECK(probe.acceptedConsumesEdge);
+    std::cerr << "WIN790_IDLE_SUBMISSION=" << probe.detail << std::endl;
+}
 #endif // HYREMOTE_TEST_QUICK_GL_PBO
 
 int main(int argc, char **argv)
@@ -2324,6 +2337,7 @@ int main(int argc, char **argv)
         testQuickGlPboRealSceneGraphInvalidationSignal(true);
         testQuickGlPboStopIsBounded(true);
         testQuickGlPboStopFromNonGuiThread(true);
+        testQuickGlPboIdleSubmissionRejectionKeepsEdge();
         HyRemote::detail::resetFactories();
         if (failures != 0)
             std::cerr << failures << " GL PBO session checks failed\n";
@@ -2341,6 +2355,7 @@ int main(int argc, char **argv)
     testQuickGlPboRealSceneGraphInvalidationSignal(false);
     testQuickGlPboStopIsBounded(false);
     testQuickGlPboStopFromNonGuiThread(false);
+    testQuickGlPboIdleSubmissionRejectionKeepsEdge();
 #endif
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();

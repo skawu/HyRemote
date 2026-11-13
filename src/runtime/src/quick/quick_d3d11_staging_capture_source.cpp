@@ -356,23 +356,37 @@ public:
     void releaseIdleResources() noexcept override
     {
         auto s = m_state;
+        // #790 review (P1): latch synchronously so a failed or rejected GUI
+        // dispatch cannot lose the edge; the posted lambda only consumes it at
+        // an idle point (readback retire, bounded deadline or after-render).
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (s->active)
+                s->idleRelease.latch();
+        }
         postToDispatcher(s, [s] {
             std::lock_guard<std::mutex> lock(s->mutex);
-            if (!s->active)
-                return;
-            s->idleRelease.latch();
             maybeReleaseIdleStaging(*s);
         });
     }
 
 private:
     template<class Callback>
-    static bool postToDispatcher(const std::shared_ptr<State> &s, Callback &&callback)
+    static bool postToDispatcher(const std::shared_ptr<State> &s,
+                                 Callback &&callback) noexcept
     {
-        std::lock_guard<std::mutex> lock(s->mutex);
-        return s->active && s->dispatcher
-            && QMetaObject::invokeMethod(s->dispatcher, std::forward<Callback>(callback),
-                                         Qt::QueuedConnection);
+        try {
+            // #790 review (P1): QueuedConnection allocates a QMetaCallEvent, so
+            // on the noexcept idle-release path an allocation failure must read
+            // as "rejected", not terminate the scheduler thread.
+            std::lock_guard<std::mutex> lock(s->mutex);
+            return s->active && s->dispatcher
+                && QMetaObject::invokeMethod(s->dispatcher,
+                                             std::forward<Callback>(callback),
+                                             Qt::QueuedConnection);
+        } catch (...) {
+            return false;
+        }
     }
 
     static void deliver(const std::shared_ptr<State> &s,

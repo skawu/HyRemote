@@ -195,23 +195,34 @@ public:
         m_ownedBuffer.store(buffer, std::memory_order_release);
     }
 
-    void enqueue(GlRetireJob job)
+    // #790 review (P1): submission is reachable from the noexcept zero-viewer
+    // edge, so it must never unwind; a failed allocation degrades to
+    // "rejected" and the caller keeps the latched edge for the next idle point.
+    bool enqueue(GlRetireJob job) noexcept
     {
-        {
+        // TEST-ONLY deterministic rejection seam (setEnqueueRejectionsForTest).
+        if (m_testEnqueueRejections.load(std::memory_order_relaxed) > 0) {
+            m_testEnqueueRejections.fetch_sub(1, std::memory_order_relaxed);
+            return false;
+        }
+        try {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_jobs.push_back(std::move(job));
+        } catch (...) {
+            return false;
         }
         m_cv.notify_one();
+        return true;
     }
 
     // #790: the zero-viewer release travels through the same queue as real
     // readbacks, so it can never delete a buffer while a fence/map job is
-    // still using it.
-    void requestIdleRelease()
+    // still using it. False = rejected; the caller must keep the edge latched.
+    bool requestIdleRelease() noexcept
     {
         GlRetireJob job;
         job.idleRelease = true;
-        enqueue(std::move(job));
+        return enqueue(std::move(job));
     }
 
     // Called on the worker thread with the owning context current. The hook
@@ -237,6 +248,14 @@ public:
     void setRetireDelayForTest(int milliseconds)
     {
         m_testDelayMs.store(milliseconds, std::memory_order_release);
+    }
+
+    // TEST-ONLY (#790 review P1): make the next N submissions fail without
+    // allocating, so the rejection path of the zero-viewer release is
+    // deterministic. Never set by the product path.
+    void setEnqueueRejectionsForTest(int count) noexcept
+    {
+        m_testEnqueueRejections.store(count, std::memory_order_relaxed);
     }
 
 protected:
@@ -412,6 +431,7 @@ private:
     std::mutex m_mutex;
     std::condition_variable m_cv;
     std::deque<GlRetireJob> m_jobs;
+    std::atomic<int> m_testEnqueueRejections{0};
     bool m_stop = false;
     std::atomic<bool> m_abort{false};
     std::atomic<bool> m_ready{false};
@@ -421,6 +441,12 @@ private:
 
 class GlPboCaptureSource final : public hyremote::CaptureSource
 {
+public:
+    // #790 review (P1): deterministic GPU-free rejection probe. It runs the
+    // real maybeQueueIdleRelease decision against a private State; the class is
+    // internal (anonymous namespace), so this seam never leaks into any API.
+    static QuickGlPboIdleSubmissionProbe idleSubmissionRejectionProbeForTest();
+
     struct State {
         std::mutex mutex;
         std::condition_variable drained;
@@ -1172,14 +1198,19 @@ private:
     // Caller holds State::mutex. Turns a latched #790 release into one worker
     // command only when no accepted request can still need the PBO. A later
     // retire/timeout calls this again, so the edge is never silently dropped.
-    static void maybeQueueIdleRelease(State &state)
+    static void maybeQueueIdleRelease(State &state) noexcept
     {
         if (!state.idleRelease.pending() || !state.retireWorker)
             return;
         if (state.gpuPending || state.cpuConversionPending || !state.queued.empty())
             return;
+        // #790 review (P1): the edge is consumed first so a concurrently
+        // deferred hook re-latch survives, then re-latched when the nonthrowing
+        // submission is rejected — a failed submission must not lose the
+        // release event; the next retire/timeout retries.
         state.idleRelease.take();
-        state.retireWorker->requestIdleRelease();
+        if (!state.retireWorker->requestIdleRelease())
+            state.idleRelease.latch();
     }
 
     static void onRetireResult(
@@ -1451,21 +1482,34 @@ private:
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
                             GlRetireWorker *worker = s->retireWorker.get();
+                            GLsync ownedFence = s->fence;
+                            s->fence = nullptr; // the session worker owns it on success
                             if (worker) {
                                 GlRetireJob job;
                                 job.pbo = s->pbo;
-                                job.fence = s->fence;
+                                job.fence = ownedFence;
                                 job.width = w;
                                 job.height = h;
                                 job.dpr = static_cast<float>(dpr);
                                 job.renderTime = s->readbackRenderTime;
                                 job.generation = s->generation;
                                 job.contextEpoch = s->contextEpoch;
-                                s->fence = nullptr; // the session worker owns it
-                                worker->enqueue(std::move(job));
+                                if (!worker->enqueue(std::move(job))) {
+                                    // #790 review (P1): a rejected submission
+                                    // must not strand gpuPending forever; fail
+                                    // the batch like a missing worker instead of
+                                    // dropping the fence/requests silently.
+                                    gl->glDeleteSync(ownedFence);
+                                    ownedFence = nullptr;
+                                    s->gpuPending = false;
+                                    s->cpuConversionPending = false;
+                                    failed.swap(s->converting);
+                                    --s->cpuWorkersInFlight;
+                                    failureReason = "GL PBO readback submission failed";
+                                }
                             } else {
-                                gl->glDeleteSync(s->fence);
-                                s->fence = nullptr;
+                                gl->glDeleteSync(ownedFence);
+                                ownedFence = nullptr;
                                 s->gpuPending = false;
                                 s->cpuConversionPending = false;
                                 failed.swap(s->converting);
@@ -1936,6 +1980,41 @@ QuickGlPboIdleReleaseProbe runQuickGlPboIdleReleaseProbe()
         : (!out.bufferReleased ? "STATE_NOT_RELEASED"
         : (!out.bufferDeleted ? "PBO_NOT_DELETED" : "NOT_RECREATED")));
     return out;
+}
+
+// #790 review (P1): deterministic, GPU-free rejection path for the idle
+// release. The worker is never started and the TEST-ONLY seam makes enqueue
+// fail "as if" the queue allocation failed; the probe pins that a rejected
+// submission keeps the latched edge and an accepted one consumes it exactly
+// once, so a bad_alloc cannot silently drop the release event.
+QuickGlPboIdleSubmissionProbe
+GlPboCaptureSource::idleSubmissionRejectionProbeForTest()
+{
+    QuickGlPboIdleSubmissionProbe out;
+    std::unique_ptr<GlRetireWorker> worker(
+        new GlRetireWorker(nullptr, nullptr, [](GlRetireResult &&) {}));
+    State state;
+    state.retireWorker = std::move(worker);
+    out.ran = true;
+
+    state.retireWorker->setEnqueueRejectionsForTest(1);
+    state.idleRelease.latch();
+    maybeQueueIdleRelease(state);
+    out.rejectedKeepsEdge = state.idleRelease.pending();
+
+    state.retireWorker->setEnqueueRejectionsForTest(0);
+    maybeQueueIdleRelease(state);
+    out.acceptedConsumesEdge = !state.idleRelease.pending();
+
+    out.ok = out.rejectedKeepsEdge && out.acceptedConsumesEdge;
+    out.detail = out.ok ? "PASS"
+        : (!out.rejectedKeepsEdge ? "REJECTION_LOST_EDGE" : "ACCEPT_DID_NOT_CONSUME");
+    return out;
+}
+
+QuickGlPboIdleSubmissionProbe runQuickGlPboIdleSubmissionProbe()
+{
+    return GlPboCaptureSource::idleSubmissionRejectionProbeForTest();
 }
 
 QuickGlPboSessionSelfTest runQuickGlPboSessionSelfTest()

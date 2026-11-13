@@ -44,6 +44,26 @@ internal surface (`docs/v1-api-stability.md`), so this is not an SDK ABI promise
 `W*H*4` at 1920x1080 is 8.29 MB per buffer; that number is derived from the
 allocation formulas in the cited files, not measured on a device.
 
+Exception-safety (Cloud Owner review P1, must not terminate the capture
+scheduler on the reclamation path):
+
+- Composite: the child snapshot is wrapped so an allocation failure drops the
+  edge (retried by the next zero-viewer edge or `stop()`); child callbacks still
+  run outside the state lock.
+- GL: `GlRetireWorker::enqueue`/`requestIdleRelease` are nonthrowing and return
+  whether the command was accepted. `maybeQueueIdleRelease` consumes the edge
+  first (so a concurrent deferred-hook re-latch survives) and re-latches when
+  the submission is rejected, so a bad_alloc cannot lose the release event; a
+  rejected readback submission fails its batch like a missing worker instead of
+  stranding `gpuPending`.
+- D3D: the zero-viewer edge is latched synchronously before the queued GUI
+  dispatch, and the dispatch helper is nonthrowing, so a failed dispatch cannot
+  lose the edge — the next retire/deadline/after-render idle point consumes it.
+- Bounded rejection regression (GPU-free): `runQuickGlPboIdleSubmissionProbe()`
+  makes the queue reject one submission with the TEST-ONLY seam and asserts the
+  latched edge survives, then asserts an accepted submission consumes it
+  (`WIN790_IDLE_SUBMISSION=PASS`). No deliberate giant allocation anywhere.
+
 Deliberately **not** claimed:
 
 - Qt scenegraph/EGL/D3D driver allocator high-water marks are not owned by HyRemote.

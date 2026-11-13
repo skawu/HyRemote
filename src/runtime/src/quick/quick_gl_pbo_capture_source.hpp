@@ -134,6 +134,20 @@ struct QuickGlPboIdleReleaseProbe {
 HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboIdleReleaseProbe
 runQuickGlPboIdleReleaseProbe();
 
+// #790 review (P1): deterministic, GPU-free rejection path for the idle-release
+// submission. A rejected (nonthrowing) enqueue must keep the latched edge and
+// an accepted submission must consume it exactly once.
+struct QuickGlPboIdleSubmissionProbe {
+    bool ran = false;
+    bool ok = false;
+    bool rejectedKeepsEdge = false;
+    bool acceptedConsumesEdge = false;
+    std::string detail;
+};
+
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboIdleSubmissionProbe
+runQuickGlPboIdleSubmissionProbe();
+
 // P1 (#962 review): inject a 5s retire delay, then requestStop+wait. Proves
 // stop() is bounded by the worker's abort check, not by the 750ms fence
 // ceiling or an unbounded join.
