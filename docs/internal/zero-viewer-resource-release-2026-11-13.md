@@ -69,6 +69,11 @@ Canonical entry only (`build.cmd`, single workspace build tree, no manual CMake)
   `build.cmd test --cmake=HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON
   --cmake=HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=ON --test-filter=quick-capture`
   and `--test-filter=d3d11-lifecycle` -> pass. Defaults stay OFF.
+- Real-GL release probe (`runQuickGlPboIdleReleaseProbe`, printed as
+  `WIN790_IDLE_RELEASE=`): the state drops the PBO name, the retire worker deletes
+  it in the context that created it, and the next request allocates a live buffer.
+  It runs in the dedicated GL-RHI lane (`requireGl`), where a missing context is a
+  failure rather than a skip. On a workstation without that lane it reports SKIP.
 - Qt 5.15.2: `NOT_RUN_LOCAL_KIT` — this workstation's single authorized build tree is
   the Qt 6.8.3 Kit; Qt5 product compile is covered by the PR CI matrix, not by a
   second local build directory.
