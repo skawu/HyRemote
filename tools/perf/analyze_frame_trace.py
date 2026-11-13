@@ -33,6 +33,16 @@ PAIRS = (
     ("capture_request_to_socket_queue", "capture_request", "rfb_socket_queued"),
 )
 
+# Same-request grab stages repeat when publishImage() rejects a ready image and
+# retryLater() runs the grab again. These pairs must use the nearest preceding
+# earlier event; the earliest-start rule would charge the retry gap to the
+# wrong stage.
+NEAREST_PAIRS = frozenset({
+    "grab_submit_to_returned",
+    "grab_returned_to_ready",
+    "grab_ready_to_source",
+})
+
 
 def percentile(values, p):
     ordered = sorted(values)
@@ -88,6 +98,21 @@ def analyze(records):
             starts = steps[earlier]
             ends = steps[later]
             if not starts or not ends:
+                continue
+            if metric in NEAREST_PAIRS:
+                # The same request can retry a grab after publishImage()
+                # rejects a ready image. Pair each later event with its
+                # nearest preceding earlier event so a retry gap is not
+                # charged to Qt rendering or image adoption.
+                start_times = sorted(int(x["at_ns"]) for x in starts)
+                for event in ends:
+                    last = int(event["at_ns"])
+                    index = bisect.bisect_right(start_times, last) - 1
+                    if index < 0:
+                        impossible += 1
+                        continue
+                    out[metric].append(
+                        (last - start_times[index]) / 1_000_000.0)
                 continue
             first = min(int(x["at_ns"]) for x in starts)
             per_viewer = {
@@ -249,6 +274,22 @@ def self_test():
     assert without_ready["intervals"]["grab_returned_to_ready"]["n"] == 0
     assert without_ready["intervals"]["grab_ready_to_source"]["n"] == 0
     assert without_ready["intervals"]["grab_submit_to_returned"]["p50_ms"] == 0.5
+    # Retry: publishImage() rejected the first ready image, so the same request
+    # re-runs submitted/returned/ready. Nearest-preceding pairing must keep the
+    # 1 ms adoption and 5 ms render, not charge the 100 ms retry gap.
+    retried = analyze([
+        point("capture_request", 1_000_000, request=4),
+        point("quick_grab_submitted", 2_000_000, request=4),
+        point("quick_grab_returned", 3_000_000, request=4),
+        point("quick_grab_ready", 8_000_000, request=4),
+        point("quick_grab_submitted", 108_000_000, request=4),
+        point("quick_grab_returned", 109_000_000, request=4),
+        point("quick_grab_ready", 114_000_000, request=4),
+        point("source_completed", 115_000_000, request=4),
+    ])
+    assert retried["intervals"]["grab_submit_to_returned"]["p50_ms"] == 1.0
+    assert retried["intervals"]["grab_returned_to_ready"]["p50_ms"] == 5.0
+    assert retried["intervals"]["grab_ready_to_source"]["p50_ms"] == 1.0
     print("PASS frame trace analyzer self-test")
 
 
