@@ -101,6 +101,8 @@ def attribute(records, *, include_integrity=False):
     collisions = 0
     missing = collections.Counter()
     for key, stages in requests.items():
+        if include_integrity and key[1] <= 0:
+            continue  # activity hints are not request identities
         capture = stages.get("capture_request") or []
         if len(capture) != 1:
             collisions += 1

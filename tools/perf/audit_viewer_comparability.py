@@ -161,6 +161,8 @@ def self_test():
                                 ("quick_grab_submitted", 2_000_000),
                                 ("source_completed", 3_000_000))
     ]
+    records.append({"schema": 3, "type": "frame_step", "pid": 11,
+                    "request_id": 0, "step": "qt_activity_hint", "at_ns": 500_000})
     trace = attribute(records, include_integrity=True)
     run = result, manifest, trace, "c" * 64
     if compare(run, run, "aa")["status"] != "MATCHED_METADATA":
