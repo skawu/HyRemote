@@ -98,6 +98,9 @@ def analyze(records):
             starts = steps[earlier]
             ends = steps[later]
             if not starts or not ends:
+                if (metric == "grab_ready_to_source" and ends
+                        and steps["quick_grab_returned"] and not starts):
+                    impossible += len(ends)
                 continue
             if metric in NEAREST_PAIRS:
                 # The same request can retry a grab after publishImage()
@@ -105,10 +108,13 @@ def analyze(records):
                 # nearest preceding earlier event so a retry gap is not
                 # charged to Qt rendering or image adoption.
                 start_times = sorted(int(x["at_ns"]) for x in starts)
+                attempts = sorted(int(x["at_ns"]) for x in steps["quick_grab_submitted"])
                 for event in ends:
                     last = int(event["at_ns"])
                     index = bisect.bisect_right(start_times, last) - 1
-                    if index < 0:
+                    attempt = bisect.bisect_right(attempts, last) - 1
+                    if (index < 0 or attempt < 0
+                            or start_times[index] < attempts[attempt]):
                         impossible += 1
                         continue
                     out[metric].append(
@@ -290,6 +296,18 @@ def self_test():
     assert retried["intervals"]["grab_submit_to_returned"]["p50_ms"] == 1.0
     assert retried["intervals"]["grab_returned_to_ready"]["p50_ms"] == 5.0
     assert retried["intervals"]["grab_ready_to_source"]["p50_ms"] == 1.0
+    missing_retry_ready = analyze([
+        point("capture_request", 1_000_000),
+        point("quick_grab_submitted", 2_000_000),
+        point("quick_grab_returned", 3_000_000),
+        point("quick_grab_ready", 8_000_000),
+        point("quick_grab_submitted", 108_000_000),
+        point("quick_grab_returned", 109_000_000),
+        point("source_completed", 115_000_000),
+    ])
+    if (missing_retry_ready["intervals"]["grab_ready_to_source"]["n"] != 0
+            or missing_retry_ready["negative_or_out_of_order_pairs_skipped"] != 1):
+        raise AssertionError("a retry completion must not use the previous attempt's ready")
     print("PASS frame trace analyzer self-test")
 
 

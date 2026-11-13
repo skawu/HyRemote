@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import re
 
+from analyze_frame_trace import analyze
 from attribute_frame_stages import attribute, load_trace, sha256
 
 
@@ -67,6 +68,8 @@ def audit_run(result, manifest, trace, trace_digest):
         interval = trace["intervals"]["submit_to_source_completed"]
         if not interval["n"] or any(trace["negative_host_intervals"].values()):
             issues.append("HOST_STAGE_INTERVAL_INVALID")
+        if trace["official_out_of_order_pairs"]:
+            issues.append("HOST_OFFICIAL_STAGE_PAIR_INVALID")
         steps = trace["steps"]
         expected = {"public": "quick_grab_submitted", "gl": "gpu_readback_submitted"}
         route = manifest.get("capture_route")
@@ -136,6 +139,12 @@ def compare(left, right, mode):
     }
 
 
+def audit_trace(records):
+    trace = attribute(records, include_integrity=True)
+    trace["official_out_of_order_pairs"] = analyze(records)["negative_or_out_of_order_pairs_skipped"]
+    return trace
+
+
 def read_run(directory):
     def read(name):
         return json.loads((directory / name).read_text(encoding="utf-8"))
@@ -144,7 +153,7 @@ def read_run(directory):
     manifest_path = directory / "comparison-environment.json"
     trace = directory / "runtime-frame-trace.jsonl"
     return (result, read(manifest_path.name) if manifest_path.is_file() else {},
-            attribute(load_trace(trace), include_integrity=True) if trace.is_file() else None,
+            audit_trace(load_trace(trace)) if trace.is_file() else None,
             sha256(trace) if trace.is_file() else None)
 
 
@@ -176,12 +185,12 @@ def self_test():
     socket = {"schema": 3, "type": "frame_step", "pid": 11, "request_id": 1,
               "step": "rfb_socket_queued", "at_ns": 3_500_000, "update_id": 1}
     records.append(dict(socket, viewer_id=1))
-    trace = attribute(records, include_integrity=True)
+    trace = audit_trace(records)
     run = result, manifest, trace, "c" * 64
     if compare(run, run, "aa")["status"] != "MATCHED_METADATA":
         raise AssertionError("valid pair rejected")
     for rows in (records[:-1], records + [dict(socket, viewer_id=2)]):
-        other = (result, manifest, attribute(rows, include_integrity=True), "c" * 64)
+        other = (result, manifest, audit_trace(rows), "c" * 64)
         if "HOST_ONE_VIEWER_UNVERIFIED" not in compare(run, other, "aa")["runs"][1]["issues"]:
             raise AssertionError("Host must record exactly one positive Viewer identity")
     for extra in (
@@ -192,14 +201,22 @@ def self_test():
          {"step": "quick_grab_submitted", "at_ns": 5_000_000},
          {"step": "source_completed", "at_ns": 6_000_000, "content_pts_ns": 0}],
     ):
-        incomplete = attribute(records + [
+        incomplete = audit_trace(records + [
             dict(row, schema=3, type="frame_step", pid=11, request_id=4) for row in extra
-        ], include_integrity=True)
+        ])
         bad = (result, manifest, incomplete, "c" * 64)
         if compare(run, bad, "aa")["status"] != "BLOCKED":
             raise AssertionError("incomplete or contentless request accepted")
     records[2]["at_ns"] = 1_000_000
-    bad_trace = attribute(records, include_integrity=True)
+    bad_trace = audit_trace(records)
+    records[2]["at_ns"] = 3_000_000
+    retry = audit_trace(records + [
+        dict(records[1], at_ns=2_500_000),
+        dict(records[1], step="quick_grab_returned", at_ns=2_700_000),
+    ])
+    if "HOST_OFFICIAL_STAGE_PAIR_INVALID" not in audit_run(
+            result, manifest, retry, "c" * 64)["issues"]:
+        raise AssertionError("official missing-ready pair must block comparison")
     if (bad_trace["intervals"]["submit_to_source_completed"]["p50_ms"] != 1
             or compare(run, (result, manifest, bad_trace, "c" * 64), "aa")["status"] != "BLOCKED"):
         raise AssertionError("negative Host sample hidden by a positive median")
