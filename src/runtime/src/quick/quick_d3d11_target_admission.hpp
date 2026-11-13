@@ -103,10 +103,30 @@ std::size_t collectUnsupportedRequests(std::vector<Request> &queued,
                                        std::vector<Request> &converting,
                                        std::vector<Request> &revoked) noexcept
 {
+    // #967 A3: this runs on the Qt render thread inside a Qt render callback.
+    // Accumulating the episode allocates and copies, so the work is done as ONE
+    // bounded reservation attempt and any failure is contained here: an OOM
+    // must never reach std::terminate through this noexcept boundary, and a
+    // partly built episode must never be delivered (that would terminate some
+    // identities twice).
+    //
+    // Degradation is deliberate and invisible: nothing is cleared, so every
+    // accepted identity stays in its queue and is still retired by the existing
+    // kRequestDeadlineMs = 750 ms path. The next render pass retries the
+    // revocation, so a transient allocation failure does not lose the episode.
     const std::size_t before = revoked.size();
-    revoked.insert(revoked.end(), queued.begin(), queued.end());
-    revoked.insert(revoked.end(), submitted.begin(), submitted.end());
-    revoked.insert(revoked.end(), converting.begin(), converting.end());
+    try {
+        revoked.reserve(before + queued.size() + submitted.size()
+                        + converting.size());
+        revoked.insert(revoked.end(), queued.begin(), queued.end());
+        revoked.insert(revoked.end(), submitted.begin(), submitted.end());
+        revoked.insert(revoked.end(), converting.begin(), converting.end());
+    } catch (...) {
+        // Shrinking is noexcept (destructors must not throw), so no partial
+        // episode survives this handler.
+        revoked.resize(before);
+        return 0;
+    }
     queued.clear();
     submitted.clear();
     converting.clear();
