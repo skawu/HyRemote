@@ -1098,14 +1098,25 @@ private:
             });
         // #790: the worker owns deletion in the share group that created the
         // name. This hook runs on the worker thread and only hands out the PBO
-        // when no queued request can still use it.
+        // when no accepted request can still use it.
         worker->setIdleReleaseHook([weak = std::weak_ptr<State>(s)]() -> GLuint {
             const auto state = weak.lock();
             if (!state)
                 return 0;
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->pbo || !state->queued.empty())
+            if (!state->pbo)
                 return 0;
+            // A Viewer may have reconnected after this command was queued: the
+            // render callback moved `queued` into `converting`, set gpuPending,
+            // and enqueued its readback BEHIND this command. `queued` is then
+            // empty even though that readback is about to map this very PBO.
+            // Defer instead of deleting it, and keep the edge so the retire
+            // completion (or the terminal timeout) re-queues the release.
+            if (!state->queued.empty() || state->gpuPending
+                || state->cpuConversionPending) {
+                state->idleRelease.latch();
+                return 0;
+            }
             const GLuint buffer = state->pbo;
             state->pbo = 0;
             state->pboCapacityBytes = 0;
