@@ -57,6 +57,10 @@ def audit_run(result, manifest, trace, trace_digest):
           or trace["trace_events_dropped"] or trace["request_identity_collisions"]):
         issues.append("HOST_TRACE_IDENTITY_OR_INTEGRITY")
     else:
+        if any(trace["missing_stage_per_request"].values()):
+            issues.append("HOST_REQUEST_STAGE_MISSING")
+        if trace["source_without_content_pts"]:
+            issues.append("HOST_SOURCE_CONTENT_UNVERIFIED")
         interval = trace["intervals"]["submit_to_source_completed"]
         if not interval["n"] or any(trace["negative_host_intervals"].values()):
             issues.append("HOST_STAGE_INTERVAL_INVALID")
@@ -96,6 +100,8 @@ def audit_run(result, manifest, trace, trace_digest):
                 issues.append("VIEWER_QPC_INTERVAL_MISMATCH")
     return {"issues": issues, "missing_environment": missing_env, "viewer_n": n,
             "host_intervals": trace["intervals"] if trace else "NOT_INSTRUMENTED",
+            "missing_host_stages": trace["missing_stage_per_request"] if trace else None,
+            "binary_identity_provenance": "DECLARED_IN_RESULT",
             "marker_to_next_swap_ms": result.get("local_marker_to_next_swap_ms", "NOT_INSTRUMENTED")}
 
 
@@ -155,7 +161,8 @@ def self_test():
                     trace_sha256="c" * 64)
     records = [
         {"schema": 3, "type": "frame_step", "pid": 11, "request_id": request,
-         "step": step, "at_ns": timestamp}
+         "step": step, "at_ns": timestamp,
+         "content_pts_ns": timestamp if step == "source_completed" else 0}
         for request in (1, 2, 3)
         for step, timestamp in (("capture_request", 1_000_000),
                                 ("quick_grab_submitted", 2_000_000),
@@ -167,6 +174,20 @@ def self_test():
     run = result, manifest, trace, "c" * 64
     if compare(run, run, "aa")["status"] != "MATCHED_METADATA":
         raise AssertionError("valid pair rejected")
+    for extra in (
+        [{"step": "capture_request", "at_ns": 4_000_000}],
+        [{"step": "capture_request", "at_ns": 4_000_000},
+         {"step": "quick_grab_submitted", "at_ns": 5_000_000}],
+        [{"step": "capture_request", "at_ns": 4_000_000},
+         {"step": "quick_grab_submitted", "at_ns": 5_000_000},
+         {"step": "source_completed", "at_ns": 6_000_000, "content_pts_ns": 0}],
+    ):
+        incomplete = attribute(records + [
+            dict(row, schema=3, type="frame_step", pid=11, request_id=4) for row in extra
+        ], include_integrity=True)
+        bad = (result, manifest, incomplete, "c" * 64)
+        if compare(run, bad, "aa")["status"] != "BLOCKED":
+            raise AssertionError("incomplete or contentless request accepted")
     records[2]["at_ns"] = 1_000_000
     bad_trace = attribute(records, include_integrity=True)
     if (bad_trace["intervals"]["submit_to_source_completed"]["p50_ms"] != 1

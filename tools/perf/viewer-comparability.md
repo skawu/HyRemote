@@ -19,6 +19,12 @@ validate a product or measure Viewer decode or physical present. Use --mode ab
 only for an authorized same-SHA comparison with distinct Runtime builds. The
 same Host binary is required to isolate the Runtime change.
 
+Binary hashes are declared by result.json. The audit does not open the
+executables. Every recorded request must have submit and source completion
+stages. A terminal completion without a content timestamp cannot establish
+successful capture, even if the terminal was legitimate or another request
+completed successfully.
+
 ## Tagged Qt source and what to observe
 
 * Qt 5.15.2 (104eae5b17b0ec700391e9539ee3a4f638588194) and Qt 6.8.3

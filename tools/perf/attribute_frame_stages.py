@@ -100,6 +100,7 @@ def attribute(records, *, include_integrity=False):
     duplicate_completion = collections.Counter()
     collisions = 0
     missing = collections.Counter()
+    unavailable = 0
     for key, stages in requests.items():
         if include_integrity and key[1] <= 0:
             continue  # activity hints are not request identities
@@ -116,6 +117,8 @@ def attribute(records, *, include_integrity=False):
             missing["submit"] += 1
         if not source:
             missing["source_completed"] += 1
+        if include_integrity and source and not source[0].get("content_pts_ns", 0):
+            unavailable += 1
         if submit and source:
             request_to_submit.append((int(submit[0]["at_ns"]) - issued) / 1e6)
             submit_to_source.append(
@@ -163,6 +166,7 @@ def attribute(records, *, include_integrity=False):
         "intervals": {name: describe(values) for name, values in intervals.items()},
     }
     if include_integrity:
+        result["source_without_content_pts"] = unavailable
         result["negative_host_intervals"] = {
             name: sum(value < 0 for value in values) for name, values in intervals.items()
         }
