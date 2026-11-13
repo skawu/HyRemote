@@ -1,0 +1,112 @@
+name: Qt 6.8 RHI readback research (standalone)
+
+# This is NOT an EGLFS test and does not promote private RHI to the product.
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - research/qt68-rhi-readback/**
+      - docs/internal/qt68-rhi-eglfs-readback-review-2026-11-11.md
+      - .github/workflows/qt68-rhi-readback-research.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-rhi-capability-probe:
+    name: Qt 6.8.3 Linux Mesa / independent RHI probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Qt 6.8.3 SDK with matching private headers
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check aqtinstall ninja
+          python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 --outputdir /tmp/hyremote-research-qt
+          test -f /tmp/hyremote-research-qt/6.8.3/gcc_64/lib/libQt6Quick.so
+
+      - name: Install real OpenGL/Xvfb dependencies
+        run: bash .github/scripts/install-linux-qt-desktop-deps.sh qpa
+
+      - name: Build ONLY the isolated research executable
+        run: |
+          set -euo pipefail
+          cmake -S research/qt68-rhi-readback -B build-rhi-research -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/tmp/hyremote-research-qt/6.8.3/gcc_64
+          cmake --build build-rhi-research --parallel 4
+
+      - name: Inspect real Mesa OpenGL scenegraph (no readback by default)
+        run: |
+          set -euo pipefail
+          xvfb-run -a -s "-screen 0 1280x720x24" env \
+            -u QT_QUICK_BACKEND \
+            QT_QPA_PLATFORM=xcb \
+            QSG_RHI_BACKEND=opengl \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build-rhi-research/hyremote-rhi-readback-probe \
+            > build-rhi-research/inspection.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          evidence = json.loads(Path("build-rhi-research/inspection.json").read_text())
+          assert evidence["scope"] == "standalone_qquickwindow_not_product"
+          assert evidence["qt_runtime"] == "6.8.3", evidence
+          assert evidence["qpa"] == "xcb", evidence
+          assert evidence["frames"] > 0, evidence
+          assert evidence["submissions"] == 0, evidence
+          assert evidence["completions"] == 0, evidence
+          assert evidence["outcome"] in (
+              "ELIGIBLE_INSPECTION_ONLY", "RESOURCE_NOT_READBACK_ELIGIBLE",
+              "NO_RHI", "NO_SWAPCHAIN"), evidence
+          print("PASS: standalone resource inspection; EGLFS and product NOT TESTED")
+          print("RESOURCE_OUTCOME=" + evidence["outcome"])
+          PY
+
+      - name: Opt-in probe ONLY on standalone window
+        run: |
+          set -euo pipefail
+          xvfb-run -a -s "-screen 0 1280x720x24" env \
+            -u QT_QUICK_BACKEND \
+            QT_QPA_PLATFORM=xcb \
+            QSG_RHI_BACKEND=opengl \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            ./build-rhi-research/hyremote-rhi-readback-probe \
+              --submit-readback > build-rhi-research/readback.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          inspection = json.loads(Path("build-rhi-research/inspection.json").read_text())
+          result = json.loads(Path("build-rhi-research/readback.json").read_text())
+          assert result["qt_runtime"] == "6.8.3"
+          assert result["qpa"] == "xcb"
+          assert result["frames"] > 0
+          if inspection["outcome"] == "ELIGIBLE_INSPECTION_ONLY":
+              assert result["outcome"] in (
+                  "CALLBACK_WITH_BYTES_NOT_NONBLOCKING_PROOF",
+                  "NO_COMMAND_BUFFER",
+                  "NO_CALLBACK_WITHIN_TIMEOUT",
+                  "EMPTY_OR_INVALID_RESULT",
+                  "RESOURCE_NOT_READBACK_ELIGIBLE"), result
+          else:
+              assert result["submissions"] == 0, result
+          print("PROBE_OUTCOME=" + result["outcome"])
+          print("NO product performance or EGLFS qualification is implied")
+          PY
+
+      - name: Preserve raw qualification / negative outcome evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt68-rhi-readback-research-mesa
+          path: |
+            build-rhi-research/inspection.json
+            build-rhi-research/readback.json
+          if-no-files-found: ignore
+          retention-days: 14
