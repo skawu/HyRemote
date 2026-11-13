@@ -417,7 +417,10 @@ private:
                       height,
                       bytesPerLine,
                       QImage::Format_RGBA8888_Premultiplied);
-        output.fill(Qt::transparent);
+        // transparentFrame() already zeroed this exact buffer: premultiplied
+        // transparent is all bytes 0, and QImage::fill() would write the whole
+        // 1080p canvas a second time before the first surface is drawn.
+        // SourceOver onto those zeros is byte-identical to the old path.
 
         QPainter painter(&output);
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);

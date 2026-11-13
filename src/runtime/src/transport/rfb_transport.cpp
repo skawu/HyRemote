@@ -428,6 +428,52 @@ enum class ClientEncoding {
     Trle,
 };
 
+// #967: one FramebufferUpdate can be shared by Viewers whose wire contract is
+// byte-for-byte identical. Fixed-SHA CPU evidence (docs/internal/evidence/
+// 962-realvnc-matrix-4eb45ec) shows 1 Viewer = 41 encodes / 15.1 MiB and
+// 2 Viewers = 82 encodes / 30.2 MiB over the same 40 s window at essentially
+// the same capture count: each extra Viewer repeats the whole-frame pixel
+// conversion, TRLE palette work and the multi-MiB QByteArray allocation for
+// the SAME served frame. The key below covers every input that can change a
+// wire byte; the cache never crosses a served frame or a zero-viewer edge.
+inline bool sameRfbPixelSpec(const PixelSpec &a, const PixelSpec &b) noexcept
+{
+    return a.bitsPerPixel == b.bitsPerPixel && a.depth == b.depth
+           && a.bigEndian == b.bigEndian && a.trueColor == b.trueColor
+           && a.redMax == b.redMax && a.greenMax == b.greenMax
+           && a.blueMax == b.blueMax && a.redShift == b.redShift
+           && a.greenShift == b.greenShift && a.blueShift == b.blueShift;
+}
+
+struct SharedFramebufferUpdate
+{
+    // Strong reference: a bare pointer can be recycled by a newer frame (ABA)
+    // and make an old encoded FBU look valid for new pixels.
+    std::shared_ptr<const hyremote::FrameStorage> storage;
+    PixelSpec pixels{};
+    ClientEncoding encoding = ClientEncoding::Raw;
+    bool resized = false;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    hyremote::PixelFormat pixelFormat = hyremote::PixelFormat::Unknown;
+    hyremote::AlphaMode alphaMode = hyremote::AlphaMode::Opaque;
+    std::vector<RfbRect> rects;
+    QByteArray bytes;
+
+    bool matches(const std::shared_ptr<const hyremote::FrameStorage> &source,
+                 const PixelSpec &spec, ClientEncoding preferred, bool isResized,
+                 std::uint16_t frameWidth, std::uint16_t frameHeight,
+                 hyremote::PixelFormat format, hyremote::AlphaMode alpha,
+                 const std::vector<RfbRect> &damageRects) const noexcept
+    {
+        return storage == source && sameRfbPixelSpec(pixels, spec)
+               && encoding == preferred && resized == isResized
+               && width == frameWidth && height == frameHeight
+               && pixelFormat == format && alphaMode == alpha
+               && rects == damageRects && !bytes.isEmpty();
+    }
+};
+
 struct ClientState
 {
     QPointer<QTcpSocket> socket;
@@ -531,6 +577,7 @@ public:
         m_clients.clear();
         publishCaptureBackpressure();
         m_observedFrame.reset();
+        m_sharedUpdate.reset();
         m_lastComparedFrameUnchanged = false;
         m_decorationFailed = false;
         m_keyHolderCounts.fill(0);
@@ -570,12 +617,21 @@ public:
         m_security.frameBackpressureObserver(blocked, noDemand);
     }
 
+    std::size_t normalViewerCount() const
+    {
+        return static_cast<std::size_t>(std::count_if(
+            m_clients.begin(), m_clients.end(), [](const auto &entry) {
+                return entry.second->phase == ClientPhase::Normal;
+            }));
+    }
+
     void releaseIdleFrameCaches()
     {
         // Caller MUST hold the product opt-in: standalone transports must retain
         // their last observed/marked pixels for immediate first-FBU and exact
         // incremental damage, even when no Viewer is connected.
         m_observedFrame.reset();
+        m_sharedUpdate.reset();
         m_lastComparedFrameUnchanged = false;
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         m_frames->latest.reset();
@@ -583,6 +639,9 @@ public:
 
     void frameAvailable()
     {
+        // A new served frame invalidates the shared encoded bytes. The cache
+        // never outlives one frame, one disconnect or one stop.
+        m_sharedUpdate.reset();
         {
             std::lock_guard<std::mutex> lock(m_frames->mutex);
             m_frames->notificationPending = false;
@@ -699,6 +758,7 @@ public:
             return;
         m_decorationFailed = true;
         m_observedFrame.reset();
+        m_sharedUpdate.reset();
         m_lastComparedFrameUnchanged = false;
 
         // Drop the viewers with the same bookkeeping as an ordinary disconnect. Closing the sockets here without it
@@ -832,6 +892,14 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                // #967 review P2: the shared encoded framebuffer is useful only
+                // while at least two Normal Viewers can consume one frame.
+                // Standalone transports deliberately KEEP raw bootstrap pixels
+                // (releaseIdleFrameBuffers=false), so this cache must be dropped
+                // independently of that raw-frame policy, including 2->1 and
+                // 1->0 disconnects with no further published frames.
+                if (normalViewerCount() < 2)
+                    m_sharedUpdate.reset();
                 publishCaptureBackpressure();
                 if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
                     // 2→1 always retains, 1→0 releases true raw bytes only for
@@ -1962,26 +2030,54 @@ private:
         m_encodingSocket = client.socket;
         publishCaptureBackpressure();
 
+        // #967: only a multi-Viewer frame can save a second whole-frame
+        // encode. A single Viewer keeps the exact old path and never retains
+        // an extra encoded framebuffer, so #790/#996 live-byte bounds hold.
+        const bool canShare = frame->storage && normalViewerCount() >= 2;
+        const bool reused = canShare && m_sharedUpdate
+            && m_sharedUpdate->matches(
+                frame->storage, client.pixels, client.preferredEncoding,
+                resized, width, height, frame->geometry.pixelFormat,
+                frame->geometry.alphaMode, selected.rects());
+
         QByteArray update;
-        update.append(char(0));
-        update.append(char(0));
-        appendU16(update, static_cast<std::uint16_t>(selected.size() + (resized ? 1U : 0U)));
-        if (resized) {
-            appendU16(update, 0);
-            appendU16(update, 0);
-            appendU16(update, width);
-            appendU16(update, height);
-            appendS32(update, kEncodingDesktopSize);
-        }
-        {
-            HYREMOTE_P1_SCOPE(RfbEncode);
-            for (const RfbRect &rect : selected.rects()) {
-                if (!appendFramebufferRectangle(update, *frame, client, rect)) {
-                    m_encodingSocket = nullptr;
-                    publishCaptureBackpressure();
-                    protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
-                    return;
+        if (reused) {
+            update = m_sharedUpdate->bytes; // Qt implicit sharing: no re-encode
+        } else {
+            update.append(char(0));
+            update.append(char(0));
+            appendU16(update, static_cast<std::uint16_t>(selected.size() + (resized ? 1U : 0U)));
+            if (resized) {
+                appendU16(update, 0);
+                appendU16(update, 0);
+                appendU16(update, width);
+                appendU16(update, height);
+                appendS32(update, kEncodingDesktopSize);
+            }
+            {
+                HYREMOTE_P1_SCOPE(RfbEncode);
+                for (const RfbRect &rect : selected.rects()) {
+                    if (!appendFramebufferRectangle(update, *frame, client, rect)) {
+                        m_encodingSocket = nullptr;
+                        publishCaptureBackpressure();
+                        protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
+                        return;
+                    }
                 }
+            }
+            if (canShare) {
+                SharedFramebufferUpdate cached;
+                cached.storage = frame->storage;
+                cached.pixels = client.pixels;
+                cached.encoding = client.preferredEncoding;
+                cached.resized = resized;
+                cached.width = width;
+                cached.height = height;
+                cached.pixelFormat = frame->geometry.pixelFormat;
+                cached.alphaMode = frame->geometry.alphaMode;
+                cached.rects = selected.rects();
+                cached.bytes = update;
+                m_sharedUpdate = std::move(cached);
             }
         }
         HYREMOTE_P1_BYTES(RfbEncode, update.size());
@@ -2028,6 +2124,9 @@ private:
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::uint64_t m_nextTraceViewerId = 0;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
+    // Worker-thread-only. Valid for at most one served frame; cleared on every
+    // frameAvailable(), zero-viewer edge, decoration failure and shutdown.
+    std::optional<SharedFramebufferUpdate> m_sharedUpdate;
     bool m_lastComparedFrameUnchanged = false; // worker-thread-only static hint
     // #589: a decoration failure must remain fail-closed. The processed
     // m_observedFrame is also the sole immutable source for Viewer delivery.
