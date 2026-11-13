@@ -1,10 +1,7 @@
 name: Qt5/Qt6 shared OpenGL fence proof (NON-PRODUCT)
 on:
-  pull_request:
-    branches: [develop]
-    paths:
-      - .github/workflows/qt-gl-async-retire-r1.yml
-      - tools/perf/tests/qt_gl_async_retire_r1/**
+  # #982: standalone #953 research fixture. The product-facing R4 lanes
+  # remain automatic; replay this historical fixture explicitly.
   workflow_dispatch:
 permissions:
   contents: read
