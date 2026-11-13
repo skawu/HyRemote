@@ -2016,6 +2016,40 @@ void runPublicQuickProfile()
     // correctness test and NEVER permission to cherry-pick a better run.
 }
 
+// #967 A2: the Qt6 D3D11 staging provider collapsed "not capturable this
+// frame" and "never capturable" into one silent return, so a multisampled or
+// non-RGBA/BGRA render target retired its accepted requests only through the
+// 750 ms deadline and never named a reason. This pins the three-way verdict and
+// the "terminate each accepted identity exactly once" contract. No D3D11
+// device, no window and no experimental cmake option are required.
+void testD3d11TargetAdmission()
+{
+    const auto result = HyRemote::detail::runQuickD3d11AdmissionRegression();
+    CHECK(result.ran);
+    CHECK(result.exactSurfaceAdmitted);
+    CHECK(result.multisampleIsUnsupported);
+    CHECK(result.unsupportedFormatIsUnsupported);
+    CHECK(result.non2dTargetIsUnsupported);
+    CHECK(result.nonD3d11ApiIsUnsupported);
+    CHECK(result.resizeIsTransient);
+    CHECK(result.missingResourcesAreTransient);
+    CHECK(result.reasonsAreDistinct);
+    CHECK(result.revokesEachAcceptedIdOnce);
+    CHECK(result.revokeIsIdempotent);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_D3D11_ADMISSION=FAIL detail=" << result.detail
+                  << " msaa=" << result.multisampleIsUnsupported
+                  << " format=" << result.unsupportedFormatIsUnsupported
+                  << " non2d=" << result.non2dTargetIsUnsupported
+                  << " api=" << result.nonD3d11ApiIsUnsupported
+                  << " resizeTransient=" << result.resizeIsTransient
+                  << " once=" << result.revokesEachAcceptedIdOnce << std::endl;
+    else
+        std::cerr << "WIN967_D3D11_ADMISSION=PASS verdicts=3 transient=2 once=1"
+                  << std::endl;
+}
+
 }  // namespace
 
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
@@ -2070,40 +2104,6 @@ void testQuickGlPboFallbackPolicy()
         std::cerr << "WIN967_FALLBACK=PASS glDelayMs=" << result.glFallbackDelayMs
                   << " d3dDelayMs=" << result.d3dFallbackDelayMs
                   << " oneArmPerRender=1 armReleasedByRender=1" << std::endl;
-}
-
-// #967 A2: the Qt6 D3D11 staging provider collapsed "not capturable this
-// frame" and "never capturable" into one silent return, so a multisampled or
-// non-RGBA/BGRA render target retired its accepted requests only through the
-// 750 ms deadline and never named a reason. This pins the three-way verdict and
-// the "terminate each accepted identity exactly once" contract. No D3D11
-// device and no window are required.
-void testD3d11TargetAdmission()
-{
-    const auto result = HyRemote::detail::runQuickD3d11AdmissionRegression();
-    CHECK(result.ran);
-    CHECK(result.exactSurfaceAdmitted);
-    CHECK(result.multisampleIsUnsupported);
-    CHECK(result.unsupportedFormatIsUnsupported);
-    CHECK(result.non2dTargetIsUnsupported);
-    CHECK(result.nonD3d11ApiIsUnsupported);
-    CHECK(result.resizeIsTransient);
-    CHECK(result.missingResourcesAreTransient);
-    CHECK(result.reasonsAreDistinct);
-    CHECK(result.revokesEachAcceptedIdOnce);
-    CHECK(result.revokeIsIdempotent);
-    CHECK(result.ok);
-    if (!result.ok)
-        std::cerr << "WIN967_D3D11_ADMISSION=FAIL detail=" << result.detail
-                  << " msaa=" << result.multisampleIsUnsupported
-                  << " format=" << result.unsupportedFormatIsUnsupported
-                  << " non2d=" << result.non2dTargetIsUnsupported
-                  << " api=" << result.nonD3d11ApiIsUnsupported
-                  << " resizeTransient=" << result.resizeIsTransient
-                  << " once=" << result.revokesEachAcceptedIdOnce << std::endl;
-    else
-        std::cerr << "WIN967_D3D11_ADMISSION=PASS verdicts=3 transient=2 once=1"
-                  << std::endl;
 }
 
 // #967 review: the GL/PBO readback must accept every geometry a real window
