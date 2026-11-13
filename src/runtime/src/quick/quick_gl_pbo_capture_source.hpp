@@ -61,8 +61,10 @@ HYREMOTE_QUICK_GL_TEST_EXPORT bool runQuickGlPboBatchOwnershipRegression();
 
 // #967 fallback-policy regression seam. Drives the same arming state machine
 // the GL source uses, without a GPU window: no inherited 17ms wait, at most
-// one forced update per render generation, and the arm is released by the
-// real RenderCallbackGuard rather than by the QTimer callback.
+// one forced update per render generation, the arm is released by the real
+// RenderCallbackGuard after a frame, and the QTimer releases it fail-closed
+// when no frame is requested (empty queue, pending GPU work, invalid or
+// hidden window).
 struct QuickGlPboFallbackPolicyRegression {
     bool ran = false;
     bool ok = false;
@@ -73,6 +75,11 @@ struct QuickGlPboFallbackPolicyRegression {
     bool noUpdateReleasesArm = false;
     bool updateKeepsArm = false;
     bool negativeControlBlocksNextArm = false;
+    // #967 review: window invalid / hidden between arming and the timer must
+    // be fail-closed, and a usable window must allow the next request to arm.
+    bool invalidWindowReleasesArm = false;
+    bool hiddenWindowReleasesArm = false;
+    bool windowRestoredRearms = false;
     int glFallbackDelayMs = -1;
     int d3dFallbackDelayMs = -1;
     std::string detail;

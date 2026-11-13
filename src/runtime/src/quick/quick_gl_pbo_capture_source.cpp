@@ -638,12 +638,33 @@ private:
             && !s.queued.empty();
     }
 
+    // #967 review: the QTimer callback runs on the GUI thread. QPointer and
+    // QWindow access must be sampled BEFORE s->mutex is taken; the snapshot is
+    // passed into the locked decision so an invalid or hidden window cannot
+    // leave a live arm behind when no Qt frame is requested.
+    enum class FallbackWindowState { Invalid, Hidden, Usable };
+
+    static FallbackWindowState fallbackWindowState(
+        const QPointer<QQuickWindow> &window) noexcept
+    {
+        if (window.isNull())
+            return FallbackWindowState::Invalid;
+        return window->isVisible() ? FallbackWindowState::Usable
+                                   : FallbackWindowState::Hidden;
+    }
+
     // Caller holds s.mutex. #967 P95 tail: share the fallback timer decision
     // with the GPU-free state-machine regression so the timer path and its
     // regression cannot drift apart.
-    static bool evaluateFallbackRender(State &s) noexcept
+    static bool evaluateFallbackRender(
+        State &s, FallbackWindowState windowState) noexcept
     {
-        const bool needsFallbackRender = !s.gpuPending
+        // #967 review: an invalid or hidden window cannot produce a Qt frame,
+        // so it must not keep the arm alive. windowState is a GUI-thread
+        // snapshot taken before s->mutex; no QWindow call happens under lock.
+        const bool needsFallbackRender =
+            windowState == FallbackWindowState::Usable
+            && !s.gpuPending
             && !s.cpuConversionPending
             && !s.queued.empty();
         // #967 P95 tail: an arm whose timer requested no Qt frame must not
@@ -673,6 +694,8 @@ private:
         s->fallbackRenderTimerArmed = true;
         QTimer::singleShot(kNormalFrameOpportunityMs, s->dispatcher,
             [s, window, generation] {
+                const FallbackWindowState windowState =
+                    fallbackWindowState(window);
                 bool needsFallbackRender = false;
                 {
                     std::lock_guard<std::mutex> guard(s->mutex);
@@ -682,9 +705,13 @@ private:
                     // must not survive its own callback. evaluateFallbackRender
                     // releases it only when no forced update is requested; a
                     // real update keeps it until RenderCallbackGuard.
-                    needsFallbackRender = evaluateFallbackRender(*s);
+                    needsFallbackRender =
+                        evaluateFallbackRender(*s, windowState);
                 }
-                if (needsFallbackRender && window && window->isVisible()) {
+                // needsFallbackRender already implies the Usable snapshot, so
+                // update() is the only post-unlock GUI action. No second
+                // lifetime check can strand a live arm here.
+                if (needsFallbackRender) {
                     HYREMOTE_P1_COUNT(QuickGlExplicitRender);
                     window->update();
                 }
@@ -1348,25 +1375,63 @@ public:
 
         // A timer producing no forced update must release its own arm.
         s->queued.clear();
-        const bool noUpdate = !evaluateFallbackRender(*s);
+        const bool noUpdate = !evaluateFallbackRender(*s, FallbackWindowState::Usable);
         const bool released = !s->fallbackRenderTimerArmed;
         s->queued.push_back({103, now});
         out.noUpdateReleasesArm = noUpdate && released
             && shouldArmFallbackRender(*s);
 
         // A real forced update keeps the arm until RenderCallbackGuard, so one
-        // render generation still schedules at most one update.
+        // render generation still schedules at most one update. This is the
+        // negative example against one update per Core request.
         s->fallbackRenderTimerArmed = true;
-        const bool needsUpdate = evaluateFallbackRender(*s);
+        const bool needsUpdate =
+            evaluateFallbackRender(*s, FallbackWindowState::Usable);
         out.updateKeepsArm = needsUpdate && s->fallbackRenderTimerArmed
             && !shouldArmFallbackRender(*s);
+
+        // #967 review: the window can be destroyed or hidden between arming
+        // and the timer. Both states must be fail-closed: no forced update is
+        // requested, and the arm is released so the next request can arm.
+        s->queued.clear();
+        s->queued.push_back({104, now});
+        s->fallbackRenderTimerArmed = true;
+        const bool noUpdateOnInvalid =
+            !evaluateFallbackRender(*s, FallbackWindowState::Invalid);
+        out.invalidWindowReleasesArm = noUpdateOnInvalid
+            && !s->fallbackRenderTimerArmed
+            && shouldArmFallbackRender(*s);
+
+        s->fallbackRenderTimerArmed = true;
+        const bool noUpdateOnHidden =
+            !evaluateFallbackRender(*s, FallbackWindowState::Hidden);
+        out.hiddenWindowReleasesArm = noUpdateOnHidden
+            && !s->fallbackRenderTimerArmed
+            && shouldArmFallbackRender(*s);
+
+        // A usable window restores one arm; the render callback releases it
+        // and the following Core request can arm again.
+        s->fallbackRenderTimerArmed = true;
+        const bool restoredNeedsUpdate =
+            evaluateFallbackRender(*s, FallbackWindowState::Usable);
+        out.windowRestoredRearms = restoredNeedsUpdate
+            && s->fallbackRenderTimerArmed
+            && !shouldArmFallbackRender(*s);
+        {
+            RenderCallbackGuard callback(*s);
+            out.windowRestoredRearms = out.windowRestoredRearms
+                && callback.entered && !s->fallbackRenderTimerArmed
+                && shouldArmFallbackRender(*s);
+        }
 
         out.ok = out.oneArmPerRender && out.armReleasedByRender
             && out.negativeControlBlocksNextArm
             && out.noUpdateReleasesArm && out.updateKeepsArm
+            && out.invalidWindowReleasesArm && out.hiddenWindowReleasesArm
+            && out.windowRestoredRearms
             && out.glFallbackDelayMs == 0 && out.d3dFallbackDelayMs == 17;
         if (!out.ok)
-            out.detail = "gl-fallback-arm-lifecycle-regressed";
+            out.detail = "gl-fallback-window-arm-lifecycle-regressed";
         return out;
     }
 
