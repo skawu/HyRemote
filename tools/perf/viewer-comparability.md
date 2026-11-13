@@ -24,6 +24,10 @@ executables. Every recorded request must have submit and source completion
 stages. A terminal completion without a content timestamp cannot establish
 successful capture, even if the terminal was legitimate or another request
 completed successfully.
+The Host trace must also show exactly one positive Viewer ID in socket queue
+events. This conservative whole-trace check rejects reconnects and extra
+viewers, including those outside the steady sample window. It does not prove
+that no additional connection existed without receiving a frame.
 
 ## Tagged Qt source and what to observe
 

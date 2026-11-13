@@ -61,6 +61,9 @@ def audit_run(result, manifest, trace, trace_digest):
             issues.append("HOST_REQUEST_STAGE_MISSING")
         if trace["source_without_content_pts"]:
             issues.append("HOST_SOURCE_CONTENT_UNVERIFIED")
+        viewers = trace["socket_queued_per_viewer_id"]
+        if len(viewers) != 1 or any(int(viewer) <= 0 for viewer in viewers):
+            issues.append("HOST_ONE_VIEWER_UNVERIFIED")
         interval = trace["intervals"]["submit_to_source_completed"]
         if not interval["n"] or any(trace["negative_host_intervals"].values()):
             issues.append("HOST_STAGE_INTERVAL_INVALID")
@@ -170,10 +173,17 @@ def self_test():
     ]
     records.append({"schema": 3, "type": "frame_step", "pid": 11,
                     "request_id": 0, "step": "qt_activity_hint", "at_ns": 500_000})
+    socket = {"schema": 3, "type": "frame_step", "pid": 11, "request_id": 1,
+              "step": "rfb_socket_queued", "at_ns": 3_500_000, "update_id": 1}
+    records.append(dict(socket, viewer_id=1))
     trace = attribute(records, include_integrity=True)
     run = result, manifest, trace, "c" * 64
     if compare(run, run, "aa")["status"] != "MATCHED_METADATA":
         raise AssertionError("valid pair rejected")
+    for rows in (records[:-1], records + [dict(socket, viewer_id=2)]):
+        other = (result, manifest, attribute(rows, include_integrity=True), "c" * 64)
+        if "HOST_ONE_VIEWER_UNVERIFIED" not in compare(run, other, "aa")["runs"][1]["issues"]:
+            raise AssertionError("Host must record exactly one positive Viewer identity")
     for extra in (
         [{"step": "capture_request", "at_ns": 4_000_000}],
         [{"step": "capture_request", "at_ns": 4_000_000},
