@@ -63,6 +63,14 @@ SDK-owned pixel reference. It MUST clear on the same single zero-viewer edge via
 change. It never pins pixels after the last Viewer leaves; allocator high-water
 is still not an SDK leak. No `malloc_trim`, no board-specific release.
 
+A zero-viewer edge can arrive while a Qt grab is still queued or in flight, so
+clearing alone is insufficient: that late completion must not repopulate the
+cache. The cache latches `idle` on release/stop, refuses to retain ANY candidate
+while idle, and resumes only on a real `requestFrame()` (the next Viewer
+demand). Late completions still publish their own fresh `RemoteFrame`; only the
+cache refill is refused. This is the same deferred-release idea as the GL/D3D11
+`QuickIdleRelease` latch, with no timer, viewer counter or platform branch.
+
 (D) **Success conditions (CPU and latency are one gate).** Host CPU must not
 rise; Viewer freshness must not degrade (reuse only on exact pixel equality);
 no GPU fence wait or Qt render-thread blocking is added (the comparison is a

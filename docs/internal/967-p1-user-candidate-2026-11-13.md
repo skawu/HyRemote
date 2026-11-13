@@ -17,10 +17,10 @@ Content hashes are `git hash-object` blobs of the source files at `SOURCE_SHA`:
 
 | File | Blob |
 | --- | --- |
-| `src/runtime/src/quick/quick_frame_reuse.hpp` | `34ecdb47d94b02359150c0fd0c735be9bca31632` |
-| `src/runtime/src/quick/quick_target.cpp` | `cd184895f2cfddb5c8789aa7648ac9ffa8b7a8cd` |
-| `src/runtime/tests/test_quick_capture.cpp` | `002ab9071d811ba9d5015678b9ddac1df37192d0` |
-| `docs/internal/967-p1-design-freeze-2026-11-13.md` | `8c9b3497e478f77423bebdd62c15e2c9985ec258` |
+| `src/runtime/src/quick/quick_frame_reuse.hpp` | `3bc39c98992d63423276851d6a294d93d6dd2633` |
+| `src/runtime/src/quick/quick_target.cpp` | `88f072b57f4beccc5f309a2bd38c2393d9cabd30` |
+| `src/runtime/tests/test_quick_capture.cpp` | `efec3bdb0b8473bbc751ef76b9d11b0ed535b677` |
+| `docs/internal/967-p1-design-freeze-2026-11-13.md` | `f04e4a21c195d857cfb89f3efe5a00f1051980ea` |
 
 Also required: this candidate package document. `CaptureSource`, `RemoteFrame`,
 `FrameStorage`, `rfb_transport.cpp`, `rfb_delivery_state.hpp`, `rfb_trle.hpp`,

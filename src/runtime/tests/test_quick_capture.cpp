@@ -2415,6 +2415,29 @@ void testQuickFrameReuseIsExactAndIdleSafe()
     afterRelease->mutablePlane(0)[5] = std::byte{0x92};
     CHECK(cache.publish(afterRelease, geometry, 8U) == afterRelease);
 
+    // #967 review P2: a grab already in flight when the last Viewer left must
+    // NOT repopulate the idle cache. Only a real requestFrame() (resume()) may
+    // rebuild it, otherwise ~8 MiB stays pinned until reconnection or stop.
+    const auto anotherLate = quickReusePlane(packed, 0x31);
+    CHECK(anotherLate);
+    if (!anotherLate)
+        return;
+    anotherLate->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(anotherLate, geometry, 8U) == anotherLate);
+    cache.resume();
+    const auto afterResume = quickReusePlane(packed, 0x31);
+    CHECK(afterResume);
+    if (!afterResume)
+        return;
+    afterResume->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(afterResume, geometry, 8U) == afterResume);
+    const auto afterResumeAgain = quickReusePlane(packed, 0x31);
+    CHECK(afterResumeAgain);
+    if (!afterResumeAgain)
+        return;
+    afterResumeAgain->mutablePlane(0)[5] = std::byte{0x92};
+    CHECK(cache.publish(afterResumeAgain, geometry, 8U) == afterResume);
+
     CHECK(!HyRemote::detail::quickFramePixelsEqual(
         *first, *first, quickReuseGeometry(0U)));
     std::cerr << "WIN967_QUICK_FRAME_REUSE=PASS" << std::endl;

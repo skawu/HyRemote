@@ -108,6 +108,13 @@ public:
         std::uint64_t generation)
     {
         std::lock_guard<std::mutex> lock(m_mutex);
+        // #996 / review P2: the single zero-viewer edge may arrive while a Qt
+        // grab is still queued or in flight. That late completion must NOT
+        // repopulate the idle cache and pin another whole frame until a Viewer
+        // reconnects or the source stops. It still publishes its own fresh
+        // RemoteFrame, but ownership of its pixels ends with that frame.
+        if (m_idle)
+            return std::move(candidate);
         if (m_generation == generation && m_previous && candidate
             && quickFrameGeometryEquivalent(m_geometry, geometry)
             && quickFramePixelsEqual(*m_previous, *candidate, geometry)) {
@@ -119,23 +126,42 @@ public:
         return std::move(candidate);
     }
 
-    // CaptureSource::releaseIdleResources() (last Viewer left) and every
-    // start()/stop()/generation boundary. Never retain pixels across them.
+    // start(): a new capture lifetime. The cache is empty and may be filled.
     void reset(std::uint64_t generation) noexcept
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_previous.reset();
         m_geometry = hyremote::FrameGeometry{};
         m_generation = generation;
+        m_idle = false;
     }
 
-    void release() noexcept { reset(0U); }
+    // requestFrame(): a real Viewer demand resumes caching. It deliberately
+    // keeps the previous frame so consecutive static grabs still share pixels.
+    void resume() noexcept
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_idle = false;
+    }
+
+    // CaptureSource::releaseIdleResources() and stop(): drop the SDK-owned
+    // pixels AND stay idle until a new requestFrame(). Late completions are
+    // never allowed to re-pin them. Idempotent for repeated zero-viewer edges.
+    void release() noexcept
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_previous.reset();
+        m_geometry = hyremote::FrameGeometry{};
+        m_generation = 0U;
+        m_idle = true;
+    }
 
 private:
     std::mutex m_mutex;
     std::shared_ptr<const hyremote::FrameStorage> m_previous;
     hyremote::FrameGeometry m_geometry{};
     std::uint64_t m_generation = 0U;
+    bool m_idle = false;
 };
 
 } // namespace HyRemote::detail

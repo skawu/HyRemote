@@ -148,7 +148,7 @@ public:
         std::unique_lock<std::mutex> lock(m_state->mutex);
         m_state->active = false;
         ++m_state->generation;
-        m_state->frameReuse.reset(m_state->generation);
+        m_state->frameReuse.release();
         m_state->pendingRequests.clear();
         m_state->singleFlight.reset();
         m_state->onFrame = {};
@@ -187,6 +187,10 @@ public:
             }
             state->singleFlight.dispatchPosted();
         }
+        // #967 review P2: a real Viewer demand is the only thing that resumes
+        // caching after a zero-viewer edge. Late completions from the previous
+        // grab arrive while the cache stays idle and cannot re-pin pixels.
+        state->frameReuse.resume();
         state->pendingRequests.push_back(request);
         HYREMOTE_P1_COUNT(QuickAcceptedRequests);
         return true;
