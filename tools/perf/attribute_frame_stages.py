@@ -64,7 +64,7 @@ def load_trace(path):
     return records
 
 
-def attribute(records):
+def attribute(records, *, include_integrity=False):
     """Return the extra stage split for one Host process' schema=3 records."""
     requests = collections.defaultdict(lambda: collections.defaultdict(list))
     steps = collections.Counter()
@@ -100,7 +100,10 @@ def attribute(records):
     duplicate_completion = collections.Counter()
     collisions = 0
     missing = collections.Counter()
+    unavailable = 0
     for key, stages in requests.items():
+        if include_integrity and key[1] <= 0:
+            continue  # activity hints are not request identities
         capture = stages.get("capture_request") or []
         if len(capture) != 1:
             collisions += 1
@@ -114,6 +117,8 @@ def attribute(records):
             missing["submit"] += 1
         if not source:
             missing["source_completed"] += 1
+        if include_integrity and source and not source[0].get("content_pts_ns", 0):
+            unavailable += 1
         if submit and source:
             request_to_submit.append((int(submit[0]["at_ns"]) - issued) / 1e6)
             submit_to_source.append(
@@ -136,7 +141,12 @@ def attribute(records):
             forks.append((max(at for _, at in events)
                           - min(at for _, at in events)) / 1e6)
 
-    return {
+    intervals = {
+        "capture_request_to_submit": request_to_submit,
+        "submit_to_source_completed": submit_to_source,
+        "source_completed_to_core_frame_queued": source_to_core,
+    }
+    result = {
         "host_monotonic_only": True,
         "viewer_present": "NOT_MEASURED",
         "qt_activity_hint_is_noncausal": True,
@@ -153,12 +163,14 @@ def attribute(records):
         "socket_queued_per_viewer_id": {
             str(viewer): count for viewer, count in sorted(socket_by_viewer.items())},
         "viewer_socket_fork_ms": describe(forks),
-        "intervals": {
-            "capture_request_to_submit": describe(request_to_submit),
-            "submit_to_source_completed": describe(submit_to_source),
-            "source_completed_to_core_frame_queued": describe(source_to_core),
-        },
+        "intervals": {name: describe(values) for name, values in intervals.items()},
     }
+    if include_integrity:
+        result["source_without_content_pts"] = unavailable
+        result["negative_host_intervals"] = {
+            name: sum(value < 0 for value in values) for name, values in intervals.items()
+        }
+    return result
 
 
 def combine(matrix, out):
