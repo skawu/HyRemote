@@ -46,6 +46,13 @@
 namespace HyRemote::detail {
 namespace {
 
+static_assert(std::numeric_limits<GLsizeiptr>::is_signed
+              && std::numeric_limits<GLsizeiptr>::digits
+                 == std::numeric_limits<std::ptrdiff_t>::digits);
+static_assert(std::numeric_limits<qopengl_GLsizeiptr>::is_signed
+              && std::numeric_limits<qopengl_GLsizeiptr>::digits
+                 == std::numeric_limits<std::ptrdiff_t>::digits);
+
 constexpr GLenum kPackTarget = 0x88EB; // GL_PIXEL_PACK_BUFFER
 constexpr GLenum kPackBinding = 0x88ED; // GL_PIXEL_PACK_BUFFER_BINDING
 constexpr GLenum kReadFramebuffer = 0x8CAA; // GL_READ_FRAMEBUFFER_BINDING
@@ -1503,7 +1510,7 @@ namespace {
 
 // #967 review: GPU-free. The question is not "does a driver map 44 MB" but
 // "does the product admit the geometry of a window a user actually runs".
-// Every value below is derived from a window size and DPR, not invented.
+// The normal cases use window sizes and DPR; the boundary cases use arithmetic only.
 bool mapPolicyAccepts(std::uint32_t width, std::uint32_t height,
                       std::size_t expectedBytes, std::size_t &observed)
 {
@@ -1542,10 +1549,29 @@ QuickGlPboMapPolicyRegression runQuickGlPboMapPolicyRegression()
     out.emptyGeometryRejected =
         zeroWidthRejected && zeroHeightRejected && minimalSurfaceAccepted;
 
+    const bool nativeBoundaryRejected = sizeof(std::ptrdiff_t) == 4
+        ? glPboReadbackBytes(32768u, 16384u) == 0
+            && !glPboReadbackMappable(32768u, 16384u)
+        : glPboReadbackBytes(1u << 31, 1u << 30) == 0
+            && !glPboReadbackMappable(1u << 31, 1u << 30);
+    const bool signed32BoundaryCorrect =
+        glPboReadbackBytes<std::int32_t>(32768u, 16384u) == 0
+        && glPboReadbackBytes<std::int32_t>(1u, (1u << 29) - 1u) == (1u << 31) - 4u;
+    bool signed64SafeGeometryAccepted = true;
+    if constexpr (sizeof(std::ptrdiff_t) == 8) {
+        // 8 * (2^30 - 1) * (2^30 + 1) = 2^63 - 8.
+        std::size_t observed = 0;
+        signed64SafeGeometryAccepted = mapPolicyAccepts(
+            (1u << 31) - 2u, (1u << 30) + 1u,
+            static_cast<std::size_t>((std::uint64_t{1} << 63) - 8u), observed);
+    }
+    const bool signedBoundaryCorrect = nativeBoundaryRejected
+        && signed32BoundaryCorrect && signed64SafeGeometryAccepted;
     out.ok = out.baselineFits && out.highDpiWindowMaps
-        && out.denseHighDpiMaps && out.emptyGeometryRejected;
+        && out.denseHighDpiMaps && out.emptyGeometryRejected && signedBoundaryCorrect;
     if (!out.ok)
-        out.detail = out.baselineFits
+        out.detail = !signedBoundaryCorrect ? "signed-gl-length-boundary-mismatch"
+            : out.baselineFits
             ? "high-dpi-frame-geometry-is-not-mappable"
             : "baseline-geometry-regressed";
     return out;
