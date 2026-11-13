@@ -36,7 +36,17 @@ public:
     // the 100ms baseline; remote input and new viewers reset idle immediately.
     // Keep this private to the shared Runtime; active frames retain 60fps.
     static constexpr auto kStaticProbeInterval = std::chrono::milliseconds(250);
-    static constexpr std::size_t kConsecutiveUnchangedFrames = 3;
+    // One unchanged worker comparison is enough to leave the 60fps burst and
+    // return to the bounded 250ms probe. The archived fixed-SHA 4eb45ec traces
+    // show why the previous burst of three extra grabs was pure duplicate
+    // work: every 1-Viewer unchanged run lasted 5-7 frames (121 runs, 708
+    // unchanged grabs out of 935 requests = 26% of all captures), and the
+    // 2-Viewer trace had only 3 short runs out of 821 comparisons (~0.4%).
+    // A changed frame is always captured anyway; shortening the burst only
+    // moves the earliest possible re-probe inside one already-static period,
+    // so the 250ms worst-case discovery delay is unchanged. The 250ms probe
+    // value itself keeps its #789 A/B/A evidence and is deliberately untouched.
+    static constexpr std::size_t kConsecutiveUnchangedFrames = 1;
 
 #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
     // Test-only concurrency seam; never defined in the shipped Runtime. The
