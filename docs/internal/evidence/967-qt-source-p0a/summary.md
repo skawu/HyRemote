@@ -120,11 +120,13 @@ about 4.5 hours, so these are different desktop sessions.
 
 ## Conclusion and gate for P0-B
 
-The archives **locate** the remaining P95 cost: a common three-arm Host
-regression in the Qt render-thread chain (GPU-to-CPU completion, request
-admission) plus a stable ~54 ms `marker→swap` phase shift and higher public-arm
-CPU. Because the public arms regress equally, this is not evidence of a GL-route
-product regression.
+The archives **localize** a common three-arm slowdown around Host capture
+completion and Qt frame-scheduling observations, alongside a ~54 ms
+`marker→swap` phase shift and higher public-arm CPU. Since both public arms
+also slowed, the observations do not isolate a GL-specific regression; they
+do **not** prove the absence of a GL-specific cost or another product regression.
+The Host stage markers do not separately time Qt render-thread work,
+GPU completion or physical presentation.
 
 The archives **cannot establish the cause**. Same script, same explicit QSG
 environment, same reported loop/RHI/vsync; different desktop session, one new
