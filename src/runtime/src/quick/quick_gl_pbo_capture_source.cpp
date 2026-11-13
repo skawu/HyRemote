@@ -1039,6 +1039,17 @@ private:
         if (result.pixels) {
             if (beforeCpuAdoption)
                 beforeCpuAdoption(s);
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+            // #967: the worker fence has retired and the PBO is mapped; the
+            // CPU row-normalization has not started yet. Emitted on the GL
+            // worker thread with the same steady_clock domain as the GUI and
+            // render-thread records.
+            {
+                std::lock_guard<std::mutex> guard(s->mutex);
+                for (const auto &request : s->converting)
+                    HYREMOTE_P1_TRACE_REQUEST(GpuReadbackReady, request);
+            }
+#endif
             finishCpuConversion(s, result.job.generation, result.job.contextEpoch,
                                 result.pixels, result.job.width, result.job.height,
                                 result.job.dpr, result.job.renderTime);
