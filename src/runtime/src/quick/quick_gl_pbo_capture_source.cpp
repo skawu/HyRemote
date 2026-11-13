@@ -257,14 +257,21 @@ private:
         const bool mappable =
             glPboReadbackMappable(readbackWidth, readbackHeight);
         std::shared_ptr<std::byte> owned;
-        bool mappedOk = false;
-        if (mappable) {
+        // #967 review: name the actual failure. One opaque "could not map"
+        // reason used to hide a geometry-admission defect, a driver map
+        // failure and a CPU allocation failure behind the same string.
+        const char *mapFailure = nullptr;
+        if (!mappable) {
+            mapFailure = "GL capture geometry cannot become an owned CPU frame";
+        } else {
             GLint oldPack = 0;
             gl->glGetIntegerv(kPackBinding, &oldPack);
             gl->glBindBuffer(kPackTarget, job.pbo);
             auto *mapped = static_cast<const std::byte *>(
                 gl->glMapBufferRange(kPackTarget, 0, GLsizeiptr(bytes), kMapRead));
-            if (mapped) {
+            if (!mapped) {
+                mapFailure = "GL PBO map returned no CPU address";
+            } else {
                 try {
                     owned = std::shared_ptr<std::byte>(
                         new (std::nothrow) std::byte[bytes],
@@ -272,17 +279,21 @@ private:
                 } catch (...) {
                     owned.reset();
                 }
-                if (owned)
+                if (!owned)
+                    mapFailure = "GL PBO CPU frame allocation failed";
+                else
                     std::memcpy(owned.get(), mapped, bytes);
-                mappedOk = gl->glUnmapBuffer(kPackTarget) && owned != nullptr;
+                if (!gl->glUnmapBuffer(kPackTarget) && mapFailure == nullptr)
+                    mapFailure = "GL PBO unmap failed";
             }
             gl->glBindBuffer(kPackTarget, GLuint(oldPack));
         }
         if (job.fence)
             gl->glDeleteSync(job.fence);
         job.fence = nullptr;
+        const bool mappedOk = owned != nullptr && mapFailure == nullptr;
         deliver(GlRetireResult{std::move(job), mappedOk ? std::move(owned) : nullptr,
-                               mappedOk ? nullptr : "GL PBO could not map owned CPU frame"});
+                               mapFailure});
     }
 
     void failQueued(const char *reason)
@@ -1211,15 +1222,16 @@ private:
                     const qreal dpr = captureWindowDpr(window);
                     const int w = qRound(window->width()*dpr);
                     const int h = qRound(window->height()*dpr);
-                    // #967 review: share the geometry arithmetic with the
-                    // retire worker instead of repeating an overflow test that
-                    // can drift from the mapping decision.
+                    // #967 review: submit only the geometries the retire
+                    // worker can map. A submit/map disagreement would turn a
+                    // successful GPU capture into a false readback failure.
+                    const std::uint32_t pixelWidth = w > 0
+                        ? static_cast<std::uint32_t>(w) : 0u;
+                    const std::uint32_t pixelHeight = h > 0
+                        ? static_cast<std::uint32_t>(h) : 0u;
                     const std::size_t wantedBytes =
-                        (w > 0 && h > 0)
-                        ? glPboReadbackBytes(static_cast<std::uint32_t>(w),
-                                             static_cast<std::uint32_t>(h))
-                        : 0u;
-                    if (wantedBytes > 0) {
+                        glPboReadbackBytes(pixelWidth, pixelHeight);
+                    if (glPboReadbackMappable(pixelWidth, pixelHeight)) {
                         gl->glBindBuffer(kPackTarget, s->pbo);
                         // A completed GPU fence and unmapped buffer permit
                         // safe reuse. Only allocate on growth or major

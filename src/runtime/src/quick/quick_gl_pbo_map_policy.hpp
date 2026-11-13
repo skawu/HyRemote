@@ -16,17 +16,6 @@
 
 namespace HyRemote::detail {
 
-// Fixed byte ceiling that the retire worker applied before mapping.
-//
-// #967 review: this is NOT a product limit. A 3440x1440 window at 150% DPR is
-// 5160x2160 pixels (44_582_400 bytes) and a 3840x2160 window at 200% is
-// 7680x4320 (132_710_400 bytes); both are ordinary Windows high-DPI surfaces.
-// The peer D3D11 staging route copies the same frame sizes with no byte cap, so
-// the ceiling never expressed a resource policy - only an untested
-// assumption that measurements would stay at 1920x1080 (8_294_400 bytes).
-inline constexpr std::size_t glPboReadbackByteLimit =
-    40u * 1024u * 1024u;
-
 // Bytes of one top-down RGBA8 readback, or 0 when the geometry cannot be
 // expressed as a CPU frame. Overflow is checked before it can wrap; nothing
 // here consults a GPU/OS/chipset name.
@@ -47,11 +36,20 @@ inline std::size_t glPboReadbackBytes(std::uint32_t width,
 // True when the retire worker can turn a captured frame of this geometry into
 // an owned CPU frame. The submit path uses the same predicate, so "accepted for
 // readback" and "mappable" cannot diverge again.
+//
+// #967 review: there is deliberately NO byte ceiling here. A predecessor
+// version refused anything above 40 MiB, which is not a product limit:
+//  * 1920x1080      =   8_294_400 bytes  (the only #962/#987 fixed-SHA cells)
+//  * 3440x1440@150% =  44_582_400 bytes  (5160x2160)
+//  * 3840x2160@200% = 132_710_400 bytes  (7680x4320)
+// The peer D3D11 staging route copies those same frame sizes without a cap, and
+// the PBO itself is already sized from this geometry, so the ceiling expressed
+// only an untested assumption about window size. A genuine allocation failure
+// is reported by the mapping step instead of being pre-judged here.
 inline bool glPboReadbackMappable(std::uint32_t width,
                                  std::uint32_t height) noexcept
 {
-    const std::size_t bytes = glPboReadbackBytes(width, height);
-    return bytes > 0 && bytes <= glPboReadbackByteLimit;
+    return glPboReadbackBytes(width, height) > 0;
 }
 
 } // namespace HyRemote::detail
