@@ -2071,6 +2071,30 @@ void testQuickGlPboFallbackPolicy()
                   << " oneArmPerRender=1 armReleasedByRender=1" << std::endl;
 }
 
+// #967 review: the GL/PBO readback must accept every geometry a real window
+// can have. The 40 MiB ceiling that submit never checked made a 3440x1440
+// window at 150% DPR (44_582_400 bytes) and any 4K-at-200% surface fail every
+// frame with a readback error. Needs no GPU window.
+void testQuickGlPboMapPolicy()
+{
+    const auto result = HyRemote::detail::runQuickGlPboMapPolicyRegression();
+    CHECK(result.ran);
+    CHECK(result.baselineFits);
+    CHECK(result.highDpiWindowMaps);
+    CHECK(result.denseHighDpiMaps);
+    CHECK(result.emptyGeometryRejected);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_MAP_POLICY=FAIL detail=" << result.detail
+                  << " baseline=" << result.baselineBytes
+                  << " highDpi=" << result.highDpiBytes
+                  << " dense=" << result.denseHighDpiBytes << std::endl;
+    else
+        std::cerr << "WIN967_MAP_POLICY=PASS baseline=" << result.baselineBytes
+                  << " highDpi=" << result.highDpiBytes
+                  << " dense=" << result.denseHighDpiBytes << std::endl;
+}
+
 // #962 review B2: the real public Qt signal (not a manually flipped flag)
 // must revoke an admitted GlPbo request exactly once and leave the source
 // stoppable without a render frame.
@@ -2178,6 +2202,7 @@ int main(int argc, char **argv)
     if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
         testQuickGlPboSessionReuseAndInvalidationRecovery(true);
         testQuickGlPboFallbackPolicy();
+        testQuickGlPboMapPolicy();
         testQuickGlPboRealSceneGraphInvalidationSignal(true);
         testQuickGlPboStopIsBounded(true);
         testQuickGlPboStopFromNonGuiThread(true);
@@ -2191,6 +2216,7 @@ int main(int argc, char **argv)
 #if defined(HYREMOTE_TEST_QUICK_GL_PBO)
     testQuickGlPboSessionReuseAndInvalidationRecovery(false);
     testQuickGlPboFallbackPolicy();
+    testQuickGlPboMapPolicy();
     testQuickGlPboRealSceneGraphInvalidationSignal(false);
     testQuickGlPboStopIsBounded(false);
     testQuickGlPboStopFromNonGuiThread(false);

@@ -3,6 +3,7 @@
 // NOT RELEASE QUALIFIED. Reads only a non-multisampled default framebuffer
 // before swap; other window targets retain the public Qt fallback.
 #include "quick/quick_gl_pbo_capture_source.hpp"
+#include "quick/quick_gl_pbo_map_policy.hpp"
 #include "quick/quick_readback_timing.hpp"
 #include "quick/quick_readback_batch.hpp"
 
@@ -244,11 +245,20 @@ private:
                                    "GL PBO fence remained unsignaled"});
             return;
         }
+        // #967 review: the SAME geometry predicate the render callback used to
+        // admit and size this readback. One rule, so submit and map cannot
+        // disagree about which frames are deliverable.
+        const std::uint32_t readbackWidth =
+            job.width > 0 ? static_cast<std::uint32_t>(job.width) : 0u;
+        const std::uint32_t readbackHeight =
+            job.height > 0 ? static_cast<std::uint32_t>(job.height) : 0u;
         const std::size_t bytes =
-            std::size_t(job.width) * std::size_t(job.height) * 4u;
+            glPboReadbackBytes(readbackWidth, readbackHeight);
+        const bool mappable =
+            glPboReadbackMappable(readbackWidth, readbackHeight);
         std::shared_ptr<std::byte> owned;
         bool mappedOk = false;
-        if (bytes > 0 && bytes <= 40u * 1024u * 1024u) {
+        if (mappable) {
             GLint oldPack = 0;
             gl->glGetIntegerv(kPackBinding, &oldPack);
             gl->glBindBuffer(kPackTarget, job.pbo);
@@ -1201,10 +1211,15 @@ private:
                     const qreal dpr = captureWindowDpr(window);
                     const int w = qRound(window->width()*dpr);
                     const int h = qRound(window->height()*dpr);
-                    if (w>0 && h>0 && std::size_t(w) <=
-                        std::numeric_limits<std::size_t>::max() / (4u*std::size_t(h))) {
-                        const auto wantedBytes =
-                            std::size_t(w) * std::size_t(h) * 4u;
+                    // #967 review: share the geometry arithmetic with the
+                    // retire worker instead of repeating an overflow test that
+                    // can drift from the mapping decision.
+                    const std::size_t wantedBytes =
+                        (w > 0 && h > 0)
+                        ? glPboReadbackBytes(static_cast<std::uint32_t>(w),
+                                             static_cast<std::uint32_t>(h))
+                        : 0u;
+                    if (wantedBytes > 0) {
                         gl->glBindBuffer(kPackTarget, s->pbo);
                         // A completed GPU fence and unmapped buffer permit
                         // safe reuse. Only allocate on growth or major
@@ -1470,6 +1485,58 @@ bool runQuickGlPboBatchOwnershipRegression()
 QuickGlPboFallbackPolicyRegression runQuickGlPboFallbackPolicyRegression()
 {
     return GlPboCaptureSource::fallbackPolicyRegression();
+}
+
+namespace {
+
+// #967 review: GPU-free. The question is not "does a driver map 44 MB" but
+// "does the product admit the geometry of a window a user actually runs".
+// Every value below is derived from a window size and DPR, not invented.
+bool mapPolicyAccepts(std::uint32_t width, std::uint32_t height,
+                      std::size_t expectedBytes, std::size_t &observed)
+{
+    observed = glPboReadbackBytes(width, height);
+    return glPboReadbackMappable(width, height) && observed == expectedBytes;
+}
+
+} // namespace
+
+QuickGlPboMapPolicyRegression runQuickGlPboMapPolicyRegression()
+{
+    QuickGlPboMapPolicyRegression out;
+    out.ran = true;
+
+    // 1920x1080 @100%: the only geometry the #962/#987 fixed-SHA cells used.
+    // 1920 * 1080 * 4 = 8_294_400 bytes.
+    out.baselineFits = mapPolicyAccepts(1920, 1080, 8'294'400u,
+                                        out.baselineBytes);
+
+    // 3440x1440 @150%: 5160 x 2160 * 4 = 44_582_400 bytes.
+    out.highDpiWindowMaps = mapPolicyAccepts(5160, 2160, 44'582'400u,
+                                             out.highDpiBytes);
+
+    // 3840x2160 @200%: 7680 x 4320 * 4 = 132_710_400 bytes.
+    out.denseHighDpiMaps = mapPolicyAccepts(7680, 4320, 132'710'400u,
+                                            out.denseHighDpiBytes);
+
+    // Negative controls: an empty geometry can never become an owned frame,
+    // and the smallest valid surface still can.
+    const bool zeroWidthRejected =
+        glPboReadbackBytes(0, 1080) == 0 && !glPboReadbackMappable(0, 1080);
+    const bool zeroHeightRejected =
+        glPboReadbackBytes(1080, 0) == 0 && !glPboReadbackMappable(1080, 0);
+    const bool minimalSurfaceAccepted =
+        glPboReadbackBytes(1, 1) == 4u && glPboReadbackMappable(1, 1);
+    out.emptyGeometryRejected =
+        zeroWidthRejected && zeroHeightRejected && minimalSurfaceAccepted;
+
+    out.ok = out.baselineFits && out.highDpiWindowMaps
+        && out.denseHighDpiMaps && out.emptyGeometryRejected;
+    if (!out.ok)
+        out.detail = out.baselineFits
+            ? "high-dpi-frame-geometry-is-not-mappable"
+            : "baseline-geometry-regressed";
+    return out;
 }
 
 QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)
