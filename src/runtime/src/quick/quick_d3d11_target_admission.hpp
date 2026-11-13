@@ -57,20 +57,38 @@ struct QuickD3d11SurfaceAdmission {
 inline QuickD3d11SurfaceAdmission
 evaluateQuickD3d11Surface(const QuickD3d11SurfaceFacts &facts) noexcept
 {
-    // Faithful extraction of the single boolean the provider used inline:
-    // either the render pass is capturable, or the request keeps waiting for
-    // the 750 ms deadline. No verdict and no reason exist yet.
-    const bool capturable = facts.direct3d11Api
-        && facts.hasDeviceContext && facts.hasRenderTarget && facts.hasTexture
-        && facts.sampleCount == 1 && facts.arraySize == 1 && facts.mipLevels == 1
-        && facts.formatIsBgraOrRgba && facts.expectedWidth > 0
-        && facts.expectedHeight > 0
-        && facts.textureWidth == static_cast<std::uint32_t>(facts.expectedWidth)
-        && facts.textureHeight == static_cast<std::uint32_t>(facts.expectedHeight);
-    if (capturable)
-        return {QuickD3d11SurfaceVerdict::Admitted, nullptr};
-    return {QuickD3d11SurfaceVerdict::Transient,
-            "D3D11 render target is not capturable this frame"};
+    // The RHI identity cannot change by waiting for another Qt frame.
+    if (!facts.direct3d11Api)
+        return {QuickD3d11SurfaceVerdict::Unsupported,
+                "Qt render pass is not the Direct3D11 graphics API"};
+    // Qt-owned resources can be absent during adoption/teardown. Waiting stays
+    // bounded by the 750 ms request deadline, and NO Viewer-visible failure is
+    // reported for a state that the next frame may resolve.
+    if (!facts.hasDeviceContext)
+        return {QuickD3d11SurfaceVerdict::Transient,
+                "Qt D3D11 device context is not available yet"};
+    if (!facts.hasRenderTarget || !facts.hasTexture)
+        return {QuickD3d11SurfaceVerdict::Transient,
+                "Qt render pass has no render target yet"};
+    // Persistent properties of the surface: only a Qt scene-graph rebuild can
+    // change them, so a capability failure is the honest verdict.
+    if (facts.sampleCount != 1)
+        return {QuickD3d11SurfaceVerdict::Unsupported,
+                "multisampled D3D11 render target"};
+    if (facts.arraySize != 1 || facts.mipLevels != 1)
+        return {QuickD3d11SurfaceVerdict::Unsupported,
+                "D3D11 render target is not a single-level 2D surface"};
+    if (!facts.formatIsBgraOrRgba)
+        return {QuickD3d11SurfaceVerdict::Unsupported,
+                "unsupported D3D11 render target format"};
+    // Geometry is re-validated against window x DPR at delivery as well; a
+    // resize can expose the previous texture description for one frame.
+    if (facts.expectedWidth <= 0 || facts.expectedHeight <= 0
+        || facts.textureWidth != static_cast<std::uint32_t>(facts.expectedWidth)
+        || facts.textureHeight != static_cast<std::uint32_t>(facts.expectedHeight))
+        return {QuickD3d11SurfaceVerdict::Transient,
+                "D3D11 render target size does not match window x DPR"};
+    return {QuickD3d11SurfaceVerdict::Admitted, nullptr};
 }
 
 // Moves every identity the provider has already accepted into `revoked`, so one

@@ -544,55 +544,79 @@ private:
         RenderDrain drain(*s);
         if (!drain.admitted)
             return;
-        QuickD3d11SurfaceFacts facts;
-        ComPtr<ID3D11Texture2D> texture;
-        std::lock_guard<std::mutex> lock(s->mutex);
-        if (!s->active || s->queued.empty() || s->staging
-            || s->cpuConversionPending)
-            return;
+        std::uint64_t generation = 0;
+        std::vector<hyremote::CaptureRequest> unsupported;
+        const char *unsupportedReason = nullptr;
+        {
+            QuickD3d11SurfaceFacts facts;
+            ComPtr<ID3D11Texture2D> texture;
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (!s->active || s->queued.empty() || s->staging
+                || s->cpuConversionPending)
+                return;
 
-        auto *iface = window->rendererInterface();
-        facts.direct3d11Api = iface
-            && iface->graphicsApi() == QSGRendererInterface::Direct3D11;
-        const qreal dpr = window->effectiveDevicePixelRatio();
-        facts.expectedWidth = qRound(window->width() * dpr);
-        facts.expectedHeight = qRound(window->height() * dpr);
-        if (facts.direct3d11Api) {
-            NativeCommandsScope native(window);
-            auto *context = static_cast<ID3D11DeviceContext *>(
-                iface->getResource(window, QSGRendererInterface::DeviceContextResource));
-            facts.hasDeviceContext = context != nullptr;
-            if (context) {
-                ComPtr<ID3D11RenderTargetView> view;
-                context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
-                facts.hasRenderTarget = view != nullptr;
-                if (view) {
-                    ComPtr<ID3D11Resource> resource;
-                    view->GetResource(resource.GetAddressOf());
-                    facts.hasTexture = resource && SUCCEEDED(resource.As(&texture))
-                        && texture != nullptr;
-                    if (facts.hasTexture) {
-                        D3D11_TEXTURE2D_DESC desc{};
-                        texture->GetDesc(&desc);
-                        facts.textureWidth = desc.Width;
-                        facts.textureHeight = desc.Height;
-                        facts.arraySize = desc.ArraySize;
-                        facts.mipLevels = desc.MipLevels;
-                        facts.sampleCount = desc.SampleDesc.Count;
-                        facts.formatIsBgraOrRgba =
-                            isBgra(desc.Format) || isRgba(desc.Format);
+            auto *iface = window->rendererInterface();
+            facts.direct3d11Api = iface
+                && iface->graphicsApi() == QSGRendererInterface::Direct3D11;
+            const qreal dpr = window->effectiveDevicePixelRatio();
+            facts.expectedWidth = qRound(window->width() * dpr);
+            facts.expectedHeight = qRound(window->height() * dpr);
+            if (facts.direct3d11Api) {
+                NativeCommandsScope native(window);
+                auto *context = static_cast<ID3D11DeviceContext *>(
+                    iface->getResource(window, QSGRendererInterface::DeviceContextResource));
+                facts.hasDeviceContext = context != nullptr;
+                if (context) {
+                    ComPtr<ID3D11RenderTargetView> view;
+                    context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
+                    facts.hasRenderTarget = view != nullptr;
+                    if (view) {
+                        ComPtr<ID3D11Resource> resource;
+                        view->GetResource(resource.GetAddressOf());
+                        facts.hasTexture = resource && SUCCEEDED(resource.As(&texture))
+                            && texture != nullptr;
+                        if (facts.hasTexture) {
+                            D3D11_TEXTURE2D_DESC desc{};
+                            texture->GetDesc(&desc);
+                            facts.textureWidth = desc.Width;
+                            facts.textureHeight = desc.Height;
+                            facts.arraySize = desc.ArraySize;
+                            facts.mipLevels = desc.MipLevels;
+                            facts.sampleCount = desc.SampleDesc.Count;
+                            facts.formatIsBgraOrRgba =
+                                isBgra(desc.Format) || isRgba(desc.Format);
+                        }
                     }
                 }
             }
+            // #967 A2: one rule decides whether this render pass is a capture
+            // candidate. The verdict is defined in
+            // quick_d3d11_target_admission.hpp so a GPU-free regression can pin
+            // it on every Kit.
+            const auto admission = evaluateQuickD3d11Surface(facts);
+            if (admission.verdict == QuickD3d11SurfaceVerdict::Admitted) {
+                s->capturedTarget = std::move(texture);
+                s->capturedPts = hyremote::Clock::now();
+                return;
+            }
+            if (admission.verdict != QuickD3d11SurfaceVerdict::Unsupported)
+                return; // a later Qt frame may legitimately become capturable
+            // A permanent capability mismatch can never be served by waiting:
+            // the request deadline is 750 ms and the adaptive wrapper needs two
+            // whole failure episodes before it falls back to the public route.
+            // Retire every accepted identity exactly once, say why, and let the
+            // existing controlled fallback policy decide the route.
+            generation = s->generation;
+            unsupportedReason = admission.reason;
+            collectUnsupportedRequests(s->queued, s->submitted, s->converting,
+                                       unsupported);
+            releaseNative(*s);
         }
-        // #967 A2: one rule decides whether this render pass is a capture
-        // candidate. The verdict is defined in quick_d3d11_target_admission.hpp
-        // so a GPU-free regression can pin it on every Kit.
-        const auto admission = evaluateQuickD3d11Surface(facts);
-        if (admission.verdict != QuickD3d11SurfaceVerdict::Admitted)
-            return;
-        s->capturedTarget = std::move(texture);
-        s->capturedPts = hyremote::Clock::now();
+        // deliver() takes the state lock and posts to the GUI dispatcher, so it
+        // is never called while holding the mutex.
+        if (!unsupported.empty())
+            deliver(s, generation, std::move(unsupported), {}, 0, 0, 1.f, {},
+                    unsupportedReason);
     }
 
     static void finishCpu(const std::shared_ptr<State> &s,
@@ -672,7 +696,11 @@ private:
             auto *context = static_cast<ID3D11DeviceContext *>(
                 iface->getResource(window, QSGRendererInterface::DeviceContextResource));
             if (!device || !context)
-                return; // the 750ms deadline terminates admitted requests
+                // #967 A2: missing Qt-owned device objects are a TRANSIENT
+                // state by rule (quick_d3d11_target_admission.hpp), so this
+                // path keeps waiting instead of reporting a capability
+                // failure; the 750 ms request deadline remains the backstop.
+                return;
 
             if (s->staging) {
                 if (s->stagingDevice.Get() != device) {
