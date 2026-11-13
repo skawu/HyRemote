@@ -39,6 +39,7 @@
 
 #include "detail/perf_probe.hpp"
 #include "detail/readback_frame_storage.hpp"
+#include "quick/quick_d3d11_target_admission.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
@@ -543,39 +544,52 @@ private:
         RenderDrain drain(*s);
         if (!drain.admitted)
             return;
+        QuickD3d11SurfaceFacts facts;
+        ComPtr<ID3D11Texture2D> texture;
         std::lock_guard<std::mutex> lock(s->mutex);
         if (!s->active || s->queued.empty() || s->staging
-            || s->cpuConversionPending || !window->rendererInterface()
-            || window->rendererInterface()->graphicsApi()
-                != QSGRendererInterface::Direct3D11)
+            || s->cpuConversionPending)
             return;
 
         auto *iface = window->rendererInterface();
-        NativeCommandsScope native(window);
-        auto *context = static_cast<ID3D11DeviceContext *>(
-            iface->getResource(window, QSGRendererInterface::DeviceContextResource));
-        if (!context)
-            return;
-        ComPtr<ID3D11RenderTargetView> view;
-        context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
-        if (!view)
-            return;
-        ComPtr<ID3D11Resource> resource;
-        view->GetResource(resource.GetAddressOf());
-        ComPtr<ID3D11Texture2D> texture;
-        if (!resource || FAILED(resource.As(&texture)) || !texture)
-            return;
-        D3D11_TEXTURE2D_DESC desc{};
-        texture->GetDesc(&desc);
+        facts.direct3d11Api = iface
+            && iface->graphicsApi() == QSGRendererInterface::Direct3D11;
         const qreal dpr = window->effectiveDevicePixelRatio();
-        const int w = qRound(window->width() * dpr);
-        const int h = qRound(window->height() * dpr);
-        if (w <= 0 || h <= 0
-            || desc.Width != static_cast<UINT>(w)
-            || desc.Height != static_cast<UINT>(h)
-            || desc.ArraySize != 1 || desc.MipLevels != 1
-            || desc.SampleDesc.Count != 1
-            || (!isBgra(desc.Format) && !isRgba(desc.Format)))
+        facts.expectedWidth = qRound(window->width() * dpr);
+        facts.expectedHeight = qRound(window->height() * dpr);
+        if (facts.direct3d11Api) {
+            NativeCommandsScope native(window);
+            auto *context = static_cast<ID3D11DeviceContext *>(
+                iface->getResource(window, QSGRendererInterface::DeviceContextResource));
+            facts.hasDeviceContext = context != nullptr;
+            if (context) {
+                ComPtr<ID3D11RenderTargetView> view;
+                context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
+                facts.hasRenderTarget = view != nullptr;
+                if (view) {
+                    ComPtr<ID3D11Resource> resource;
+                    view->GetResource(resource.GetAddressOf());
+                    facts.hasTexture = resource && SUCCEEDED(resource.As(&texture))
+                        && texture != nullptr;
+                    if (facts.hasTexture) {
+                        D3D11_TEXTURE2D_DESC desc{};
+                        texture->GetDesc(&desc);
+                        facts.textureWidth = desc.Width;
+                        facts.textureHeight = desc.Height;
+                        facts.arraySize = desc.ArraySize;
+                        facts.mipLevels = desc.MipLevels;
+                        facts.sampleCount = desc.SampleDesc.Count;
+                        facts.formatIsBgraOrRgba =
+                            isBgra(desc.Format) || isRgba(desc.Format);
+                    }
+                }
+            }
+        }
+        // #967 A2: one rule decides whether this render pass is a capture
+        // candidate. The verdict is defined in quick_d3d11_target_admission.hpp
+        // so a GPU-free regression can pin it on every Kit.
+        const auto admission = evaluateQuickD3d11Surface(facts);
+        if (admission.verdict != QuickD3d11SurfaceVerdict::Admitted)
             return;
         s->capturedTarget = std::move(texture);
         s->capturedPts = hyremote::Clock::now();
