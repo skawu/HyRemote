@@ -91,7 +91,16 @@ byte-identical for equal pixels, and unchanged for changed pixels.
 
 Existing CTest assertions (equal pixels reuse / one-byte change does not reuse /
 geometry change does not reuse / padded stride / 0V release / generation),
-one canonical `build.cmd test`, exact-head PR CI on the existing Qt6/Qt5 lanes,
+one canonical `build.cmd test`, exact-head PR CI on the existing Qt6/Qt5 lanes.
+
+The pre-existing deferred-request test used `frames[0].storage != frames[1].storage`
+as an implementation proxy for "one owner per GUI batch". This increment
+deliberately changes that implementation detail, so the proxy is replaced by
+the actual product contract checks that remain: distinct request IDs / request
+times, the mandatory updated B-page pixel, and equal geometry whenever a
+storage is shared, plus the new regression that ANY changed visible byte must
+get a new owner. No threshold, timing tolerance or performance number is
+relaxed; the old pixel/freshness assertions are untouched.
 and source review of the unchanged H2/Raw/TRLE path. No 9x120s matrix, no new
 synthetic suite, no temporary probe program. Falsifiers: a byte change that is
 not delivered, a decorated frame that loses its watermark, or a 0-viewer cache

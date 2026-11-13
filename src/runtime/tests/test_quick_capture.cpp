@@ -1197,7 +1197,19 @@ void testQuickDeferredRequestsKeepOrderAndFreshPixels()
         CHECK(frames[1].timing.requestTime
               && *frames[1].timing.requestTime == secondTime);
         CHECK(frames[0].storage && frames[1].storage);
-        CHECK(frames[0].storage != frames[1].storage);
+        // #967 P1: two byte-identical Qt grabs may now share ONE immutable
+        // owner. "A deferred request is never satisfied by replaying the
+        // previous grab" remains enforced by the distinct request IDs and
+        // request times above and by the mandatory B-page pixel below;
+        // testQuickFrameReuseIsExactAndIdleSafe() proves that ANY changed
+        // visible byte must get a new owner. Storage pointer inequality was
+        // only a proxy for the old "one owner per GUI batch" implementation,
+        // not a product contract. Sharing is legal only under equal geometry.
+        if (frames[0].storage == frames[1].storage) {
+            CHECK(HyRemote::detail::quickFrameGeometryEquivalent(
+                frames[0].geometry, frames[1].geometry));
+        }
+        CHECK(frames[0].timing.completionTime && frames[1].timing.completionTime);
         const auto leftRgb = [](const hyremote::RemoteFrame &frame) {
             if (!frame.storage)
                 return std::uint32_t(0);

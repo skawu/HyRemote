@@ -19,8 +19,8 @@ Content hashes are `git hash-object` blobs of the source files at `SOURCE_SHA`:
 | --- | --- |
 | `src/runtime/src/quick/quick_frame_reuse.hpp` | `34ecdb47d94b02359150c0fd0c735be9bca31632` |
 | `src/runtime/src/quick/quick_target.cpp` | `cd184895f2cfddb5c8789aa7648ac9ffa8b7a8cd` |
-| `src/runtime/tests/test_quick_capture.cpp` | `99c1d122f6b41c1bb7476c4df27595dadc6ba38d` |
-| `docs/internal/967-p1-design-freeze-2026-11-13.md` | `46dbe0db6f643bbdae8a6696914050e8e58bfe84` |
+| `src/runtime/tests/test_quick_capture.cpp` | `002ab9071d811ba9d5015678b9ddac1df37192d0` |
+| `docs/internal/967-p1-design-freeze-2026-11-13.md` | `8c9b3497e478f77423bebdd62c15e2c9985ec258` |
 
 Also required: this candidate package document. `CaptureSource`, `RemoteFrame`,
 `FrameStorage`, `rfb_transport.cpp`, `rfb_delivery_state.hpp`, `rfb_trle.hpp`,
