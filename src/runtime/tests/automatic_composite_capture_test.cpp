@@ -5,6 +5,7 @@
 #include <QEventLoop>
 #include <QImage>
 
+#include <atomic>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -21,9 +22,10 @@ class SolidCapture final : public hyremote::CaptureSource
 {
 public:
     explicit SolidCapture(QRgb color, int pixelWidth = 2, int pixelHeight = 2, float dpr = 1.0F,
-                          std::shared_ptr<const hyremote::FrameStorage> *observedStorage = nullptr)
+                          std::shared_ptr<const hyremote::FrameStorage> *observedStorage = nullptr,
+                          std::shared_ptr<std::atomic<int>> releaseCounter = nullptr)
         : m_color(color), m_pixelWidth(pixelWidth), m_pixelHeight(pixelHeight), m_dpr(dpr),
-          m_observedStorage(observedStorage)
+          m_observedStorage(observedStorage), m_releaseCounter(std::move(releaseCounter))
     {
     }
 
@@ -43,6 +45,14 @@ public:
     }
 
     void stop() noexcept override { m_onFrame = {}; }
+
+    // #790: a child source is the real owner of grab pixels; the composite must
+    // forward the zero-viewer release to it.
+    void releaseIdleResources() noexcept override
+    {
+        if (m_releaseCounter)
+            ++*m_releaseCounter;
+    }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
@@ -93,6 +103,7 @@ private:
     int m_pixelHeight;
     float m_dpr;
     std::shared_ptr<const hyremote::FrameStorage> *m_observedStorage = nullptr;
+    std::shared_ptr<std::atomic<int>> m_releaseCounter;
     hyremote::FrameReadyHandler m_onFrame;
 };
 
@@ -246,6 +257,7 @@ int main(int argc, char **argv)
     composite.upsertSurface(1, &leftTarget, QRect(-2, 0, 2, 2), true);
     composite.upsertSurface(2, &rightTarget, QRect(0, 0, 2, 2), true);
 
+    const auto childReleases = std::make_shared<std::atomic<int>>(0);
     const HyRemote::detail::BuiltinTargetResolver resolver =
         [&](QObject *target, bool remoteInputEnabled) {
             HyRemote::detail::TargetComponents result;
@@ -255,10 +267,13 @@ int main(int argc, char **argv)
                 result.supported = true;
                 // High-DPI child: four physical pixels per logical two-unit surface.
                 result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255),
-                                                                 4, 4, 2.0F);
+                                                                 4, 4, 2.0F, nullptr,
+                                                                 childReleases);
             } else if (target == &rightTarget) {
                 result.supported = true;
-                result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255));
+                result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255),
+                                                                 2, 2, 1.0F, nullptr,
+                                                                 childReleases);
             }
             return result;
         };
@@ -291,6 +306,22 @@ int main(int argc, char **argv)
         || !check(image.pixelColor(3, 0) == QColor(0, 255, 0, 255), "right surface is composed")) {
         return 4;
     }
+
+    // #790: publishing must not pin the pixels. The composite keeps only the
+    // canvas SIZE, so the delivered copy is the last owner of the storage.
+    const std::weak_ptr<const hyremote::FrameStorage> publishedPixels =
+        frames.front().storage;
+    frames.front().storage.reset();
+    if (!check(publishedPixels.expired(),
+               "composite kept the last published frame pixels alive after delivery"))
+        return 10;
+
+    // The zero-viewer release is forwarded to every child source: a child is
+    // the real owner of a grab QImage or a GPU readback buffer.
+    components.capture->releaseIdleResources();
+    if (!check(childReleases->load() == 2,
+               "composite did not forward the idle release to all child sources"))
+        return 11;
 
     // #567: once all child surfaces disappear, do not re-label the last
     // colorful frame as new pixels. Keep the old geometry to avoid forcing

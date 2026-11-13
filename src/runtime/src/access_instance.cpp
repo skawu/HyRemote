@@ -611,8 +611,18 @@ public:
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
-        if (!m_demand->waitForViewer())
-            return false;
+        // #790: the Shared Runtime owns the one zero-viewer signal and delivers
+        // it on this capture-scheduler thread before asking for pixels. Every
+        // technology behind CaptureSource shares this contract, so a backend
+        // never needs its own idle timer, platform check or viewer counter.
+        for (;;) {
+            const auto wait = m_demand->waitForCapture();
+            if (wait == ViewerCaptureDemand::WaitResult::Stopped)
+                return false;
+            if (wait == ViewerCaptureDemand::WaitResult::Capture)
+                break;
+            m_source->releaseIdleResources();
+        }
         HYREMOTE_P1_TRACE_REQUEST(CaptureRequest, request);
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
         m_demand->noteCaptureStarted();

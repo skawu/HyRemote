@@ -272,6 +272,26 @@ public:
         return accepted;
     }
 
+    // #790: the wrapper does not own pixels itself, but both providers may. The
+    // zero-viewer edge is forwarded to each one exactly like requestFrame is
+    // routed, so the experimental GPU provider and the public Qt path share the
+    // same idle-resource contract instead of each inventing an idle timer.
+    void releaseIdleResources() noexcept override
+    {
+        auto state = m_state;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->active)
+                return;
+        }
+        if (m_public)
+            m_public->releaseIdleResources();
+        // A provider disabled by one-way fallback may still hold the buffer it
+        // allocated while it was active; releasing it is always legal.
+        if (m_native)
+            m_native->releaseIdleResources();
+    }
+
 private:
     static std::uint64_t currentGeneration(const std::shared_ptr<State> &state)
     {

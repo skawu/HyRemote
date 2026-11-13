@@ -44,6 +44,8 @@
 #include "detail/readback_frame_storage.hpp"
 #include "hyremote/core/storage.hpp"
 
+#include "quick_idle_release.hpp"
+
 namespace HyRemote::detail {
 namespace {
 
@@ -161,6 +163,9 @@ struct GlRetireJob {
     hyremote::TimePoint renderTime{};
     std::uint64_t generation = 0;
     std::uint64_t contextEpoch = 0;
+    // #790: an idle-release command, not a readback. It runs only on the
+    // worker that owns the GL context which created the PBO name.
+    bool idleRelease = false;
 };
 
 struct GlRetireResult {
@@ -190,13 +195,42 @@ public:
         m_ownedBuffer.store(buffer, std::memory_order_release);
     }
 
-    void enqueue(GlRetireJob job)
+    // #790 review (P1): submission is reachable from the noexcept zero-viewer
+    // edge, so it must never unwind; a failed allocation degrades to
+    // "rejected" and the caller keeps the latched edge for the next idle point.
+    bool enqueue(GlRetireJob job) noexcept
     {
-        {
+        // TEST-ONLY deterministic rejection seam (setEnqueueRejectionsForTest).
+        if (m_testEnqueueRejections.load(std::memory_order_relaxed) > 0) {
+            m_testEnqueueRejections.fetch_sub(1, std::memory_order_relaxed);
+            return false;
+        }
+        try {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_jobs.push_back(std::move(job));
+        } catch (...) {
+            return false;
         }
         m_cv.notify_one();
+        return true;
+    }
+
+    // #790: the zero-viewer release travels through the same queue as real
+    // readbacks, so it can never delete a buffer while a fence/map job is
+    // still using it. False = rejected; the caller must keep the edge latched.
+    bool requestIdleRelease() noexcept
+    {
+        GlRetireJob job;
+        job.idleRelease = true;
+        return enqueue(std::move(job));
+    }
+
+    // Called on the worker thread with the owning context current. The hook
+    // decides, under the source state lock, whether the buffer is truly idle,
+    // and returns the GL name this thread must delete (0 = keep it).
+    void setIdleReleaseHook(std::function<GLuint()> hook)
+    {
+        m_takeIdleBuffer = std::move(hook);
     }
 
     void requestStop()
@@ -214,6 +248,14 @@ public:
     void setRetireDelayForTest(int milliseconds)
     {
         m_testDelayMs.store(milliseconds, std::memory_order_release);
+    }
+
+    // TEST-ONLY (#790 review P1): make the next N submissions fail without
+    // allocating, so the rejection path of the zero-viewer release is
+    // deterministic. Never set by the product path.
+    void setEnqueueRejectionsForTest(int count) noexcept
+    {
+        m_testEnqueueRejections.store(count, std::memory_order_relaxed);
     }
 
 protected:
@@ -240,6 +282,10 @@ protected:
                 job = std::move(m_jobs.front());
                 m_jobs.pop_front();
             }
+            if (job.idleRelease) {
+                idleRelease(gl);
+                continue;
+            }
             retireOne(gl, std::move(job));
         }
         m_ready.store(false, std::memory_order_release);
@@ -255,6 +301,23 @@ protected:
     }
 
 private:
+    // #790: delete the reusable PBO only on the thread/context that created it,
+    // and only when the source says no request is waiting for it. Any new
+    // submission allocates again in the render callback.
+    void idleRelease(QOpenGLExtraFunctions *gl)
+    {
+        const GLuint buffer = m_takeIdleBuffer ? m_takeIdleBuffer() : 0;
+        if (!buffer)
+            return;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_ownedBuffer.load(std::memory_order_acquire) == buffer)
+                m_ownedBuffer.store(0, std::memory_order_release);
+        }
+        gl->glDeleteBuffers(1, &buffer);
+        ++g_quickGlPboBuffersDeleted;
+    }
+
     void retireOne(QOpenGLExtraFunctions *gl, GlRetireJob job)
     {
         // requestStop() must abort a pending GPU wait promptly: stop() is
@@ -364,9 +427,11 @@ private:
     QOffscreenSurface *m_surface = nullptr;
     std::function<void(GlRetireResult &&)> m_onResult;
     std::function<void()> m_onReady;
+    std::function<GLuint()> m_takeIdleBuffer;
     std::mutex m_mutex;
     std::condition_variable m_cv;
     std::deque<GlRetireJob> m_jobs;
+    std::atomic<int> m_testEnqueueRejections{0};
     bool m_stop = false;
     std::atomic<bool> m_abort{false};
     std::atomic<bool> m_ready{false};
@@ -376,6 +441,12 @@ private:
 
 class GlPboCaptureSource final : public hyremote::CaptureSource
 {
+public:
+    // #790 review (P1): deterministic GPU-free rejection probe. It runs the
+    // real maybeQueueIdleRelease decision against a private State; the class is
+    // internal (anonymous namespace), so this seam never leaks into any API.
+    static QuickGlPboIdleSubmissionProbe idleSubmissionRejectionProbeForTest();
+
     struct State {
         std::mutex mutex;
         std::condition_variable drained;
@@ -410,6 +481,9 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         std::uint64_t contextEpoch = 0;
         bool workerStopRequested = false;
         bool workerFailed = false;
+        // #790: a zero-viewer release arrived while an accepted readback was
+        // still using the PBO. It is consumed at the next fully-idle point.
+        QuickIdleRelease idleRelease;
         // All GL fields below may be ACCESSED ONLY in the render callback.
         GLuint pbo = 0;
         GLsync fence = nullptr;
@@ -516,6 +590,7 @@ public:
         s->dispatcher = new QObject;
         s->workerStopRequested = false;
         s->workerFailed = false;
+        s->idleRelease.clear();
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->windowBound = true;
@@ -562,6 +637,7 @@ public:
             s->cpuConversionPending = false;
             s->kickPosted = false;
             s->fallbackRenderTimerArmed = false;
+            s->idleRelease.clear();
             s->onFrame = {};
             s->onEvent = {};
             s->drained.wait(guard, [&] { return s->renderCallbacksInFlight == 0; });
@@ -617,6 +693,9 @@ public:
                     if (!retireTimedOutReadbackBatch(s->inFlight, id, expired)
                         && !retireTimedOutReadbackBatch(s->converting, id, expired))
                         retireTimedOutReadbackBatch(s->queued, id, expired);
+                    // A request that never rendered no longer blocks the
+                    // zero-viewer release once its terminal timeout retired it.
+                    maybeQueueIdleRelease(*s);
                 }
                 if (!expired.empty())
                     reportUnavailable(s, requestGeneration, std::move(expired),
@@ -690,6 +769,21 @@ public:
             return false;
         }
         return true;
+    }
+
+    // #790: the PBO is one full RGBA frame (W*H*4). With no Viewer it is pure
+    // retained bytes, so the contract's zero-viewer edge deletes it through the
+    // session worker (the only thread whose context owns the name). If an
+    // accepted request still needs it, the edge is latched and applied when the
+    // last readback retires or times out; the next request allocates again.
+    void releaseIdleResources() noexcept override
+    {
+        auto s = m_state;
+        std::lock_guard<std::mutex> guard(s->mutex);
+        if (!s->active || !s->retireWorker)
+            return;
+        s->idleRelease.latch();
+        maybeQueueIdleRelease(*s);
     }
 
 private:
@@ -1028,6 +1122,32 @@ private:
                     requestFallbackRenderIfNoNormalFrame(s, s->window, generation);
                 });
             });
+        // #790: the worker owns deletion in the share group that created the
+        // name. This hook runs on the worker thread and only hands out the PBO
+        // when no accepted request can still use it.
+        worker->setIdleReleaseHook([weak = std::weak_ptr<State>(s)]() -> GLuint {
+            const auto state = weak.lock();
+            if (!state)
+                return 0;
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (!state->pbo)
+                return 0;
+            // A Viewer may have reconnected after this command was queued: the
+            // render callback moved `queued` into `converting`, set gpuPending,
+            // and enqueued its readback BEHIND this command. `queued` is then
+            // empty even though that readback is about to map this very PBO.
+            // Defer instead of deleting it, and keep the edge so the retire
+            // completion (or the terminal timeout) re-queues the release.
+            if (!state->queued.empty() || state->gpuPending
+                || state->cpuConversionPending) {
+                state->idleRelease.latch();
+                return 0;
+            }
+            const GLuint buffer = state->pbo;
+            state->pbo = 0;
+            state->pboCapacityBytes = 0;
+            return buffer;
+        });
         auto *identity = worker.get();
         shared->moveToThread(identity);
         if (shared->thread() != identity)
@@ -1073,6 +1193,24 @@ private:
     static bool canSubmitQueuedReadback(const State &state)
     {
         return !state.gpuPending && !state.cpuConversionPending && !state.queued.empty();
+    }
+
+    // Caller holds State::mutex. Turns a latched #790 release into one worker
+    // command only when no accepted request can still need the PBO. A later
+    // retire/timeout calls this again, so the edge is never silently dropped.
+    static void maybeQueueIdleRelease(State &state) noexcept
+    {
+        if (!state.idleRelease.pending() || !state.retireWorker)
+            return;
+        if (state.gpuPending || state.cpuConversionPending || !state.queued.empty())
+            return;
+        // #790 review (P1): the edge is consumed first so a concurrently
+        // deferred hook re-latch survives, then re-latched when the nonthrowing
+        // submission is rejected — a failed submission must not lose the
+        // release event; the next retire/timeout retries.
+        state.idleRelease.take();
+        if (!state.retireWorker->requestIdleRelease())
+            state.idleRelease.latch();
     }
 
     static void onRetireResult(
@@ -1125,6 +1263,9 @@ private:
             std::lock_guard<std::mutex> guard(s->mutex);
             if (s->cpuWorkersInFlight > 0)
                 --s->cpuWorkersInFlight;
+            // #790: the accepted readback that blocked the zero-viewer release
+            // has now retired its fence. This is the idle point to free it.
+            maybeQueueIdleRelease(*s);
             s->drained.notify_all();
         }
         postToDispatcher(s, [s, gen = result.job.generation] {
@@ -1254,11 +1395,12 @@ private:
         {
             std::lock_guard<std::mutex> guard(s->mutex);
             // B1 (#962 review): an idle, valid PBO in the same Qt context is
-            // the reusable session resource. An empty request queue is NOT a
-            // reason to glDeleteBuffers and reallocate on the next capture.
-            // Only stop/cleanup, invalidation, a render-context change or a
-            // submission failure may release it. The worker owns the fence
-            // until it completes, so no orphan fence can exist here.
+            // the reusable session resource. An empty request queue alone is
+            // NOT a reason to glDeleteBuffers and reallocate on the next
+            // capture: only stop/cleanup, invalidation, a render-context change,
+            // a submission failure or an explicit #790 zero-viewer release may
+            // free it. The worker owns the fence until it completes, so no
+            // orphan fence can exist here.
             if (!s->active || s->workerStopRequested || !s->retireWorker
                 || !s->retireWorker->ready() || s->workerRenderContext.data() != ctx) {
                 return;
@@ -1340,21 +1482,34 @@ private:
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
                             GlRetireWorker *worker = s->retireWorker.get();
+                            GLsync ownedFence = s->fence;
+                            s->fence = nullptr; // the session worker owns it on success
                             if (worker) {
                                 GlRetireJob job;
                                 job.pbo = s->pbo;
-                                job.fence = s->fence;
+                                job.fence = ownedFence;
                                 job.width = w;
                                 job.height = h;
                                 job.dpr = static_cast<float>(dpr);
                                 job.renderTime = s->readbackRenderTime;
                                 job.generation = s->generation;
                                 job.contextEpoch = s->contextEpoch;
-                                s->fence = nullptr; // the session worker owns it
-                                worker->enqueue(std::move(job));
+                                if (!worker->enqueue(std::move(job))) {
+                                    // #790 review (P1): a rejected submission
+                                    // must not strand gpuPending forever; fail
+                                    // the batch like a missing worker instead of
+                                    // dropping the fence/requests silently.
+                                    gl->glDeleteSync(ownedFence);
+                                    ownedFence = nullptr;
+                                    s->gpuPending = false;
+                                    s->cpuConversionPending = false;
+                                    failed.swap(s->converting);
+                                    --s->cpuWorkersInFlight;
+                                    failureReason = "GL PBO readback submission failed";
+                                }
                             } else {
-                                gl->glDeleteSync(s->fence);
-                                s->fence = nullptr;
+                                gl->glDeleteSync(ownedFence);
+                                ownedFence = nullptr;
                                 s->gpuPending = false;
                                 s->cpuConversionPending = false;
                                 failed.swap(s->converting);
@@ -1729,6 +1884,137 @@ QuickGlPboStopProbe runQuickGlPboStopAbortProbe(int delayMs)
     out.detail = out.ok ? "PASS" : (!joined ? "TIMEOUT" :
         (out.bufferDeleted ? "TOO_SLOW" : "PBO_NOT_DELETED"));
     return out;
+}
+
+QuickGlPboIdleReleaseProbe runQuickGlPboIdleReleaseProbe()
+{
+    QuickGlPboIdleReleaseProbe out;
+
+    QSurfaceFormat fmt;
+    fmt.setRenderableType(QSurfaceFormat::OpenGL);
+    fmt.setVersion(3, 3);
+    fmt.setProfile(QSurfaceFormat::CoreProfile);
+
+    QOffscreenSurface surface;
+    surface.setFormat(fmt);
+    surface.create();
+    if (!surface.isValid()) {
+        out.detail = "offscreen-surface-unavailable";
+        return out;
+    }
+
+    auto *render = new QOpenGLContext;
+    render->setFormat(fmt);
+    if (!render->create() || !render->makeCurrent(&surface)) {
+        delete render;
+        out.detail = "render-context-unavailable";
+        return out;
+    }
+    auto *gl = render->extraFunctions();
+    gl->initializeOpenGLFunctions();
+
+    constexpr int kW = 64;
+    constexpr int kH = 32;
+    const std::size_t bytes = std::size_t(kW) * kH * 4u;
+    GLuint pbo = 0;
+    gl->glGenBuffers(1, &pbo);
+    gl->glBindBuffer(kPackTarget, pbo);
+    gl->glBufferData(kPackTarget, GLsizeiptr(bytes), nullptr, kStreamRead);
+    gl->glBindBuffer(kPackTarget, 0);
+
+    auto *shared = new QOpenGLContext;
+    shared->setFormat(fmt);
+    shared->setShareContext(render);
+    if (!shared->create() || !QOpenGLContext::areSharing(render, shared)) {
+        delete shared;
+        gl->glDeleteBuffers(1, &pbo);
+        render->doneCurrent();
+        delete render;
+        out.detail = "worker-setup-unavailable";
+        return out;
+    }
+
+    auto *worker = new GlRetireWorker(shared, &surface,
+        [](GlRetireResult &&) {});
+    std::atomic<GLuint> livePbo{pbo};
+    std::atomic<int> hookCalls{0};
+    shared->moveToThread(worker);
+    worker->ownBuffer(pbo);
+    // Mirrors the source hook: only the worker thread may delete, and the
+    // state stops referencing the name before the deletion happens.
+    worker->setIdleReleaseHook([&]() -> GLuint {
+        ++hookCalls;
+        return livePbo.exchange(0);
+    });
+    worker->start();
+    out.ran = true;
+    worker->requestIdleRelease();
+
+    for (int i = 0; i < 400 && livePbo.load() != 0; ++i)
+        QThread::msleep(5);
+    out.hookInvoked = hookCalls.load() > 0;
+    out.bufferReleased = livePbo.load() == 0;
+    worker->requestStop();
+    worker->wait();
+    delete worker;
+
+    out.bufferDeleted = !gl->glIsBuffer(pbo);
+    if (!out.bufferDeleted)
+        gl->glDeleteBuffers(1, &pbo);
+
+    // The next request must allocate again; GL may hand back the same number,
+    // so only "it is a live buffer" is asserted.
+    GLuint next = 0;
+    gl->glGenBuffers(1, &next);
+    out.bufferRecreated = next != 0 && gl->glIsBuffer(next);
+    if (next)
+        gl->glDeleteBuffers(1, &next);
+
+    render->doneCurrent();
+    delete render;
+
+    out.ok = out.hookInvoked && out.bufferReleased && out.bufferDeleted
+        && out.bufferRecreated;
+    out.detail = out.ok ? "PASS"
+        : (!out.hookInvoked ? "HOOK_NOT_CALLED"
+        : (!out.bufferReleased ? "STATE_NOT_RELEASED"
+        : (!out.bufferDeleted ? "PBO_NOT_DELETED" : "NOT_RECREATED")));
+    return out;
+}
+
+// #790 review (P1): deterministic, GPU-free rejection path for the idle
+// release. The worker is never started and the TEST-ONLY seam makes enqueue
+// fail "as if" the queue allocation failed; the probe pins that a rejected
+// submission keeps the latched edge and an accepted one consumes it exactly
+// once, so a bad_alloc cannot silently drop the release event.
+QuickGlPboIdleSubmissionProbe
+GlPboCaptureSource::idleSubmissionRejectionProbeForTest()
+{
+    QuickGlPboIdleSubmissionProbe out;
+    std::unique_ptr<GlRetireWorker> worker(
+        new GlRetireWorker(nullptr, nullptr, [](GlRetireResult &&) {}));
+    State state;
+    state.retireWorker = std::move(worker);
+    out.ran = true;
+
+    state.retireWorker->setEnqueueRejectionsForTest(1);
+    state.idleRelease.latch();
+    maybeQueueIdleRelease(state);
+    out.rejectedKeepsEdge = state.idleRelease.pending();
+
+    state.retireWorker->setEnqueueRejectionsForTest(0);
+    maybeQueueIdleRelease(state);
+    out.acceptedConsumesEdge = !state.idleRelease.pending();
+
+    out.ok = out.rejectedKeepsEdge && out.acceptedConsumesEdge;
+    out.detail = out.ok ? "PASS"
+        : (!out.rejectedKeepsEdge ? "REJECTION_LOST_EDGE" : "ACCEPT_DID_NOT_CONSUME");
+    return out;
+}
+
+QuickGlPboIdleSubmissionProbe runQuickGlPboIdleSubmissionProbe()
+{
+    return GlPboCaptureSource::idleSubmissionRejectionProbeForTest();
 }
 
 QuickGlPboSessionSelfTest runQuickGlPboSessionSelfTest()

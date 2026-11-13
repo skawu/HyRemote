@@ -54,6 +54,7 @@
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
 #include "quick/quick_grab_geometry.hpp"
+#include "quick/quick_idle_release.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -80,6 +81,7 @@ public:
     bool running = false;
     bool startsSuccessfully = true;
     bool acceptsRequests = true;
+    int releaseCalls = 0; // #790 zero-viewer idle-resource releases
     std::vector<hyremote::CaptureRequestId> accepted;
     std::mutex callbackMutex;
     hyremote::FrameReadyHandler onFrame;
@@ -112,6 +114,9 @@ public:
         onFrame = {};
         onEvent = {};
     }
+    // #790: the adaptive wrapper owns no pixels, so its only legal behaviour is
+    // to forward the one zero-viewer edge to both providers.
+    void releaseIdleResources() noexcept override { ++releaseCalls; }
     bool requestFrame(const hyremote::CaptureRequest &req) override
     {
         if (!running || !acceptsRequests)
@@ -328,6 +333,64 @@ void testAdaptiveQuickMalformedNativeFramesTriggerFallback()
     backup->complete(73, true);
     CHECK(frames.size() == 3 && frames.back().storage);
     source.stop();
+}
+
+// #790: one shared deferred-release decision for every pixel-retaining backend.
+// The zero-viewer edge must survive an accepted in-flight readback and must be
+// consumed exactly once, so a backend cannot free a buffer that is still mapped
+// nor free twice for one transition.
+void testQuickIdleReleaseLatchIsDeferredAndOneShot()
+{
+    HyRemote::detail::QuickIdleRelease release;
+    CHECK(!release.pending());
+    CHECK(!release.take()); // nothing latched: keep the allocation
+
+    CHECK(release.latch());
+    CHECK(!release.latch()); // repeated edge never queues a second free
+    CHECK(release.pending());
+    CHECK(release.take()); // the first genuinely-idle point consumes it
+    CHECK(!release.pending());
+
+    // Freeing again must not happen for the same edge.
+    CHECK(!release.take());
+
+    // A later zero-viewer transition is a genuinely new edge.
+    CHECK(release.latch());
+    CHECK(release.take());
+    CHECK(!release.take());
+
+    // start()/stop() is a hard boundary; an unclaimed edge must not leak.
+    CHECK(release.latch());
+    release.clear();
+    CHECK(!release.pending());
+    CHECK(!release.take());
+}
+
+void testAdaptiveQuickForwardsZeroViewerRelease()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(nullptr, std::move(native),
+                                                        std::move(publicQt));
+
+    // A source that was never started must not touch either provider.
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 0);
+    CHECK(backup->releaseCalls == 0);
+
+    CHECK(source.start([](hyremote::RemoteFrame) {},
+                       [](const hyremote::CaptureEvent &) {}));
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 1);
+    CHECK(backup->releaseCalls == 1);
+
+    // After stop the providers are retired; a late edge is inert.
+    source.stop();
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 1);
+    CHECK(backup->releaseCalls == 1);
 }
 
 void testAdaptiveQuickStopDrainsForwardedCoreCallback()
@@ -2088,6 +2151,21 @@ void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
               << " workers=" << result.workersCreated
               << "/" << result.workersRetired
               << " invalidations=" << result.invalidations << std::endl;
+
+    // #790: the zero-viewer release is real GL work, not just a state flag.
+    const auto idle = HyRemote::detail::runQuickGlPboIdleReleaseProbe();
+    if (idle.ran) {
+        CHECK(idle.ok);
+        std::cerr << "WIN790_IDLE_RELEASE=" << idle.detail
+                  << " hook=" << idle.hookInvoked
+                  << " released=" << idle.bufferReleased
+                  << " deleted=" << idle.bufferDeleted
+                  << " recreated=" << idle.bufferRecreated << std::endl;
+    } else {
+        std::cerr << "WIN790_IDLE_RELEASE=SKIP detail=" << idle.detail << std::endl;
+        if (requireGl)
+            CHECK(idle.ran); // the dedicated GL lane must prove the release.
+    }
 }
 
 // #967: static-surface traces proved the GL route spent ~42ms waiting for a
@@ -2230,6 +2308,19 @@ void testQuickGlPboStopFromNonGuiThread(bool requireGl)
     std::cerr << "WIN962_NONGUI_STOP=" << (done.load() ? "PASS" : "TIMEOUT")
               << std::endl;
 }
+
+// #790 review P1: the idle-release submission is reachable from a noexcept
+// virtual, so a rejected enqueue must keep the latched edge (retry at the next
+// idle point) and an accepted one must consume it exactly once. GPU-free.
+void testQuickGlPboIdleSubmissionRejectionKeepsEdge()
+{
+    const auto probe = HyRemote::detail::runQuickGlPboIdleSubmissionProbe();
+    CHECK(probe.ran);
+    CHECK(probe.ok);
+    CHECK(probe.rejectedKeepsEdge);
+    CHECK(probe.acceptedConsumesEdge);
+    std::cerr << "WIN790_IDLE_SUBMISSION=" << probe.detail << std::endl;
+}
 #endif // HYREMOTE_TEST_QUICK_GL_PBO
 
 int main(int argc, char **argv)
@@ -2246,6 +2337,7 @@ int main(int argc, char **argv)
         testQuickGlPboRealSceneGraphInvalidationSignal(true);
         testQuickGlPboStopIsBounded(true);
         testQuickGlPboStopFromNonGuiThread(true);
+        testQuickGlPboIdleSubmissionRejectionKeepsEdge();
         HyRemote::detail::resetFactories();
         if (failures != 0)
             std::cerr << failures << " GL PBO session checks failed\n";
@@ -2263,6 +2355,7 @@ int main(int argc, char **argv)
     testQuickGlPboRealSceneGraphInvalidationSignal(false);
     testQuickGlPboStopIsBounded(false);
     testQuickGlPboStopFromNonGuiThread(false);
+    testQuickGlPboIdleSubmissionRejectionKeepsEdge();
 #endif
     if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
         runPublicQuickProfile();
@@ -2275,6 +2368,8 @@ int main(int argc, char **argv)
     testNativeReadbackBatchTimeoutIsOneFailure();
     testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
     testAdaptiveQuickMalformedNativeFramesTriggerFallback();
+    testQuickIdleReleaseLatchIsDeferredAndOneShot();
+    testAdaptiveQuickForwardsZeroViewerRelease();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
     testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();

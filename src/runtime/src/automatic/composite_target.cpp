@@ -91,6 +91,7 @@ public:
             m_state->onFrame = {};
             m_state->onEvent = {};
             m_state->pending.clear();
+            m_state->lastCanvasSize = {};
             target = m_state->target;
             surfaceUnavailableHandler = m_state->surfaceUnavailableHandler;
             m_state->surfaceUnavailableHandler = 0;
@@ -133,6 +134,40 @@ public:
             Qt::QueuedConnection);
     }
 
+    // #790: the composite publishes a borrowed view of its per-surface sources,
+    // so it has no pixels of its own to drop here. It still forwards the one
+    // zero-viewer edge, because a child source is the real owner of a grab
+    // QImage or a GPU readback buffer. Children are snapshotted as shared_ptrs
+    // and released outside the state lock: a child callback may need that lock
+    // and stop() may retire the child concurrently.
+    void releaseIdleResources() noexcept override
+    {
+        // #790 review (P1): this is the memory-reclamation path on the capture
+        // scheduler, so a bad_alloc from the snapshot must degrade to "children
+        // keep their buffer until the next edge or stop()" instead of
+        // std::terminate (the #992 failure class). Child callbacks still run
+        // outside the state lock; on failure no child state was mutated, the
+        // next zero-viewer edge or stop() retries.
+        try {
+            std::vector<std::shared_ptr<ChildRuntime>> children;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active)
+                    return;
+                children.reserve(m_state->children.size());
+                for (const auto &entry : m_state->children)
+                    children.push_back(entry.second);
+            }
+            for (const auto &child : children) {
+                if (child && child->capture)
+                    child->capture->releaseIdleResources();
+            }
+        } catch (...) {
+            // Allocation failed: drop this edge, never unwind out of the
+            // noexcept virtual.
+        }
+    }
+
 private:
     struct ChildRuntime
     {
@@ -164,7 +199,11 @@ private:
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         std::unordered_map<hyremote::CaptureRequestId, PendingRequest> pending;
-        std::optional<hyremote::RemoteFrame> lastFrame;
+        // #790: the previously published canvas SIZE, never its pixels. Keeping
+        // the last RemoteFrame pinned one full frame (8.29 MB at 1080p, and in
+        // the single-surface fast path the child's own grab QImage) for a value
+        // only used to preserve geometry while every surface is hidden.
+        QSize lastCanvasSize;
     };
 
     class ProcessingGuard
@@ -247,7 +286,8 @@ private:
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active || !state->onFrame)
                 return;
-            state->lastFrame = frame;
+            state->lastCanvasSize = QSize(static_cast<int>(frame.geometry.size.width),
+                                          static_cast<int>(frame.geometry.size.height));
             callback = state->onFrame;
             ++state->parentCallbacksInFlight;
         }
@@ -306,10 +346,8 @@ private:
             QSize clearSize(1, 1);
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame)
-                    clearSize = QSize(
-                        static_cast<int>(state->lastFrame->geometry.size.width),
-                        static_cast<int>(state->lastFrame->geometry.size.height));
+                if (!state->lastCanvasSize.isEmpty())
+                    clearSize = state->lastCanvasSize;
             }
             publishFrame(state, transparentFrame(pending.request, clearSize));
             return;

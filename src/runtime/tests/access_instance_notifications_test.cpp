@@ -133,6 +133,9 @@ struct RuntimeState
     // between synthetic synchronous frames.
     std::atomic<bool> holdCaptureRequests{false};
     std::atomic<int> framesQueued{0};
+    // #790: number of zero-viewer idle-resource releases the Shared Runtime
+    // delivered to the capture source.
+    std::atomic<int> idleCaptureReleases{0};
     std::atomic<int> transportStops{0};
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
@@ -201,6 +204,13 @@ public:
         // Session joins its scheduler after stop(); do not mutate this
         // callback while requestFrame might still be unwinding.
         // The fake's Core callback gate already makes late delivery inert.
+    }
+
+    // #790: default-no-op hook implemented by a real product source; the fake
+    // only counts deliveries so the Runtime wiring can be asserted end to end.
+    void releaseIdleResources() noexcept override
+    {
+        ++m_state->idleCaptureReleases;
     }
 
     bool requestFrame(const hyremote::CaptureRequest &) override
@@ -509,6 +519,57 @@ void testCaptureSleepsWithoutViewersAndResumesOnConnect()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->captureRequests.load() > restartedRequests);
     instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+// #790: the one zero-viewer edge is owned by the Shared Runtime and delivered on
+// the capture scheduler thread, so every CaptureSource technology gets the same
+// release signal without its own viewer count or platform check.
+void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    CHECK(instance.start());
+    for (int i = 0; i < 400 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    // A listener that has never served a Viewer is not a 0-viewer *edge*.
+    CHECK(state->idleCaptureReleases.load() == 0);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 400 && state->captureRequests.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() >= 1);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 1);
+
+    // A duplicate/unreachable disconnect is not a second edge: one transition
+    // must not ask the source to release twice.
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    CHECK(state->idleCaptureReleases.load() == 1);
+
+    // Reconnecting Viewer requires capture again, and the next disconnect is a
+    // new edge: the release contract is per transition, not one-shot forever.
+    const int idleRequests = state->captureRequests.load();
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 400 && state->captureRequests.load() <= idleRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > idleRequests);
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 2);
+
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
     HyRemote::detail::resetFactories();
 }
 
@@ -1169,6 +1230,7 @@ int main(int argc, char **argv)
     testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
+    testZeroViewerEdgeReleasesIdleCaptureResourcesOnce();
     testSlowCaptureIsBoundedWithViewerInputAndStopRestart();
     testTargetDestroyedWhileCaptureIsIdle();
     testTargetLossReportedOnceAcrossWatcherAndPendingCapture();

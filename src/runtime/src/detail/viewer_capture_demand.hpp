@@ -51,6 +51,15 @@ public:
     }
 #endif
 
+    // Outcome of one scheduler wait. `IdleRelease` is a real transition, not a
+    // capture: the caller must release the source's idle pixel/GPU storage on
+    // this same scheduler thread and then wait again.
+    enum class WaitResult {
+        Stopped,
+        IdleRelease,
+        Capture,
+    };
+
     void start()
     {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -62,6 +71,7 @@ public:
         m_noViewerUpdateDemand = false;
         m_nextNoDemandProbe = {};
         m_backpressureEscape = false;
+        m_idleReleasePending = false;
         resetIdleLocked();
     }
 
@@ -85,6 +95,11 @@ public:
                 resetIdleLocked(); // every new viewer requires a prompt, full initialization
                 if (viewers > m_viewers)
                     m_backpressureEscape = true;
+                // #790: the >0 -> 0 edge is the ONE product signal that no Server
+                // can consume new pixels. It is latched, so the release still runs
+                // if the scheduler was not already parked in waitForCapture().
+                if (viewers == 0)
+                    m_idleReleasePending = true;
             }
             m_viewers = viewers;
         }
@@ -212,17 +227,26 @@ public:
         return ActivityResult::ReleasedStaticWait;
     }
 
-    bool waitForViewer()
+    WaitResult waitForCapture()
     {
         std::unique_lock<std::mutex> lock(m_mutex);
         // Never block while holding a GUI/rendering/transport lock. Core calls this only from
         // its capture scheduler, and stop() always wakes it before joining Core workers.
         for (;;) {
             if (m_stopped)
-                return false;
+                return WaitResult::Stopped;
+            // A latched zero-viewer edge is delivered exactly once, on this
+            // thread, before the producer is allowed to sleep again. A viewer
+            // that reconnected in between needs fresh pixels, not a release,
+            // so the stale edge is simply dropped.
+            if (m_idleReleasePending) {
+                m_idleReleasePending = false;
+                if (m_viewers == 0)
+                    return WaitResult::IdleRelease;
+            }
             if (m_viewers == 0) {
                 if (!m_bootstrapFrameQueued)
-                    return true; // one valid bootstrap frame before any RFB ClientConnected
+                    return WaitResult::Capture; // one valid bootstrap frame before any RFB ClientConnected
                 m_changed.wait(lock);
                 continue;
             }
@@ -232,7 +256,7 @@ public:
                         const auto now = Clock::now();
                         if (now >= m_nextNoDemandProbe) {
                             m_nextNoDemandProbe = now + kStaticProbeInterval;
-                            return true; // bound stale cached pixels for later requests
+                            return WaitResult::Capture; // bound stale cached pixels for later requests
                         }
                         m_changed.wait_until(lock, m_nextNoDemandProbe);
                     } else {
@@ -245,12 +269,12 @@ public:
                 m_backpressureEscape = false;
             }
             if (m_identicalFrames < kConsecutiveUnchangedFrames)
-                return true; // active/changing frames retain the existing 60fps cap
+                return WaitResult::Capture; // active/changing frames retain the existing 60fps cap
 
             const auto now = Clock::now();
             if (now >= m_nextStaticProbe) {
                 m_nextStaticProbe = now + kStaticProbeInterval;
-                return true; // local-only changes have bounded detection delay
+                return WaitResult::Capture; // local-only changes have bounded detection delay
             }
 #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
             if (m_testStaticWaitObserver) {
@@ -259,6 +283,23 @@ public:
             }
 #endif
             m_changed.wait_until(lock, m_nextStaticProbe);
+        }
+    }
+
+    // Boolean view of the same gate for callers/tests that only need "may I
+    // capture?". A latched idle release is consumed here, never turned into a
+    // capture or a busy loop.
+    bool waitForViewer()
+    {
+        for (;;) {
+            switch (waitForCapture()) {
+            case WaitResult::Stopped:
+                return false;
+            case WaitResult::Capture:
+                return true;
+            case WaitResult::IdleRelease:
+                continue;
+            }
         }
     }
 
@@ -273,6 +314,9 @@ public:
             m_noViewerUpdateDemand = false;
             m_nextNoDemandProbe = {};
             m_backpressureEscape = false;
+            // stop() frees the source itself; a pending idle release must not
+            // leak into the next run.
+            m_idleReleasePending = false;
             resetIdleLocked();
         }
         m_changed.notify_all();
@@ -298,6 +342,7 @@ private:
     bool m_noViewerUpdateDemand = false;
     Clock::time_point m_nextNoDemandProbe{};
     bool m_backpressureEscape = false;
+    bool m_idleReleasePending = false;
     bool m_stopped = true;
 #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
     std::function<void()> m_testStaticWaitObserver;
