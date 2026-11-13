@@ -88,6 +88,27 @@ struct QuickGlPboFallbackPolicyRegression {
 HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboFallbackPolicyRegression
 runQuickGlPboFallbackPolicyRegression();
 
+// #967 review: geometry admission for the GL/PBO readback. GPU-free: it pins
+// the ONE rule the render callback and the session retire worker share, so a
+// frame the submit path accepts can never be one the worker refuses to map.
+// The measured #962/#987 cells were all 1920x1080; a high-DPI window is a
+// larger, equally legitimate geometry and must stay deliverable.
+struct QuickGlPboMapPolicyRegression {
+    bool ran = false;
+    bool ok = false;
+    bool baselineFits = false;
+    bool highDpiWindowMaps = false;
+    bool denseHighDpiMaps = false;
+    bool emptyGeometryRejected = false;
+    std::size_t baselineBytes = 0;
+    std::size_t highDpiBytes = 0;
+    std::size_t denseHighDpiBytes = 0;
+    std::string detail;
+};
+
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboMapPolicyRegression
+runQuickGlPboMapPolicyRegression();
+
 struct QuickGlPboResourceCounts {
     unsigned buffersCreated;
     unsigned buffersDeleted;
