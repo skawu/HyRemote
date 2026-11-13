@@ -1,3 +1,5 @@
+#include "staged_quick_probe_item.hpp"
+
 #include <QColor>
 #include <QCoreApplication>
 #include <QEvent>
@@ -760,40 +762,6 @@ public:
 
 // #567/H4: a real QQuickPaintedItem can render an intentional intermediate
 // A/S/B scene. Track which scene was actually painted, not a timer guess.
-class StagedQuickProbeItem final : public QQuickPaintedItem
-{
-public:
-    explicit StagedQuickProbeItem(QQuickItem *parent = nullptr)
-        : QQuickPaintedItem(parent)
-    {
-        setAntialiasing(false);
-    }
-
-    void setStage(int stage)
-    {
-        m_requestedStage.store(stage, std::memory_order_release);
-        update();
-    }
-
-    int paintedStage() const { return m_paintedStage.load(std::memory_order_acquire); }
-
-    void paint(QPainter *painter) override
-    {
-        const int stage = m_requestedStage.load(std::memory_order_acquire);
-        const QRectF left(0.0, 0.0, width() / 2.0, height());
-        const QRectF right(width() / 2.0, 0.0, width() / 2.0, height());
-        const QColor a(20, 60, 160);
-        const QColor b(225, 30, 40);
-        painter->fillRect(left, stage >= 1 ? b : a);
-        painter->fillRect(right, stage >= 2 ? b : a);
-        m_paintedStage.store(stage, std::memory_order_release);
-    }
-
-private:
-    std::atomic<int> m_requestedStage{0};
-    std::atomic<int> m_paintedStage{-1};
-};
-
 class EventProbe final : public QObject
 {
 public:
@@ -1414,8 +1382,8 @@ void testStagedQuickSourceCaptureFollowsPaintedScene()
                    | (static_cast<std::uint32_t>(pixel[1]) << 8U)
                    | static_cast<std::uint32_t>(pixel[2]);
         };
-        constexpr std::uint32_t aRgb = 0x143ca0U;
-        constexpr std::uint32_t bRgb = 0xe11e28U;
+        constexpr auto aRgb = StagedQuickProbeItem::A;
+        constexpr auto bRgb = StagedQuickProbeItem::B;
         CHECK(sample(width / 4U) == (stage >= 1 ? bRgb : aRgb));
         CHECK(sample(3U * width / 4U) == (stage >= 2 ? bRgb : aRgb));
     }

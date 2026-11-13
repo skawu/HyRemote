@@ -275,6 +275,15 @@ if(HYREMOTE_WITH_VNC)
     )
     add_test(NAME hyremote-rfb-wire-robustness-test COMMAND hyremote-rfb-wire-robustness-test)
     set_tests_properties(hyremote-rfb-wire-robustness-test PROPERTIES TIMEOUT 60)
+    if(HYREMOTE_REMOTEACCESS_WITH_QUICK AND Qt6Core_VERSION VERSION_EQUAL 6.8.3)
+        target_link_libraries(hyremote-rfb-wire-robustness-test PRIVATE Qt6::Quick)
+        target_compile_definitions(hyremote-rfb-wire-robustness-test PRIVATE HYREMOTE_TEST_QUICK_RFB=1)
+        add_test(NAME hyremote-quick-rfb-page-consistency-test
+                 COMMAND hyremote-rfb-wire-robustness-test --quick-rfb-page-consistency)
+        set_tests_properties(hyremote-quick-rfb-page-consistency-test PROPERTIES
+            TIMEOUT 45 LABELS "integration;quick;rfb"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_SCALE_FACTOR=1")
+    endif()
 endif()
 
 # Private VNC Authentication contracts. They need the real capability pair - the RFB transport has to
