@@ -37,7 +37,6 @@
 #include <time.h>
 #endif
 #include <cmath>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -53,7 +52,6 @@
 #include "quick/quick_readback_batch.hpp"
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
-#include "quick/quick_frame_reuse.hpp"
 #include "quick/quick_capture_single_flight.hpp"
 #include "quick/quick_grab_geometry.hpp"
 #include "quick/quick_idle_release.hpp"
@@ -1197,19 +1195,7 @@ void testQuickDeferredRequestsKeepOrderAndFreshPixels()
         CHECK(frames[1].timing.requestTime
               && *frames[1].timing.requestTime == secondTime);
         CHECK(frames[0].storage && frames[1].storage);
-        // #967 P1: two byte-identical Qt grabs may now share ONE immutable
-        // owner. "A deferred request is never satisfied by replaying the
-        // previous grab" remains enforced by the distinct request IDs and
-        // request times above and by the mandatory B-page pixel below;
-        // testQuickFrameReuseIsExactAndIdleSafe() proves that ANY changed
-        // visible byte must get a new owner. Storage pointer inequality was
-        // only a proxy for the old "one owner per GUI batch" implementation,
-        // not a product contract. Sharing is legal only under equal geometry.
-        if (frames[0].storage == frames[1].storage) {
-            CHECK(HyRemote::detail::quickFrameGeometryEquivalent(
-                frames[0].geometry, frames[1].geometry));
-        }
-        CHECK(frames[0].timing.completionTime && frames[1].timing.completionTime);
+        CHECK(frames[0].storage != frames[1].storage);
         const auto leftRgb = [](const hyremote::RemoteFrame &frame) {
             if (!frame.storage)
                 return std::uint32_t(0);
@@ -2337,112 +2323,6 @@ void testQuickGlPboIdleSubmissionRejectionKeepsEdge()
 }
 #endif // HYREMOTE_TEST_QUICK_GL_PBO
 
-// #967 P1: the common public-Qt path may share immutable pixels ONLY for
-// byte-identical visible content, never across a zero-viewer edge, a changed
-// geometry or a new capture generation. GPU-free, inside the existing CTest.
-static hyremote::FrameGeometry quickReuseGeometry(std::uint32_t width, float dpr = 1.0F)
-{
-    hyremote::FrameGeometry geometry;
-    geometry.size = {width, 2U};
-    geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
-    geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
-    geometry.planeCount = 1U;
-    geometry.devicePixelRatio = dpr;
-    return geometry;
-}
-
-static std::shared_ptr<hyremote::CpuFrameStorage> quickReusePlane(
-    std::size_t stride, std::uint8_t fill)
-{
-    auto storage = hyremote::CpuFrameStorage::createSinglePlane(stride, 2U);
-    if (!storage)
-        return {};
-    auto *data = storage->mutablePlane(0);
-    if (!data)
-        return {};
-    for (std::size_t i = 0; i < storage->totalBytes(); ++i)
-        data[i] = std::byte{fill};
-    return storage;
-}
-
-void testQuickFrameReuseIsExactAndIdleSafe()
-{
-    const auto geometry = quickReuseGeometry(4U);
-    const std::size_t packed = 4U * 4U;
-    const auto first = quickReusePlane(packed, 0x31);
-    const auto identical = quickReusePlane(packed, 0x31);
-    const auto padded = quickReusePlane(packed + 8U, 0x31);
-    CHECK(first && identical && padded);
-    if (!first || !identical || !padded)
-        return;
-
-    // Padded rows with identical visible bytes are equivalent; padding never
-    // reaches the RFB wire. A changed geometry is not.
-    CHECK(HyRemote::detail::quickFramePixelsEqual(*first, *padded, geometry));
-    CHECK(!HyRemote::detail::quickFrameGeometryEquivalent(
-        geometry, quickReuseGeometry(4U, 2.0F)));
-
-    HyRemote::detail::QuickFrameReuseCache cache;
-    cache.reset(7U);
-    CHECK(cache.publish(first, geometry, 7U) == first);
-    CHECK(cache.publish(identical, geometry, 7U) == first);
-    CHECK(cache.publish(padded, geometry, 7U) == first);
-
-    // One changed visible byte must create a new owner, and the cache must
-    // remember the changed picture instead of replaying the old one.
-    identical->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(identical, geometry, 7U) == identical);
-    const auto changedCopy = quickReusePlane(packed, 0x31);
-    CHECK(changedCopy);
-    if (!changedCopy)
-        return;
-    changedCopy->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(changedCopy, geometry, 7U) == identical);
-
-    // A new capture generation and the single zero-viewer edge both drop the
-    // SDK-owned pixel reference exactly like #996 requires.
-    const auto afterGeneration = quickReusePlane(packed, 0x31);
-    CHECK(afterGeneration);
-    if (!afterGeneration)
-        return;
-    afterGeneration->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(afterGeneration, geometry, 8U) == afterGeneration);
-    cache.release();
-    const auto afterRelease = quickReusePlane(packed, 0x31);
-    CHECK(afterRelease);
-    if (!afterRelease)
-        return;
-    afterRelease->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(afterRelease, geometry, 8U) == afterRelease);
-
-    // #967 review P2: a grab already in flight when the last Viewer left must
-    // NOT repopulate the idle cache. Only a real requestFrame() (resume()) may
-    // rebuild it, otherwise ~8 MiB stays pinned until reconnection or stop.
-    const auto anotherLate = quickReusePlane(packed, 0x31);
-    CHECK(anotherLate);
-    if (!anotherLate)
-        return;
-    anotherLate->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(anotherLate, geometry, 8U) == anotherLate);
-    cache.resume();
-    const auto afterResume = quickReusePlane(packed, 0x31);
-    CHECK(afterResume);
-    if (!afterResume)
-        return;
-    afterResume->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(afterResume, geometry, 8U) == afterResume);
-    const auto afterResumeAgain = quickReusePlane(packed, 0x31);
-    CHECK(afterResumeAgain);
-    if (!afterResumeAgain)
-        return;
-    afterResumeAgain->mutablePlane(0)[5] = std::byte{0x92};
-    CHECK(cache.publish(afterResumeAgain, geometry, 8U) == afterResume);
-
-    CHECK(!HyRemote::detail::quickFramePixelsEqual(
-        *first, *first, quickReuseGeometry(0U)));
-    std::cerr << "WIN967_QUICK_FRAME_REUSE=PASS" << std::endl;
-}
-
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
@@ -2489,7 +2369,6 @@ int main(int argc, char **argv)
     testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
     testAdaptiveQuickMalformedNativeFramesTriggerFallback();
     testQuickIdleReleaseLatchIsDeferredAndOneShot();
-    testQuickFrameReuseIsExactAndIdleSafe();
     testAdaptiveQuickForwardsZeroViewerRelease();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
