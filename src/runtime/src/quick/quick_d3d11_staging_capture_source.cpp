@@ -40,6 +40,7 @@
 #include "detail/perf_probe.hpp"
 #include "detail/readback_frame_storage.hpp"
 #include "quick/quick_d3d11_target_admission.hpp"
+#include "quick/quick_idle_release.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
@@ -116,6 +117,9 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         int pixelWidth = 0, pixelHeight = 0;
         float dpr = 1.0f;
         int forcedRenders = 0;
+        // #790: a zero-viewer release arrived while a submitted readback still
+        // used the staging texture. Consumed at the next fully-idle point.
+        QuickIdleRelease idleRelease;
     };
 
     struct WorkerDrain {
@@ -186,6 +190,7 @@ public:
         s->cpuConversionPending = false;
         s->guiKickPosted = false;
         s->fallbackTimerArmed = false;
+        s->idleRelease.clear();
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->active = true;
@@ -226,6 +231,7 @@ public:
             s->cpuConversionPending = false;
             s->guiKickPosted = false;
             s->fallbackTimerArmed = false;
+            s->idleRelease.clear();
             s->onFrame = {};
             s->onEvent = {};
             // Prevent any CPU worker from executing after Runtime DLL unload.
@@ -270,6 +276,9 @@ public:
                         if (!retireTimedOutReadbackBatch(s->submitted, id, expired)
                             && !retireTimedOutReadbackBatch(s->converting, id, expired))
                             retireTimedOutReadbackBatch(s->queued, id, expired);
+                        // A readback that timed out no longer owns the staging
+                        // slot, so a latched zero-viewer release can proceed.
+                        maybeReleaseIdleStaging(*s);
                     }
                     if (!expired.empty())
                         deliver(s, generation, std::move(expired), {},
@@ -338,6 +347,22 @@ public:
             deliver(s, generation, std::move(accepted), {}, 0, 0,
                     1.f, {}, "D3D11 GUI dispatch failed");
         return false; // This request was rejected, not accepted by Core.
+    }
+
+    // #790: one full-size staging texture is retained GPU bytes that serve no
+    // purpose without a Viewer. COM release is not thread-affine, but every
+    // staging transition is serialized by State::mutex on the GUI thread, so
+    // the release is posted there and consumed when no readback uses it.
+    void releaseIdleResources() noexcept override
+    {
+        auto s = m_state;
+        postToDispatcher(s, [s] {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (!s->active)
+                return;
+            s->idleRelease.latch();
+            maybeReleaseIdleStaging(*s);
+        });
     }
 
 private:
@@ -511,6 +536,21 @@ private:
             && old.MiscFlags == desc.MiscFlags;
     }
 
+    // Caller holds State::mutex. A staging texture that is currently active or
+    // still owned by a queued/submitted CopyResource must survive; everything
+    // else is the one retained allocation #790 asks the source to drop.
+    static void maybeReleaseIdleStaging(State &state)
+    {
+        if (!state.idleRelease.pending())
+            return;
+        if (state.staging || !state.queued.empty() || !state.submitted.empty())
+            return;
+        state.idleRelease.take();
+        state.reusableStaging.Reset();
+        state.reusableDevice.Reset();
+        state.reusableDesc = {};
+    }
+
     static void onInvalidated(const std::shared_ptr<State> &s)
     {
         RenderDrain drain(*s);
@@ -682,8 +722,10 @@ private:
             // batch before the GPU made the staging texture mappable.
             // Discard the orphaned readback on Qt's render thread instead
             // of delaying the next Viewer request or copying unused bytes.
-            if (s->staging && s->submitted.empty())
+            if (s->staging && s->submitted.empty()) {
                 releaseActiveReadback(*s);
+                maybeReleaseIdleStaging(*s);
+            }
             if (!s->staging && s->queued.empty())
                 s->capturedTarget.Reset();
             generation = s->generation;
@@ -766,6 +808,10 @@ private:
                             s->cpuConversionPending = true;
                             ++s->cpuWorkersInFlight;
                             releaseActiveReadback(*s);
+                            // #790: the last submitted readback has copied
+                            // into CPU-owned bytes; the GPU staging slot is
+                            // now idle and a latched release may free it.
+                            maybeReleaseIdleStaging(*s);
                         } else {
                             failed.swap(s->submitted);
                             failure = "D3D11 resize or CPU readback allocation failed";
