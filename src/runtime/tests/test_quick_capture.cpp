@@ -2036,6 +2036,8 @@ void testD3d11TargetAdmission()
     CHECK(result.reasonsAreDistinct);
     CHECK(result.revokesEachAcceptedIdOnce);
     CHECK(result.revokeIsIdempotent);
+    CHECK(result.throwingCopyDoesNotTerminate);
+    CHECK(result.throwingCopyKeepsAcceptedIds);
     CHECK(result.ok);
     if (!result.ok)
         std::cerr << "WIN967_D3D11_ADMISSION=FAIL detail=" << result.detail
@@ -2044,9 +2046,12 @@ void testD3d11TargetAdmission()
                   << " non2d=" << result.non2dTargetIsUnsupported
                   << " api=" << result.nonD3d11ApiIsUnsupported
                   << " resizeTransient=" << result.resizeIsTransient
-                  << " once=" << result.revokesEachAcceptedIdOnce << std::endl;
+                  << " once=" << result.revokesEachAcceptedIdOnce
+                  << " throwingCopySafe=" << result.throwingCopyDoesNotTerminate
+                  << std::endl;
     else
         std::cerr << "WIN967_D3D11_ADMISSION=PASS verdicts=3 transient=2 once=1"
+                     " throwingCopySafe=1"
                   << std::endl;
 }
 
