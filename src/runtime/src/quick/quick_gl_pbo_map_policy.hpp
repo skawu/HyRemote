@@ -19,16 +19,22 @@ namespace HyRemote::detail {
 // Bytes of one top-down RGBA8 readback, or 0 when the geometry cannot be
 // expressed as a CPU frame. Overflow is checked before it can wrap; nothing
 // here consults a GPU/OS/chipset name.
+template <typename SignedLength = std::ptrdiff_t>
 inline std::size_t glPboReadbackBytes(std::uint32_t width,
                                      std::uint32_t height) noexcept
 {
     if (width == 0 || height == 0)
         return 0;
     constexpr std::size_t bytesPerPixel = 4u; // GL_RGBA / GL_UNSIGNED_BYTE
-    if (width > std::numeric_limits<std::size_t>::max() / bytesPerPixel)
+    static_assert(std::numeric_limits<SignedLength>::is_signed
+                  && std::numeric_limits<SignedLength>::digits
+                     <= std::numeric_limits<std::size_t>::digits);
+    constexpr auto maxBytes =
+        static_cast<std::size_t>(std::numeric_limits<SignedLength>::max());
+    if (width > maxBytes / bytesPerPixel)
         return 0;
     const std::size_t rowBytes = std::size_t(width) * bytesPerPixel;
-    if (height > std::numeric_limits<std::size_t>::max() / rowBytes)
+    if (height > maxBytes / rowBytes)
         return 0;
     return rowBytes * std::size_t(height);
 }
@@ -37,7 +43,7 @@ inline std::size_t glPboReadbackBytes(std::uint32_t width,
 // an owned CPU frame. The submit path uses the same predicate, so "accepted for
 // readback" and "mappable" cannot diverge again.
 //
-// #967 review: there is deliberately NO byte ceiling here. A predecessor
+// The only ceiling is the signed GL length type's positive range. A predecessor
 // version refused anything above 40 MiB, which is not a product limit:
 //  * 1920x1080      =   8_294_400 bytes  (the only #962/#987 fixed-SHA cells)
 //  * 3440x1440@150% =  44_582_400 bytes  (5160x2160)
