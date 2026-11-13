@@ -19,6 +19,7 @@
 // here so a GPU-free regression can pin it on every Kit.
 #include <cstddef>
 #include <cstdint>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -102,10 +103,30 @@ std::size_t collectUnsupportedRequests(std::vector<Request> &queued,
                                        std::vector<Request> &converting,
                                        std::vector<Request> &revoked) noexcept
 {
+    // #967 A3: this runs on the Qt render thread inside a Qt render callback.
+    // Accumulating the episode allocates and copies, so the work is done as ONE
+    // bounded reservation attempt and any failure is contained here: an OOM
+    // must never reach std::terminate through this noexcept boundary, and a
+    // partly built episode must never be delivered (that would terminate some
+    // identities twice).
+    //
+    // Degradation is deliberate and invisible: nothing is cleared, so every
+    // accepted identity stays in its queue and is still retired by the existing
+    // kRequestDeadlineMs = 750 ms path. The next render pass retries the
+    // revocation, so a transient allocation failure does not lose the episode.
     const std::size_t before = revoked.size();
-    revoked.insert(revoked.end(), queued.begin(), queued.end());
-    revoked.insert(revoked.end(), submitted.begin(), submitted.end());
-    revoked.insert(revoked.end(), converting.begin(), converting.end());
+    try {
+        revoked.reserve(before + queued.size() + submitted.size()
+                        + converting.size());
+        revoked.insert(revoked.end(), queued.begin(), queued.end());
+        revoked.insert(revoked.end(), submitted.begin(), submitted.end());
+        revoked.insert(revoked.end(), converting.begin(), converting.end());
+    } catch (...) {
+        // Shrinking is noexcept (destructors must not throw), so no partial
+        // episode survives this handler.
+        revoked.resize(before);
+        return 0;
+    }
     queued.clear();
     submitted.clear();
     converting.clear();
@@ -127,6 +148,9 @@ struct QuickD3d11AdmissionRegression {
     bool reasonsAreDistinct = false;
     bool revokesEachAcceptedIdOnce = false;
     bool revokeIsIdempotent = false;
+    // #967 A3: revocation must survive a throwing copy/allocation failure.
+    bool throwingCopyDoesNotTerminate = false;
+    bool throwingCopyKeepsAcceptedIds = false;
     std::string detail;
 };
 
@@ -143,6 +167,20 @@ inline unsigned countIds(const std::vector<TestRequest> &requests)
         seen = seen * 31u + request.id;
     return seen;
 }
+
+// #967 A3: an accepted identity whose copy constructor throws models the
+// allocation/copy failure that collectUnsupportedRequests() must survive. Its
+// move constructor throws as well on purpose: move_if_noexcept() then picks the
+// throwing copy, so the negative test cannot be silently bypassed by a move.
+struct ThrowingCopyRequest {
+    unsigned id = 0;
+    ThrowingCopyRequest() = default;
+    explicit ThrowingCopyRequest(unsigned value) : id(value) {}
+    ThrowingCopyRequest(const ThrowingCopyRequest &) { throw std::bad_alloc(); }
+    ThrowingCopyRequest(ThrowingCopyRequest &&) { throw std::bad_alloc(); }
+    ThrowingCopyRequest &operator=(const ThrowingCopyRequest &) = default;
+    ThrowingCopyRequest &operator=(ThrowingCopyRequest &&) = default;
+};
 
 } // namespace detail_d3d11_admission
 
@@ -247,11 +285,38 @@ inline QuickD3d11AdmissionRegression runQuickD3d11AdmissionRegression()
     out.revokeIsIdempotent = secondEpisode == 0 && revoked.size() == 4
         && countIds(revoked) == countIds(std::vector<TestRequest>{{701}, {702}, {703}, {704}});
 
+    // #967 A3: this helper runs on the Qt render thread inside the render pass.
+    // Growing the accumulation vector allocates and copies, so an allocation
+    // failure must degrade to "retire later through the existing deadline",
+    // never reach std::terminate through a noexcept boundary, and never leave a
+    // partially revoked episode that would complete an identity twice.
+    {
+        std::vector<ThrowingCopyRequest> tQueued;
+        std::vector<ThrowingCopyRequest> tSubmitted;
+        std::vector<ThrowingCopyRequest> tConverting;
+        std::vector<ThrowingCopyRequest> tRevoked;
+        // Reserve first: growing these vectors would itself have to copy the
+        // throwing element, which is exactly what this test wants to attribute
+        // to collectUnsupportedRequests() and not to its own setup.
+        tQueued.reserve(2);
+        tQueued.emplace_back(801u);
+        tQueued.emplace_back(802u);
+        tSubmitted.emplace_back(803u);
+        tConverting.emplace_back(804u);
+        const std::size_t failedEpisode =
+            collectUnsupportedRequests(tQueued, tSubmitted, tConverting, tRevoked);
+        out.throwingCopyDoesNotTerminate = failedEpisode == 0 && tRevoked.empty();
+        out.throwingCopyKeepsAcceptedIds = tQueued.size() == 2
+            && tSubmitted.size() == 1 && tConverting.size() == 1
+            && tQueued[0].id == 801u && tQueued[1].id == 802u;
+    }
+
     out.ok = out.exactSurfaceAdmitted && out.multisampleIsUnsupported
         && out.unsupportedFormatIsUnsupported && out.non2dTargetIsUnsupported
         && out.nonD3d11ApiIsUnsupported && out.resizeIsTransient
         && out.missingResourcesAreTransient && out.reasonsAreDistinct
-        && out.revokesEachAcceptedIdOnce && out.revokeIsIdempotent;
+        && out.revokesEachAcceptedIdOnce && out.revokeIsIdempotent
+        && out.throwingCopyDoesNotTerminate && out.throwingCopyKeepsAcceptedIds;
     if (!out.ok) {
         out.detail = !out.multisampleIsUnsupported
             || !out.unsupportedFormatIsUnsupported || !out.non2dTargetIsUnsupported
@@ -259,6 +324,8 @@ inline QuickD3d11AdmissionRegression runQuickD3d11AdmissionRegression()
             ? "persistent-capability-mismatch-is-not-a-verdict"
             : !out.revokesEachAcceptedIdOnce || !out.revokeIsIdempotent
             ? "accepted-identity-not-retired-exactly-once"
+            : !out.throwingCopyDoesNotTerminate || !out.throwingCopyKeepsAcceptedIds
+            ? "revocation-not-exception-safe"
             : "admission-rule-regressed";
     }
     return out;

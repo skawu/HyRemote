@@ -608,8 +608,10 @@ private:
             // existing controlled fallback policy decide the route.
             generation = s->generation;
             unsupportedReason = admission.reason;
-            collectUnsupportedRequests(s->queued, s->submitted, s->converting,
-                                       unsupported);
+            const std::size_t revokedCount = collectUnsupportedRequests(
+                s->queued, s->submitted, s->converting, unsupported);
+            if (revokedCount == 0)
+                return; // contained allocation failure: the deadline retires
             releaseNative(*s);
         }
         // deliver() takes the state lock and posts to the GUI dispatcher, so it
