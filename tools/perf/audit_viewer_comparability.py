@@ -58,8 +58,7 @@ def audit_run(result, manifest, trace, trace_digest):
         issues.append("HOST_TRACE_IDENTITY_OR_INTEGRITY")
     else:
         interval = trace["intervals"]["submit_to_source_completed"]
-        if not interval["n"] or any(
-                item["n"] and item["p50_ms"] < 0 for item in trace["intervals"].values()):
+        if not interval["n"] or any(trace["negative_host_intervals"].values()):
             issues.append("HOST_STAGE_INTERVAL_INVALID")
         steps = trace["steps"]
         expected = {"public": "quick_grab_submitted", "gl": "gpu_readback_submitted"}
@@ -136,7 +135,7 @@ def read_run(directory):
     manifest_path = directory / "comparison-environment.json"
     trace = directory / "runtime-frame-trace.jsonl"
     return (result, read(manifest_path.name) if manifest_path.is_file() else {},
-            attribute(load_trace(trace)) if trace.is_file() else None,
+            attribute(load_trace(trace), include_integrity=True) if trace.is_file() else None,
             sha256(trace) if trace.is_file() else None)
 
 
@@ -154,12 +153,23 @@ def self_test():
                     viewer_qpc_hz=10_000,
                     qt_kit_sha256="e" * 64, sampler_sha256="f" * 64, refresh_hz=60,
                     trace_sha256="c" * 64)
-    trace = {"host_pids": [11], "schemas": {"3": 3}, "trace_events_dropped": 0,
-             "request_identity_collisions": 0, "steps": {"quick_grab_submitted": 1},
-             "intervals": {"submit_to_source_completed": {"n": 1, "p50_ms": 1}}}
+    records = [
+        {"schema": 3, "type": "frame_step", "pid": 11, "request_id": request,
+         "step": step, "at_ns": timestamp}
+        for request in (1, 2, 3)
+        for step, timestamp in (("capture_request", 1_000_000),
+                                ("quick_grab_submitted", 2_000_000),
+                                ("source_completed", 3_000_000))
+    ]
+    trace = attribute(records, include_integrity=True)
     run = result, manifest, trace, "c" * 64
     if compare(run, run, "aa")["status"] != "MATCHED_METADATA":
         raise AssertionError("valid pair rejected")
+    records[2]["at_ns"] = 1_000_000
+    bad_trace = attribute(records, include_integrity=True)
+    if (bad_trace["intervals"]["submit_to_source_completed"]["p50_ms"] != 1
+            or compare(run, (result, manifest, bad_trace, "c" * 64), "aa")["status"] != "BLOCKED"):
+        raise AssertionError("negative Host sample hidden by a positive median")
     for target, key, value in ((0, "source_sha", "d" * 40), (0, "viewer_samples", None),
                                (0, "viewer_samples", [[[6, 30, 1]]]),
                                (1, "viewer_clock", "host_monotonic_ns"),
