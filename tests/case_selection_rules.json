@@ -168,6 +168,18 @@
     "A source change with no matching rule is an error; manual impact review is required before assigning additional cases.",
     "Risk rules are additive across all changed files; a most-specific source path match never cancels declared cross-cutting ABI/security/QML test obligations."
   ],
+  "case_guards": {
+    "hyremote-quick-capture-test": "Qt Quick adapter",
+    "hyremote-quick-gl-pbo-session-test": "Linux xcb/Xvfb and desktop GL for actual session coverage",
+    "hyremote-runtime-dll-lifecycle-test": "Windows Qt 6.8.3, C++ API, VNC, and experimental GL PBO",
+    "hyremote-runtime-dll-d3d11-lifecycle-test": "Windows Qt 6.8.3 DLL fixture, VNC, and both experimental providers enabled",
+    "hyremote-security-descriptor-test": "Shared Runtime tests",
+    "hyremote-vnc-auth-test": "VNC plus available OpenSSL transport-security implementation",
+    "hyremote-rfb-vnc-auth-handshake-test": "VNC plus available OpenSSL transport-security implementation",
+    "hyremote-qml-module-test": "Qt 6 QML frontend and build-tree module",
+    "hyremote-qml-installed-consumer": "Qt 6 QML frontend and installed consumer harness",
+    "hyremote-cpp-installed-consumers": "C++ API and installed consumer harness"
+  },
   "risk_rules": [
     {
       "id": "security-auth",
