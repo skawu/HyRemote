@@ -238,12 +238,22 @@ class ScreenWatcher(threading.Thread):
                 continue
             color = tuple(int(v) for v in img[half, half])
             if not near(color, self.last_color):
-                for m in list(self.pending):
-                    if near(color, m["target"]):
-                        self.detected.append({"seq": m["seq"],
-                                              "detect_ms": round(now_ms - m["t_ms"], 1),
-                                              "first_color": color})
+                matches = [m for m in self.pending if near(color, m["target"])]
+                if len(matches) > 1:
+                    # P2 review: with pending marks spanning the palette's
+                    # 2 s repeat period, ONE observed transition cannot tell
+                    # which pending mark it belongs to — drop them all as
+                    # ambiguous instead of fabricating fast/slow samples.
+                    for m in matches:
+                        self.ambiguous.append({"seq": m["seq"],
+                                               "note": "aliased-pending-cluster"})
                         self.pending.remove(m)
+                elif matches:
+                    m = matches[0]
+                    self.detected.append({"seq": m["seq"],
+                                          "detect_ms": round(now_ms - m["t_ms"], 1),
+                                          "first_color": color})
+                    self.pending.remove(m)
             self.last_color = color
             time.sleep(self.interval)
 
@@ -269,7 +279,9 @@ def dismiss_encryption_dialog(viewer_pids):
     user32 = ctypes.windll.user32
     dismissed = 0
     pid_holder = ctypes.c_ulong()
-    deadline = time.time() + 6.0
+    # P2 review: when the warning is already disabled the dialog never
+    # appears — don't burn the fixture's setup buffer on a full timeout.
+    deadline = time.time() + 2.5
     while time.time() < deadline:
         dialogs = []
         def cb(hwnd, lp):
@@ -347,10 +359,13 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
     outdir = Path(args.outdir)
     env = os.environ.copy()
     active = Path(active_dir).resolve()
-    qt = Path(args.qt_prefix)
-    parts = [str(active / "bin"), str(active / "plugins"), str(qt / "bin")]
+    # P1 review: the candidate environment must contain ONLY the installed
+    # dist. No SDK/Qt-development fallback: if the dist lacks a required DLL
+    # the run must fail loudly, not silently borrow it from the machine. The
+    # dist ships the full Qt runtime it needs.
+    parts = [str(active / "bin"), str(active / "plugins")]
     env["PATH"] = ";".join(parts) + ";" + env.get("PATH", "")
-    env["QT_PLUGIN_PATH"] = ";".join([str(active / "plugins"), str(qt / "plugins")])
+    env["QT_PLUGIN_PATH"] = str(active / "plugins")
     env["QSG_RHI_BACKEND"] = "opengl"
     env["QT_LOGGING_RULES"] = "qt.qpa.*=false"
     env["QT_FORCE_STDERR_LOGGING"] = "1"
@@ -360,9 +375,11 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
     env["HYREMOTE_CPU_PROBE_FILE"] = str(probe_file)
     env["HYREMOTE_FRAME_TRACE_FILE"] = str((outdir / f"{label}-frame-trace.jsonl").resolve())
 
+    # P2 review: viewer setup (dialog handling + locate) can take ~10 s, so
+    # the fixture lifetime buffer must exceed it for every segment.
     fixture_args = ["-plugin", f"hyremote:port={port}",
                     "--scenario", args.scenario, "--phase-ms", str(args.phase_ms),
-                    "--size", args.size, "--test-seconds", str(seconds + 8)]
+                    "--size", args.size, "--test-seconds", str(seconds + 20)]
     log(f"{label}: starting fixture ({viewers} viewer(s), {seconds}s)")
     proc = subprocess.Popen([str(args.fixture_exe)] + fixture_args, cwd=str(active),
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -410,6 +427,13 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
         time.sleep(0.05)
 
     stop.set()
+    if watcher is not None:
+        # P2 review: join the watcher so a finished segment cannot keep
+        # grabbing the old screen location at 30 Hz through later segments
+        # (that pollution is exactly what the stale watcher did to B/rollback
+        # data in the first campaign).
+        watcher.stop_flag.set()
+        watcher.join(timeout=1.5)
     for p in vnc_procs:
         p.terminate()
     try:
