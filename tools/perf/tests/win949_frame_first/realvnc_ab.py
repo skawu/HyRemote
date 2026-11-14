@@ -410,9 +410,9 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
     wait_ready(proc, reader)
     wait_rfb(port)
 
+    # CPU measurement starts only AFTER Viewer setup. Including dialog waits
+    # and connection setup in some arms biases their mean CPU percentages.
     samples, stop = [], threading.Event()
-    cpu_t = threading.Thread(target=cpu_percent_core, args=(proc, samples, stop), daemon=True)
-    cpu_t.start()
 
     watcher = ScreenWatcher() if capture_marks else None
     vnc_procs = []
@@ -436,10 +436,18 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
                     f"latency samples disabled")
         watcher.last_color = None
 
+    # Do not backfill marks generated while the Viewer was opening: those
+    # source timestamps predate the screen observation window and create
+    # fictitious long-lag/aliased delivery samples.
     seg_marks = []
+    last_seq = reader.marks[-1]["seq"] if reader.marks else -1
+    cpu_t = threading.Thread(target=cpu_percent_core,
+                             args=(proc, samples, stop), daemon=True)
+    cpu_t.start()
     deadline = time.time() + seconds
-    last_seq = -1
     while time.time() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(f"{label}: fixture exited during measurement")
         for m in reader.marks:
             if m["seq"] > last_seq:
                 last_seq = m["seq"]
@@ -507,6 +515,9 @@ def main():
     # larger; local sizing is bounded by the viewer's unscaled display.
     ap.add_argument("--size", default="880x540")
     ap.add_argument("--phase-ms", type=int, default=250)
+    ap.add_argument("--gate-scope", choices=("full", "one-viewer"),
+                    default="full", help="one-viewer performs only the two 1V arms; "
+                                         "no seven-segment rerun")
     args = ap.parse_args()
     args.port = args.port or None
     outdir = Path(args.outdir)
@@ -522,9 +533,13 @@ def main():
 
     results = []
     partial = outdir / "partial-results.jsonl"
-    plan = [("A-0v", "A", 0, 10), ("A-1v", "A", 1, 20), ("A-2v", "A", 2, 14),
-            ("B-0v", "B", 0, 10), ("B-1v", "B", 1, 20), ("B-2v", "B", 2, 14),
-            ("A-rollback-1v", "A", 1, 12)]
+    if args.gate_scope == "one-viewer":
+        plan = [("A-1v", "A", 1, 20), ("B-1v", "B", 1, 20)]
+    else:
+        plan = [("A-0v", "A", 0, 10), ("A-1v", "A", 1, 20),
+                ("A-2v", "A", 2, 14), ("B-0v", "B", 0, 10),
+                ("B-1v", "B", 1, 20), ("B-2v", "B", 2, 14),
+                ("A-rollback-1v", "A", 1, 12)]
     dists = {"A": Path(args.dist_a), "B": Path(args.dist_b)}
     # Never overlay a prior "active" tree: a stale DLL/plugin would invalidate
     # an installed-consumer acceptance test. No destructive cleanup required.
