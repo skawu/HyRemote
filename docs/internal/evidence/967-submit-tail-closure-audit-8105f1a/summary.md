@@ -61,15 +61,15 @@ warranted for this path. It is documented, not fixed.
 The archived trace set (`967-p95-tail-a43b76e1`) predates the H1 arm fix. Its
 own falsification clause — "Falsified if a short fixed-SHA A/B after the arm
 fix still shows an unchanged P95 tail" — is the remaining open item. Under
-the audited closure table, the steady-state upper bound for
-`capture_request → gpu_readback_submitted` on an exposed window is
-`kNormalFrameOpportunityMs` (17 ms) + one fence-retire window (submit→source
-P50 1–2 ms) + at most one frame interval, i.e. **< ~50 ms**, versus the
-archived 145/154 ms P95. Silent-tail windows, paired same-instant submits and
-"admitted request with no submit event" (the archived signatures) are all
-produced by the now-closed paths 1–3. Verdict: **NO_PATCH_WITH_EVIDENCE**;
-the historical 145/154 ms figure stays attributed to the pre-H1-fix binary
-until the bounded A/B decides.
+the audited closure table, the original 17 ms GL fixed wait has already
+been removed (`glFallbackRenderDelayMs = 0`). There is **no deterministic
+<50 ms bound** on request→submit: Qt exposure, render-loop scheduling,
+in-flight GPU/CPU work and queueing affect this interval. The 750 ms
+terminal timer bounds request liveness, not a GPU-submit percentile.
+Silent-tail windows and paired submissions are compatible with the fixed H1
+arm fault, but not uniquely diagnostic of it. Verdict: **NO_PATCH_WITH_EVIDENCE**
+for this audit's specific source paths; the old 145/154 ms sample remains
+historical evidence until a truly matched workload can evaluate it.
 
 ## 4. Qt version coverage
 
@@ -83,7 +83,7 @@ until the bounded A/B decides.
 ## 5. Bounded same-SHA A/B result (run 2026-11-14, one bounded pair)
 
 Setup per the Owner comment: current SHA `8105f1a`, Windows Qt 6.8.3, 1 Viewer,
-35 s `local` fixture scenario (1 Hz color changes), `QSG_RHI_BACKEND=opengl`,
+35 s `local` fixture scenario (250 ms marker-phase default, distinct from the older 1 Hz RealVNC workload), `QSG_RHI_BACKEND=opengl`,
 registered instruments only (`win949_probe.py` measure mode + registered
 analyzers). Arm A = public route (canonical `build.cmd install` identity);
 arm B = `HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON` measurement build in a
@@ -115,11 +115,13 @@ A = P50 106.5 / P95 122.7 / P99 141.1; B2 = P50 103.2 / **P95 176.5 / P99
 
 Verdict against the Owner's joint criterion:
 
-- `REQ_TO_SUBMIT_P95 = 48.4 ms` on the current source — the archived
-  145/154 ms tail **does not reproduce**; the audit's <~50 ms bound holds.
-  The pre-H1-fix figure is now formally a historical suspicion, closed by
-  this A/B.
-- `HOST_CPU_DELTA` improves (**21.9 % → 13.1 %**, −40 %).
+- `REQ_TO_SUBMIT_P95 = 48.4 ms` on the current source in this **250 ms-phase
+  local fixture**: the archived 145/154 ms tail was **not observed under these
+  conditions**, consistent with the already-fixed H1 arm issue. This is not a
+  same-scenario RealVNC replication, and neither a universal <50 ms bound
+  nor the global absence of the historical tail is established.
+- `HOST_CPU_DELTA` improves (**21.9 % → 13.1 %**, −40 %) **within this one
+  local A/B pair**; the magnitude is not a stable RealVNC/customer estimate.
 - `VIEWER_P95/P99` **regresses** in the probe-client caliber
   (P95 +53.8 ms, P99 +68.7 ms); the B arm issues ~1.5× capture requests, so
   its delivery pacing differs. The archived RealVNC caliber showed the same
