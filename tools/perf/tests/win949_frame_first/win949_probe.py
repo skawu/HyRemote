@@ -700,6 +700,7 @@ def measure(args):
                 fresh.append(client)
             return fresh
 
+        last_observed = None  # previous marker-point colour, for transition proof
         while time.time() < deadline:
             if target is not None:
                 iteration += 1
@@ -724,10 +725,19 @@ def measure(args):
                 rtts.append((t_recv - t_send) * 1000.0)
                 time.sleep(args.poll_interval)
                 actual = target.pixel(mark_x + mark_w // 2, mark_y + mark_h // 2)
+                # P2 review (#1000): an unchanged marker colour is not evidence
+                # of a new delivery. While delivery stalls, the 8-phase palette
+                # cycles back to an already-observed colour, and a pure
+                # colour-equality match would record a fresh (fast) sample for
+                # pixels that never changed. Only a colour *transition* may
+                # close a pending marker seq; genuine lag >= 2000 ms stays
+                # flagged ambiguous by the summarizer.
+                changed_observation = actual is not None and actual != last_observed
+                last_observed = actual
                 with app.lock:
                     marks = list(app.marks)
                 for entry in marks:
-                    if entry["seq"] in seen_seq:
+                    if entry["seq"] in seen_seq or not changed_observation:
                         continue
                     expected = MARK_PALETTE[entry["state"] % len(MARK_PALETTE)]
                     if not near(actual, expected):
@@ -878,7 +888,17 @@ def measure(args):
         "off_seen": "HYREMOTE_QUICK_ACTIVITY_WAKE=OFF" in host_text,
     }
     if wake != "SELECTED":
-        result["errors"].append("BLOCKED_ROUTE_NOT_SELECTED: " + str(result["activity_wake_log"]))
+        if wake_expected:
+            result["errors"].append("BLOCKED_ROUTE_NOT_SELECTED: " + str(result["activity_wake_log"]))
+        else:
+            # P2 review (#1000): builds without the compiled-in
+            # HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE experiment never emit
+            # the OFF line, no matter what the environment says. The hard arm
+            # proof stays mandatory only for explicitly requested wake
+            # comparisons; ordinary route measurements record this as
+            # informational instead of blocking.
+            result["runtime_route_validation"] = "INFORMATIONAL_EXPERIMENT_NOT_COMPILED"
+            result["activity_wake_log"]["gate"] = "INFORMATIONAL_EXPERIMENT_NOT_COMPILED"
     identity = re.search(r"BUILD_IDENTITY=([^\s]+)", host_text)
     result["build_identity"] = identity.group(1) if identity else "NOT_MEASURED"
     result["host_log_path"] = str(log_path.resolve())
