@@ -541,21 +541,22 @@ def main():
                 ("B-1v", "B", 1, 20), ("B-2v", "B", 2, 14),
                 ("A-rollback-1v", "A", 1, 12)]
     dists = {"A": Path(args.dist_a), "B": Path(args.dist_b)}
-    # Never overlay a prior "active" tree: a stale DLL/plugin would invalidate
-    # an installed-consumer acceptance test. No destructive cleanup required.
+    # Each arm transition, INCLUDING rollback A, is a fresh installation.
+    # Reusing the first A directory would only prove a cached old install can
+    # still start; it would not exercise the actual rollback operation.
     install_token = f"{int(time.time() * 1000)}-{os.getpid()}"
-    active_dirs = {arm: Path(f"{args.active_dir}-{install_token}-{arm}")
-                   for arm in ("A", "B")}
     current = None
+    installed_dir = None
     try:
         for label, arm, viewers, seconds in plan:
             if current != arm:
-                log(f"installing dist-{arm} -> {active_dirs[arm]}")
-                materialize(dists[arm], active_dirs[arm], Path(args.fixture_exe))
+                installed_dir = Path(f"{args.active_dir}-{install_token}-{label}")
+                log(f"installing dist-{arm} -> {installed_dir}")
+                materialize(dists[arm], installed_dir, Path(args.fixture_exe))
                 current = arm
                 time.sleep(0.5)
             r = run_segment(label, args, viewers, seconds, port,
-                            capture_marks=True, active_dir=str(active_dirs[arm]))
+                            capture_marks=True, active_dir=str(installed_dir))
             results.append(r)
             with partial.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(r) + "\n")
