@@ -41,3 +41,4 @@ tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
 tools/perf/tests/win949_frame_first/summarize_runs.py
 tools/perf/tests/win949_frame_first/win949_probe.py
 tools/test/plan_tests.py
+tools/perf/tests/win949_frame_first/realvnc_ab.py
