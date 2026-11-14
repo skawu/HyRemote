@@ -457,13 +457,15 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
         time.sleep(0.05)
 
     stop.set()
+    cpu_t.join(timeout=2.0)
     if watcher is not None:
-        # P2 review: join the watcher so a finished segment cannot keep
-        # grabbing the old screen location at 30 Hz through later segments
-        # (that pollution is exactly what the stale watcher did to B/rollback
-        # data in the first campaign).
+        # No observer from a finished arm may contaminate the next arm.
         watcher.stop_flag.set()
         watcher.join(timeout=1.5)
+    # Preserve the cleanup below even if a sampler failed to stop: the data
+    # are invalid, but we must not leave an extra CPU/screen worker running.
+    sampler_stuck = cpu_t.is_alive() or (
+        watcher is not None and watcher.is_alive())
     for p in vnc_procs:
         p.terminate()
     try:
@@ -472,6 +474,8 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
     except subprocess.TimeoutExpired:
         proc.kill()
     time.sleep(1.0)
+    if sampler_stuck:
+        raise RuntimeError(f"{label}: CPU/screen sampler survived segment cleanup")
 
     res = {"label": label, "viewers": viewers, "seconds": seconds,
            "cpu_one_core_pct_avg": round(statistics.mean(
