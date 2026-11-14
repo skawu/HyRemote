@@ -127,8 +127,19 @@ bool testQtActivityClassification()
     if (!check(gate.noteQtRenderActivity() == Reason::AlreadyActive,
                "already-active capture was rearmed unnecessarily"))
         return false;
-    for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i)
+    // #999 review: while the burst is not exhausted, a brief pause (one
+    // unchanged comparison) must NOT park the scheduler at the 250ms static
+    // probe. The next capture stays at 16ms granularity, so a host-local
+    // change right after the pause is still found quickly — this is the
+    // latency side of the CPU/Viewer-latency joint gate that retracted the
+    // proposed 1-frame burst, locked as behavior for any future reduction.
+    for (std::size_t i = 0; i < Gate::kConsecutiveUnchangedFrames; ++i) {
         gate.noteFrameChange(false);
+        if (i + 1 < Gate::kConsecutiveUnchangedFrames
+            && !check(gate.waitForCapture() == Gate::WaitResult::Capture,
+                      "one unchanged frame parked the active burst at the static probe"))
+            return false;
+    }
     gate.noteCaptureStarted();
     if (!check(gate.noteQtRenderActivity() == Reason::CaptureInFlight,
                "our own in-flight grab unexpectedly rearmed idle capture"))

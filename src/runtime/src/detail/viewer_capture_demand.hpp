@@ -36,17 +36,26 @@ public:
     // the 100ms baseline; remote input and new viewers reset idle immediately.
     // Keep this private to the shared Runtime; active frames retain 60fps.
     static constexpr auto kStaticProbeInterval = std::chrono::milliseconds(250);
-    // One unchanged worker comparison is enough to leave the 60fps burst and
-    // return to the bounded 250ms probe. The archived fixed-SHA 4eb45ec traces
-    // show why the previous burst of three extra grabs was pure duplicate
-    // work: every 1-Viewer unchanged run lasted 5-7 frames (121 runs, 708
-    // unchanged grabs out of 935 requests = 26% of all captures), and the
-    // 2-Viewer trace had only 3 short runs out of 821 comparisons (~0.4%).
-    // A changed frame is always captured anyway; shortening the burst only
-    // moves the earliest possible re-probe inside one already-static period,
-    // so the 250ms worst-case discovery delay is unchanged. The 250ms probe
-    // value itself keeps its #789 A/B/A evidence and is deliberately untouched.
-    static constexpr std::size_t kConsecutiveUnchangedFrames = 1;
+    // Three unchanged comparisons must be spent in the active 60fps burst
+    // before returning to the bounded static probe. A 1-frame burst was
+    // proposed and RETRACTED in #999 review (#967): the archived fixed-SHA
+    // 4eb45ec traces are a 1 Hz Windows fixture, and `rfb_compared` without
+    // `rfb_encoded` is only a PROXY for stillness (trySendUpdate can skip
+    // encoding while a Viewer request is outstanding, under socket
+    // backpressure, or for empty eligible updates; noteFrameChange is
+    // damage-based). The modelled saving — two extra grabs per stillness run,
+    // 2x121/935 ~= 26% as an UPPER BOUND at 1 Viewer; 708/935 ~= 76% of
+    // compared frames were non-encoded — was never measured as CPU or as
+    // grab reduction. The latency cost, in contrast, is structural: after the
+    // FIRST unchanged comparison a 1-frame burst arms the 250ms probe at
+    // once (noteFrameChange -> waitForCapture arms and parks), so a
+    // host-local change right after a brief pause, with no remote input or
+    // new viewer, is found ~200-234ms later than with this 3-frame burst —
+    // more than the accepted #410 wired-LAN P95 budget (206.1ms) by itself,
+    // and the 2-Viewer trace already contains one such 1-frame run.
+    // The 250ms probe keeps its #789 A/B/A evidence (9.2% -> 4.5% one-core
+    // CPU) and both values stay untouched without joint-gate evidence.
+    static constexpr std::size_t kConsecutiveUnchangedFrames = 3;
 
 #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
     // Test-only concurrency seam; never defined in the shipped Runtime. The
