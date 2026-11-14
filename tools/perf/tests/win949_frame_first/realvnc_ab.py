@@ -345,13 +345,22 @@ def cpu_percent_core(proc, samples, stop, interval=0.5):
             break
 
 
-def materialize(dist: Path, active: Path):
-    """Materialize a dist into an install directory WITHOUT deleting the old
-    one: this machine's shell safety hook aborts bulk rmtree operations, which
-    would kill a backgrounded runner mid-campaign. Each arm gets its own
-    directory; repeated installs of the same dist just overwrite in place."""
-    active.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(dist, active, dirs_exist_ok=True)
+def materialize(dist: Path, active: Path, fixture_exe: Path):
+    """Create a FRESH installed tree; never overlay old files from earlier runs.
+
+    Safe-delete hooks block rmtree on the execution machine. Each invocation
+    therefore has a unique installation directory rather than deleting or
+    silently retaining obsolete Qt DLLs/plugins from a previous candidate.
+    The consumer fixture is copied into that same dist/bin, so Windows DLL
+    loader searches the deployed directory, not its developer build tree.
+    """
+    if active.exists():
+        raise RuntimeError(f"isolated install directory already exists: {active}")
+    shutil.copytree(dist, active)
+    installed_fixture = active / "bin" / "win949-frame-fixture.exe"
+    if not installed_fixture.parent.is_dir():
+        raise RuntimeError(f"installed package has no bin directory: {active}")
+    shutil.copy2(fixture_exe, installed_fixture)
     return active
 
 
@@ -359,13 +368,23 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
     outdir = Path(args.outdir)
     env = os.environ.copy()
     active = Path(active_dir).resolve()
-    # P1 review: the candidate environment must contain ONLY the installed
-    # dist. No SDK/Qt-development fallback: if the dist lacks a required DLL
-    # the run must fail loudly, not silently borrow it from the machine. The
-    # dist ships the full Qt runtime it needs.
-    parts = [str(active / "bin"), str(active / "plugins")]
-    env["PATH"] = ";".join(parts) + ";" + env.get("PATH", "")
+    # Cloud P1: do NOT append the inherited PATH: it can contain a developer
+    # Qt SDK or an old product build tree. Only the deployed package and the
+    # Windows OS loader directories may satisfy DLL dependencies.
+    windows_root = Path(os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+                        or r"C:\Windows")
+    if not windows_root.is_dir():
+        raise RuntimeError(f"Windows system directory unavailable: {windows_root}")
+    env["PATH"] = ";".join((str(active / "bin"), str(active / "plugins"),
+                           str(windows_root / "System32"), str(windows_root)))
+    # Inherited Qt/QML plugin hints could otherwise load plugins from the
+    # build machine even with a clean PATH.
+    for name in ("QT_QPA_PLATFORM_PLUGIN_PATH", "QT_PLUGIN_PATH",
+                 "QT_QPA_FONTDIR", "QML2_IMPORT_PATH", "QML_IMPORT_PATH",
+                 "QT_QPA_GENERIC_PLUGINS", "QTWEBENGINEPROCESS_PATH"):
+        env.pop(name, None)
     env["QT_PLUGIN_PATH"] = str(active / "plugins")
+    env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(active / "plugins" / "platforms")
     env["QSG_RHI_BACKEND"] = "opengl"
     env["QT_LOGGING_RULES"] = "qt.qpa.*=false"
     env["QT_FORCE_STDERR_LOGGING"] = "1"
@@ -381,7 +400,10 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
                     "--scenario", args.scenario, "--phase-ms", str(args.phase_ms),
                     "--size", args.size, "--test-seconds", str(seconds + 20)]
     log(f"{label}: starting fixture ({viewers} viewer(s), {seconds}s)")
-    proc = subprocess.Popen([str(args.fixture_exe)] + fixture_args, cwd=str(active),
+    installed_fixture = active / "bin" / "win949-frame-fixture.exe"
+    if not installed_fixture.is_file():
+        raise RuntimeError(f"isolated installed consumer missing: {installed_fixture}")
+    proc = subprocess.Popen([str(installed_fixture)] + fixture_args, cwd=str(active),
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace")
     reader = StdoutReader(proc)
@@ -504,13 +526,17 @@ def main():
             ("B-0v", "B", 0, 10), ("B-1v", "B", 1, 20), ("B-2v", "B", 2, 14),
             ("A-rollback-1v", "A", 1, 12)]
     dists = {"A": Path(args.dist_a), "B": Path(args.dist_b)}
-    active_dirs = {"A": Path(args.active_dir + "-A"), "B": Path(args.active_dir + "-B")}
+    # Never overlay a prior "active" tree: a stale DLL/plugin would invalidate
+    # an installed-consumer acceptance test. No destructive cleanup required.
+    install_token = f"{int(time.time() * 1000)}-{os.getpid()}"
+    active_dirs = {arm: Path(f"{args.active_dir}-{install_token}-{arm}")
+                   for arm in ("A", "B")}
     current = None
     try:
         for label, arm, viewers, seconds in plan:
             if current != arm:
                 log(f"installing dist-{arm} -> {active_dirs[arm]}")
-                materialize(dists[arm], active_dirs[arm])
+                materialize(dists[arm], active_dirs[arm], Path(args.fixture_exe))
                 current = arm
                 time.sleep(0.5)
             r = run_segment(label, args, viewers, seconds, port,
