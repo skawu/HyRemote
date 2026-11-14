@@ -237,6 +237,12 @@ class ScreenWatcher(threading.Thread):
                 time.sleep(self.interval)
                 continue
             color = tuple(int(v) for v in img[half, half])
+            if self.last_color is None:
+                # First sample after (re)locating: establish the baseline.
+                # Comparing against None would raise inside near() and kill
+                # this daemon thread, leaving every pending mark unclosed.
+                self.last_color = color
+                continue
             if not near(color, self.last_color):
                 matches = [m for m in self.pending if near(color, m["target"])]
                 if len(matches) > 1:
@@ -385,6 +391,12 @@ def run_segment(label, args, viewers, seconds, port, capture_marks, active_dir):
         env.pop(name, None)
     env["QT_PLUGIN_PATH"] = str(active / "plugins")
     env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(active / "plugins" / "platforms")
+    # The dist ships its own qml/ tree. Without pointing QML at it, the sample
+    # app's QtQuick modules fail to resolve and the scene renders blank
+    # (all-white marker point; only white-phase marks survive as ambiguous).
+    # This is a package-internal path, not a developer-SDK fallback.
+    env["QML_IMPORT_PATH"] = str(active / "qml")
+    env["QML2_IMPORT_PATH"] = str(active / "qml")
     env["QSG_RHI_BACKEND"] = "opengl"
     env["QT_LOGGING_RULES"] = "qt.qpa.*=false"
     env["QT_FORCE_STDERR_LOGGING"] = "1"
