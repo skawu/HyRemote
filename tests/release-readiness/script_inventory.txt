@@ -38,4 +38,6 @@ tools/perf/attribute_frame_stages.py
 tools/perf/audit_viewer_comparability.py
 tools/perf/tests/qt68_gl_pbo_source_r4/generic_rfb_e2e.py
 tools/perf/tests/qt68_gl_pbo_source_r4/prepare_generic_dynamic_fixture.py
+tools/perf/tests/win949_frame_first/summarize_runs.py
+tools/perf/tests/win949_frame_first/win949_probe.py
 tools/test/plan_tests.py
