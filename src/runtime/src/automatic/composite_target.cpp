@@ -62,7 +62,9 @@ public:
             return false;
 
         std::lock_guard<std::mutex> lock(m_state->mutex);
-        if (m_state->active || m_state->target.isNull())
+        // Stop may have released the state mutex while retiring child captures.
+        // A new start must not add children until that previous lifetime drains.
+        if (m_state->active || m_state->stopping || m_state->target.isNull())
             return false;
         if (m_state->target->thread() != application->thread())
             return false;
@@ -86,6 +88,11 @@ public:
         quint64 surfaceUnavailableHandler = 0;
         {
             std::unique_lock<std::mutex> lock(m_state->mutex);
+            if (m_state->stopping) {
+                m_state->cv.wait(lock, [state = m_state] { return !state->stopping; });
+                return; // a concurrent caller has already drained this lifetime
+            }
+            m_state->stopping = true;
             m_state->active = false;
             m_state->onFrame = {};
             m_state->onEvent = {};
@@ -122,6 +129,11 @@ public:
             }
             if (child && child->capture)
                 child->capture->stop();
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->stopping = false;
+            m_state->cv.notify_all();
         }
     }
 
@@ -202,6 +214,7 @@ private:
         QPointer<CompositeTarget> target;
         ::HyRemote::detail::BuiltinTargetResolver resolver;
         bool active = false;
+        bool stopping = false; // prevents start() from stealing a prior teardown's children
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
         quint64 surfaceUnavailableHandler = 0;
