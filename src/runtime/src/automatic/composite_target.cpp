@@ -82,7 +82,11 @@ public:
 
     void stop() noexcept override
     {
-        std::vector<std::shared_ptr<ChildRuntime>> children;
+        // #790: stop() is noexcept and may run under memory pressure. Do not
+        // allocate a new vector to retire existing children: reserve() can
+        // throw bad_alloc and terminate the process during normal shutdown.
+        // A same-type map swap transfers all ownership without allocation.
+        std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         QPointer<CompositeTarget> target;
         quint64 surfaceUnavailableHandler = 0;
         {
@@ -100,16 +104,16 @@ public:
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
             });
 
-            children.reserve(m_state->children.size());
-            for (auto &entry : m_state->children)
-                children.push_back(std::move(entry.second));
-            m_state->children.clear();
+            children.swap(m_state->children);
         }
 
         if (target && surfaceUnavailableHandler != 0)
             target->removeSurfaceUnavailableHandler(surfaceUnavailableHandler);
 
-        for (const auto &child : children) {
+        // Each child is stopped outside State::mutex, as before: a child stop
+        // can synchronously complete callbacks that need that same mutex.
+        for (const auto &entry : children) {
+            const auto &child = entry.second;
             if (child && child->capture)
                 child->capture->stop();
         }
