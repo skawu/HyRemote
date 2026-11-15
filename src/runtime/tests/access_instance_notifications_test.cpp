@@ -633,6 +633,17 @@ void testStopDrainsInProgressIdleRelease()
     CHECK(state->captureStops.load() == 1);
     CHECK(!state->idleReleaseInProgress.load(std::memory_order_acquire));
     CHECK(!state->stopOverlappedIdleRelease.load(std::memory_order_acquire));
+
+    // The lifecycle gate must reset on a subsequent start. No stale
+    // stopping state may reject a second bootstrap/zero-viewer release.
+    state->blockIdleRelease.store(false, std::memory_order_release);
+    CHECK(instance.start());
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 2);
+    instance.stop();
+    CHECK(state->captureStops.load() == 2);
+    CHECK(instance.state() == AccessState::Stopped);
     HyRemote::detail::resetFactories();
 }
 
