@@ -406,6 +406,24 @@ int main(int argc, char **argv)
     }
     singleComponents.capture->stop();
 
+    // #790: draining child owners one at a time must complete the previous
+    // lifetime before restart. Reuse the existing target/resolver, not a new
+    // fixture or timing-sensitive concurrency harness.
+    singleFrames.clear();
+    if (!check(singleComponents.capture->start(
+                   [&](hyremote::RemoteFrame frame) { singleFrames.push_back(std::move(frame)); },
+                   [](const hyremote::CaptureEvent &) {}),
+               "composite restarts after allocation-free child teardown")
+        || !check(singleComponents.capture->requestFrame({43, hyremote::Clock::now()}),
+                  "restarted composite accepts a new capture request")
+        || !check(waitForFrame(singleFrames, 1), "restarted composite delivers a fresh frame")
+        || !check(singleFrames.front().requestId == hyremote::CaptureRequestId{43},
+                  "restarted composite preserves the new request identity")) {
+        singleComponents.capture->stop();
+        return 6;
+    }
+    singleComponents.capture->stop();
+
     // A single 2x-DPR child needs scaling into the logical canvas. It must
     // retain the old compositor (no direct storage alias) and #806 DPR=1.
     QObject scaledTarget;
