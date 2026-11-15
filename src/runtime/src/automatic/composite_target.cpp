@@ -87,6 +87,8 @@ public:
         // throw bad_alloc and terminate the process during normal shutdown.
         // A same-type map swap transfers all ownership without allocation.
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
+        static_assert(noexcept(children.swap(m_state->children)),
+                      "composite stop child ownership transfer must be nonthrowing");
         QPointer<CompositeTarget> target;
         quint64 surfaceUnavailableHandler = 0;
         {
