@@ -3997,6 +3997,44 @@ void testPendingDamageCoalescesAtDelivery()
     }
 }
 
+// #567/#789: Overlapping per-frame pending damage may sum to >=25% even
+// though the actual UNION covers far less. That must not turn a narrow
+// sparse update into a near-full-screen RFB paint and inflate wire bytes.
+void testOverlappingPendingDamageUsesUniqueCoverage()
+{
+    using HyRemote::detail::RfbDamageRegion;
+    using HyRemote::detail::RfbRect;
+    const RfbRect viewport{0, 0, 256, 256};
+    RfbDamageRegion overlapped;
+    overlapped.add({0, 0, 256, 24});
+    overlapped.add({0, 1, 256, 24}); // 23 pixels of vertical overlap
+    overlapped.add({0, 230, 256, 24});
+    CHECK(overlapped.size() == 3U);
+    // Naive sum: 3*24*256 = 18,432 (>16,384 threshold).
+    // True union: (25+24)*256 = 12,544 (<16,384 threshold).
+    // A mistaken coalesce would send a 256x254 near-full-screen rectangle.
+    const auto sparse = HyRemote::detail::coalesceRfbDamageForPaint(
+        overlapped, 256U, 256U);
+    CHECK(sparse.size() == 3U);
+    HyRemote::detail::RfbUpdateState viewer;
+    viewer.accumulate(overlapped);
+    viewer.request(true, viewport);
+    const auto selected = viewer.selectEligible();
+    CHECK(selected && selected->size() == 3U);
+    if (selected)
+        viewer.commitDelivered(*selected);
+    CHECK(!viewer.hasPendingDamage());
+
+    // A REAL >=25%-union page change must still become one paint rectangle.
+    overlapped.add({0, 120, 256, 24});
+    // Unique union now (25+24+24)*256 = 18,688 (>16,384).
+    const auto dense = HyRemote::detail::coalesceRfbDamageForPaint(
+        overlapped, 256U, 256U);
+    CHECK(dense.size() == 1U);
+    if (dense.size() == 1U)
+        CHECK(dense.rects().front() == (RfbRect{0, 0, 256, 254}));
+}
+
 // #789: 65 sparse-but-row-contiguous 64px changed tiles are only ~13% of
 // a 1920x1080 page. Previously the hard 64-rect bound joined the 65th tile
 // to a near/full-page rectangle before the 25% paint policy could even run.
@@ -5058,6 +5096,7 @@ int main(int argc, char **argv)
     testDeliveryCoverageIsConservativeForPartialAndOverlappingCuts();
     testSparseDeliveredCutsDoNotResurrectPendingDamage();
     testPendingDamageCoalescesAtDelivery();
+    testOverlappingPendingDamageUsesUniqueCoverage();
     testLargeDamageCoalescesForPaint();
     testExactTileUnionPreventsSparseFullPageInflation();
     testDenseChangedTilesAvoidSparseBoundingAndPaintAsOne();

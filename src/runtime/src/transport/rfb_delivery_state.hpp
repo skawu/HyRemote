@@ -348,6 +348,53 @@ inline RfbDamageRegion fullRfbDamage(std::uint32_t width, std::uint32_t height)
 // top-to-bottom scan rather than one screen update. Keep small/local damage
 // precise, but collapse a damage set covering a meaningful fraction of the
 // frame to its bounding rectangle (one paint for a page transition).
+// Pending damage can contain partially overlapping rectangles when a viewer
+// waits across several updates. Their summed area is not the actual area.
+// This bounded x-sweep is used only when such overlaps may falsely trigger the
+// 25%-coverage policy; the normal non-overlapping path stays on its fast sum.
+inline std::uint64_t exactRfbUnionArea(const std::vector<RfbRect> &rects)
+{
+    std::vector<std::int32_t> xs;
+    xs.reserve(rects.size() * 2U);
+    for (const RfbRect &r : rects) {
+        xs.push_back(r.x);
+        xs.push_back(r.right());
+    }
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+
+    std::vector<std::pair<std::int32_t, std::int32_t>> ys;
+    ys.reserve(rects.size());
+    std::uint64_t area = 0;
+    for (std::size_t i = 1; i < xs.size(); ++i) {
+        const auto x0 = xs[i - 1], x1 = xs[i];
+        if (x1 <= x0)
+            continue;
+        ys.clear();
+        for (const RfbRect &r : rects) {
+            if (r.x <= x0 && r.right() >= x1)
+                ys.emplace_back(r.y, r.bottom());
+        }
+        if (ys.empty())
+            continue;
+        std::sort(ys.begin(), ys.end());
+        std::int32_t y0 = ys.front().first, y1 = ys.front().second;
+        std::uint64_t coveredY = 0;
+        for (std::size_t j = 1; j < ys.size(); ++j) {
+            if (ys[j].first > y1) {
+                coveredY += static_cast<std::uint64_t>(y1 - y0);
+                y0 = ys[j].first;
+                y1 = ys[j].second;
+            } else {
+                y1 = std::max(y1, ys[j].second);
+            }
+        }
+        coveredY += static_cast<std::uint64_t>(y1 - y0);
+        area += static_cast<std::uint64_t>(x1 - x0) * coveredY;
+    }
+    return area;
+}
+
 inline RfbDamageRegion coalesceRfbDamageForPaint(RfbDamageRegion damage,
                                                  std::uint32_t width,
                                                  std::uint32_t height)
@@ -364,6 +411,21 @@ inline RfbDamageRegion coalesceRfbDamageForPaint(RfbDamageRegion damage,
     constexpr std::uint64_t kCoalescePercent = 25U;
     const std::uint64_t frameArea = static_cast<std::uint64_t>(width) * height;
     if (covered * 100U < frameArea * kCoalescePercent)
+        return damage;
+
+    // Only a possible overlap pays for the exact bounded sweep. Disjoint
+    // 25%+ page transitions still coalesce to one paint rectangle as before.
+    const auto &rects = damage.rects();
+    bool overlaps = false;
+    for (std::size_t i = 0; i < rects.size() && !overlaps; ++i) {
+        for (std::size_t j = 0; j < i; ++j) {
+            if (!intersectRfbRect(rects[i], rects[j]).empty()) {
+                overlaps = true;
+                break;
+            }
+        }
+    }
+    if (overlaps && exactRfbUnionArea(rects) * 100U < frameArea * kCoalescePercent)
         return damage;
 
     RfbDamageRegion result;
