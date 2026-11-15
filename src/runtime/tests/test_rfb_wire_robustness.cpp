@@ -4032,7 +4032,7 @@ void testOverlappingPendingDamageUsesUniqueCoverage()
         overlapped, 256U, 256U);
     CHECK(dense.size() == 1U);
     if (dense.size() == 1U)
-        CHECK(dense.rects().front() == viewport);
+        CHECK(dense.rects().front() == (RfbRect{0, 0, 256, 254}));
 }
 
 // #789: 65 sparse-but-row-contiguous 64px changed tiles are only ~13% of
