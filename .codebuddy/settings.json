@@ -2,8 +2,13 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit|Bash",
+        "matcher": "Write|Edit|MultiEdit|Bash|delete_file",
         "hooks": [
+          {
+            "type": "command",
+            "command": "python tools/local-owner/guard_workspace_boundary.py",
+            "timeout": 15
+          },
           {
             "type": "command",
             "command": "python tools/local-owner/guard_scratch_writes.py",
