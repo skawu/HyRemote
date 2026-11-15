@@ -62,7 +62,9 @@ public:
             return false;
 
         std::lock_guard<std::mutex> lock(m_state->mutex);
-        if (m_state->active || m_state->target.isNull())
+        // Stop may have released the state mutex while retiring child captures.
+        // A new start must not add children until that previous lifetime drains.
+        if (m_state->active || m_state->stopping || m_state->target.isNull())
             return false;
         if (m_state->target->thread() != application->thread())
             return false;
@@ -82,11 +84,15 @@ public:
 
     void stop() noexcept override
     {
-        std::vector<std::shared_ptr<ChildRuntime>> children;
         QPointer<CompositeTarget> target;
         quint64 surfaceUnavailableHandler = 0;
         {
             std::unique_lock<std::mutex> lock(m_state->mutex);
+            if (m_state->stopping) {
+                m_state->cv.wait(lock, [state = m_state] { return !state->stopping; });
+                return; // a concurrent caller has already drained this lifetime
+            }
+            m_state->stopping = true;
             m_state->active = false;
             m_state->onFrame = {};
             m_state->onEvent = {};
@@ -99,19 +105,35 @@ public:
             m_state->cv.wait(lock, [state = m_state] {
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
             });
-
-            children.reserve(m_state->children.size());
-            for (auto &entry : m_state->children)
-                children.push_back(std::move(entry.second));
-            m_state->children.clear();
         }
 
         if (target && surfaceUnavailableHandler != 0)
             target->removeSurfaceUnavailableHandler(surfaceUnavailableHandler);
 
-        for (const auto &child : children) {
+        // #790: this is a noexcept shutdown path and can run with little
+        // available memory. Neither reserve() nor a temporary empty hash map
+        // is safe here (MSVC's empty map constructor itself may allocate).
+        // Move one existing shared_ptr out of the map and erase its node under
+        // State::mutex. No new capacity or container is allocated, and child
+        // stop/destruction remains OUTSIDE that lock so its callbacks cannot
+        // deadlock the composite.
+        for (;;) {
+            std::shared_ptr<ChildRuntime> child;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->children.empty())
+                    break;
+                auto it = m_state->children.begin();
+                child = std::move(it->second);
+                m_state->children.erase(it);
+            }
             if (child && child->capture)
                 child->capture->stop();
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->stopping = false;
+            m_state->cv.notify_all();
         }
     }
 
@@ -192,6 +214,7 @@ private:
         QPointer<CompositeTarget> target;
         ::HyRemote::detail::BuiltinTargetResolver resolver;
         bool active = false;
+        bool stopping = false; // prevents start() from stealing a prior teardown's children
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
         quint64 surfaceUnavailableHandler = 0;
