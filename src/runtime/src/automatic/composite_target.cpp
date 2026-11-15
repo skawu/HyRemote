@@ -82,13 +82,6 @@ public:
 
     void stop() noexcept override
     {
-        // #790: stop() is noexcept and may run under memory pressure. Do not
-        // allocate a new vector to retire existing children: reserve() can
-        // throw bad_alloc and terminate the process during normal shutdown.
-        // A same-type map swap transfers all ownership without allocation.
-        std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
-        static_assert(noexcept(children.swap(m_state->children)),
-                      "composite stop child ownership transfer must be nonthrowing");
         QPointer<CompositeTarget> target;
         quint64 surfaceUnavailableHandler = 0;
         {
@@ -105,17 +98,28 @@ public:
             m_state->cv.wait(lock, [state = m_state] {
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
             });
-
-            children.swap(m_state->children);
         }
 
         if (target && surfaceUnavailableHandler != 0)
             target->removeSurfaceUnavailableHandler(surfaceUnavailableHandler);
 
-        // Each child is stopped outside State::mutex, as before: a child stop
-        // can synchronously complete callbacks that need that same mutex.
-        for (const auto &entry : children) {
-            const auto &child = entry.second;
+        // #790: this is a noexcept shutdown path and can run with little
+        // available memory. Neither reserve() nor a temporary empty hash map
+        // is safe here (MSVC's empty map constructor itself may allocate).
+        // Move one existing shared_ptr out of the map and erase its node under
+        // State::mutex. No new capacity or container is allocated, and child
+        // stop/destruction remains OUTSIDE that lock so its callbacks cannot
+        // deadlock the composite.
+        for (;;) {
+            std::shared_ptr<ChildRuntime> child;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->children.empty())
+                    break;
+                auto it = m_state->children.begin();
+                child = std::move(it->second);
+                m_state->children.erase(it);
+            }
             if (child && child->capture)
                 child->capture->stop();
         }
