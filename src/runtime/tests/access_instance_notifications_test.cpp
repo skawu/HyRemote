@@ -596,8 +596,8 @@ void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
 }
 
 // Core deliberately invokes source->stop() before joining the scheduler.
- // This must not invoke the underlying backend stop() concurrently with a
- // zero-viewer idle release already entered by that scheduler.
+// This must not invoke the underlying backend stop() concurrently with a
+// zero-viewer idle release already entered by that scheduler.
 void testStopDrainsInProgressIdleRelease()
 {
     const auto state = std::make_shared<RuntimeState>();
@@ -614,11 +614,16 @@ void testStopDrainsInProgressIdleRelease()
     }
     CHECK(state->idleReleaseEntered.load(std::memory_order_acquire));
 
-    // The release thread runs independently of stop() so either the fixed
-    // or the old lifecycle can complete; the old ordering deterministically
-    // observes stop while the artificial idle hook is still in progress.
+    // A bounded release helper prevents deadlock in either implementation.
+    // With the old ordering, backend stop occurs during the held hook and
+    // the helper can release it immediately. With the fixed ordering, stop
+    // waits for this helper to release the hook before invoking backend stop.
     std::thread releaseIdle([state] {
-        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        while (std::chrono::steady_clock::now() < deadline
+               && state->captureStops.load(std::memory_order_acquire) == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         state->allowIdleReleaseExit.store(true, std::memory_order_release);
     });
     instance.stop();
