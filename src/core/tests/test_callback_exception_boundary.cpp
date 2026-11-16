@@ -136,11 +136,14 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
 HYR_TEST(coreInvalidTerminalValidationFailureRetiresCaptureCredit)
 {
     RunningSession run;
-    run.prepare();
     SessionConfig config;
     config.capture.maxInFlight = 1;
     config.capture.targetFramesPerSecond = 2.0; // pace the next admission
-    HYR_CHECK(run.start(config));
+    // The fixture applies configuration when it CONSTRUCTS Session in
+    // prepare(), not in start(); otherwise the default maxInFlight=2 can
+    // mask precisely the credit-starvation regression tested below.
+    run.prepare(config);
+    HYR_CHECK(run.start());
     HYR_CHECK(waitFor([&] { return run.session->stats().inFlight == 1; }));
 
     const std::size_t initialRequests = run.source->requestCalls();
