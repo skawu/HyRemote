@@ -257,6 +257,16 @@ int main(int argc, char **argv)
     composite.upsertSurface(1, &leftTarget, QRect(-2, 0, 2, 2), true);
     composite.upsertSurface(2, &rightTarget, QRect(0, 0, 2, 2), true);
 
+    // The RFB bootstrap and idle-release permission must use the composite
+    // OUTPUT grid, not child native DPR or absolute window coordinates.
+    CompositeTarget noVisibleCanvas;
+    if (!check(composite.initialFramebufferPixelSize() == QSize(4, 2),
+               "composite reports visible output pixel dimensions")
+        || !check(noVisibleCanvas.initialFramebufferPixelSize().isEmpty(),
+                  "empty composite does not claim a framebuffer")) {
+        return 1;
+    }
+
     const auto childReleases = std::make_shared<std::atomic<int>>(0);
     const HyRemote::detail::BuiltinTargetResolver resolver =
         [&](QObject *target, bool remoteInputEnabled) {
