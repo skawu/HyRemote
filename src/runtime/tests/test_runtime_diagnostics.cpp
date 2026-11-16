@@ -47,8 +47,17 @@ void checkDefaultReport()
         QStringLiteral("^HYREMOTE_VERSION=(?:unknown|[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)$"),
         QRegularExpression::MultilineOption);
     CHECK(versionLine.match(report).hasMatch());
-    CHECK(report.contains(QStringLiteral("BUILD_IDENTITY=source_sha="))
-          || report.contains(QStringLiteral("BUILD_IDENTITY=unknown\n")));
+    const QString buildLine = report.section(QLatin1Char('\n'), 1, 1);
+    CHECK(buildLine.startsWith(QStringLiteral("BUILD_IDENTITY=")));
+    if (buildLine != QStringLiteral("BUILD_IDENTITY=unknown")) {
+        // Git-less source archives can supply an explicit commit, while Git
+        // builds must use their actual checkout. Neither case claims to be
+        // a cryptographic hash of the compiled binary.
+        const QRegularExpression identityLine(
+            QStringLiteral("^BUILD_IDENTITY=source_sha=[0-9a-f]{40},"
+                           "build_type=[^,]+,source_origin=(?:git|supplied)$"));
+        CHECK(identityLine.match(buildLine).hasMatch());
+    }
     CHECK(report.contains(QStringLiteral("QT_VERSION=%1\n").arg(QString::fromLatin1(QT_VERSION_STR))));
     CHECK(report.contains(QStringLiteral("OS=")));
     CHECK(!report.contains(QStringLiteral("OS=\n")));
