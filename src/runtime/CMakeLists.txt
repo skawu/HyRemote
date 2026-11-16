@@ -373,7 +373,10 @@ if(HYREMOTE_BUILD_TESTS)
     target_compile_features(hyremote-runtime-diagnostics-test PRIVATE cxx_std_17)
     target_include_directories(hyremote-runtime-diagnostics-test PRIVATE src)
     target_link_libraries(hyremote-runtime-diagnostics-test PRIVATE Qt6::Core HyRemote::RemoteAccess)
-    add_test(NAME hyremote-runtime-diagnostics-test COMMAND hyremote-runtime-diagnostics-test)
+    # The same existing test also scans the actual linked Runtime binary:
+    # the field identity marker must survive optimized/stripped builds.
+    add_test(NAME hyremote-runtime-diagnostics-test
+             COMMAND hyremote-runtime-diagnostics-test $<TARGET_FILE:hyremote-remoteaccess>)
     set_tests_properties(hyremote-runtime-diagnostics-test PROPERTIES TIMEOUT 15)
 
     add_subdirectory(tests)
