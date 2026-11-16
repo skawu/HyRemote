@@ -148,15 +148,19 @@ HYR_TEST(coreInvalidTerminalValidationFailureRetiresCaptureCredit)
 
     RemoteFrame emptyTerminal;
     bool escaped = false;
+    bool delivered = false;
     t_remainingAllocations = 0;
     try {
-        HYR_CHECK(run.source->deliver(std::move(emptyTerminal)));
+        // Keep assertions OUTSIDE the injection window. The fake's delivery
+        // only acquires a shared callback pointer and does not allocate.
+        delivered = run.source->deliver(std::move(emptyTerminal));
     } catch (...) {
         escaped = true;
     }
     const bool validationActuallyAllocated = t_remainingAllocations == -1;
     t_remainingAllocations = -1;
 
+    HYR_CHECK(delivered);
     HYR_CHECK(!escaped);
     HYR_CHECK(validationActuallyAllocated);
     HYR_CHECK(run.session->state() == SessionState::Running);
