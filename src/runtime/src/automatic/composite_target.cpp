@@ -69,7 +69,12 @@ public:
         if (m_state->target->thread() != application->thread())
             return false;
 
-        m_state->onFrame = std::move(onFrame);
+        // The accepted per-run handler is allocated once at start. Keeping a
+        // shared owner lets idle cancellation copy the handle without asking
+        // std::function to allocate under memory pressure, while stop() still
+        // drains all callbacks before releasing this per-run owner.
+        m_state->onFrame =
+            std::make_shared<const hyremote::FrameReadyHandler>(std::move(onFrame));
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
 
@@ -156,20 +161,55 @@ public:
             Qt::QueuedConnection);
     }
 
-    // #790: the composite publishes a borrowed view of its per-surface sources,
-    // so it has no pixels of its own to drop here. It still forwards the one
-    // zero-viewer edge, because a child source is the real owner of a grab
-    // QImage or a GPU readback buffer. Children are snapshotted as shared_ptrs
-    // and released outside the state lock: a child callback may need that lock
-    // and stop() may retire the child concurrently.
+    // #790: a composite can own CPU images even when each child has released
+    // its own caches: an already completed child is stored in PendingRequest
+    // while a sibling async Qt grab is still outstanding. On 1->0 Viewer
+    // release those *parent-owned* frames as well; otherwise the same pixels
+    // may remain pinned indefinitely if the sibling never completes.
+    //
+    // Every admitted parent request still needs exactly one terminal callback
+    // to return its Core in-flight credit. An empty completion is rejected as
+    // non-image by Core and cannot be mislabelled as newly captured pixels.
+    // Late child completions find no pending request and are discarded.
     void releaseIdleResources() noexcept override
     {
-        // #790 review (P1): this is the memory-reclamation path on the capture
-        // scheduler, so a bad_alloc from the snapshot must degrade to "children
-        // keep their buffer until the next edge or stop()" instead of
-        // std::terminate (the #992 failure class). Child callbacks still run
-        // outside the state lock; on failure no child state was mutated, the
-        // next zero-viewer edge or stop() retries.
+        // Never allocate to drain outstanding parent requests in a noexcept
+        // idle cleanup path. Extract one existing map node at a time and
+        // destroy its owned frames outside State::mutex; child callbacks and
+        // parent callbacks may re-enter the state while cleanup progresses.
+        std::size_t remaining = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (!m_state->active)
+                return;
+            remaining = m_state->pending.size();
+        }
+        while (remaining-- > 0) {
+            decltype(m_state->pending)::node_type canceled;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active || m_state->pending.empty())
+                    break;
+                canceled = m_state->pending.extract(m_state->pending.begin());
+            }
+            const hyremote::CaptureRequest request = canceled.mapped().request;
+            canceled = {}; // release any completed child QImages before callback
+            hyremote::RemoteFrame terminal;
+            terminal.requestId = request.id;
+            terminal.timing.ptsSource = hyremote::PtsSource::Completion;
+            terminal.timing.requestTime = request.requestTime;
+            terminal.timing.completionTime = hyremote::Clock::now();
+            try {
+                publishFrame(m_state, std::move(terminal));
+            } catch (...) {
+                // A failing callback copy must never terminate the host in
+                // the noexcept idle path. The extracted pixels are gone.
+            }
+        }
+
+        // A child owns other idle pixel/GPU caches. Snapshot child handles
+        // under the lock but call backend hooks outside it: no allocation
+        // failure or reentrant callback may unwind through this noexcept API.
         try {
             std::vector<std::shared_ptr<ChildRuntime>> children;
             {
@@ -185,8 +225,8 @@ public:
                     child->capture->releaseIdleResources();
             }
         } catch (...) {
-            // Allocation failed: drop this edge, never unwind out of the
-            // noexcept virtual.
+            // Existing safe behavior: a failed child snapshot keeps those
+            // child-owned caches until the next edge or source stop().
         }
     }
 
@@ -218,7 +258,7 @@ private:
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
         quint64 surfaceUnavailableHandler = 0;
-        hyremote::FrameReadyHandler onFrame;
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         std::unordered_map<hyremote::CaptureRequestId, PendingRequest> pending;
@@ -304,20 +344,25 @@ private:
 
     static void publishFrame(const std::shared_ptr<State> &state, hyremote::RemoteFrame frame)
     {
-        hyremote::FrameReadyHandler callback;
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active || !state->onFrame)
+            if (!state->active || !state->onFrame || !*state->onFrame)
                 return;
-            state->lastCanvasSize = QSize(static_cast<int>(frame.geometry.size.width),
-                                          static_cast<int>(frame.geometry.size.height));
-            callback = state->onFrame;
+            // An empty terminal completion is a cancellation, not a new
+            // framebuffer. Preserve the last valid canvas geometry so a
+            // reconnect does not inherit a spurious 0x0 ServerInit size.
+            if (frame.geometry.size.width > 0 && frame.geometry.size.height > 0) {
+                state->lastCanvasSize = QSize(static_cast<int>(frame.geometry.size.width),
+                                              static_cast<int>(frame.geometry.size.height));
+            }
+            callback = state->onFrame; // shared_ptr copy is noexcept
             ++state->parentCallbacksInFlight;
         }
 
         HYREMOTE_P1_TRACE_FRAME(CompositeCompleted, frame, 0);
         try {
-            callback(std::move(frame));
+            (*callback)(std::move(frame));
         } catch (...) {
         }
 

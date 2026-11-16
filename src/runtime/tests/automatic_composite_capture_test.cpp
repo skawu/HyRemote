@@ -9,6 +9,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <new>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -105,6 +106,30 @@ private:
     std::shared_ptr<const hyremote::FrameStorage> *m_observedStorage = nullptr;
     std::shared_ptr<std::atomic<int>> m_releaseCounter;
     hyremote::FrameReadyHandler m_onFrame;
+};
+
+// Legal std::function target with a potentially allocating/throwing copy.
+// The composite must not copy it on a zero-viewer cancellation path: that
+// would drop Core's terminal request notification under memory pressure.
+struct ThrowOnCopyFrameHandler
+{
+    explicit ThrowOnCopyFrameHandler(std::vector<hyremote::RemoteFrame> *frames)
+        : frames(frames) {}
+
+    ThrowOnCopyFrameHandler(const ThrowOnCopyFrameHandler &other)
+        : frames(other.frames)
+    {
+        throw std::bad_alloc();
+    }
+
+    ThrowOnCopyFrameHandler(ThrowOnCopyFrameHandler &&) noexcept = default;
+
+    void operator()(hyremote::RemoteFrame frame) const
+    {
+        frames->push_back(std::move(frame));
+    }
+
+    std::vector<hyremote::RemoteFrame> *frames;
 };
 
 // Hold one child's completion while another child is removed. This exercises
@@ -670,6 +695,84 @@ int main(int argc, char **argv)
         return 26;
     interruptedComponents.capture->stop();
     interrupted.removeSurfaceUnavailableHandler(baseInvalidationToken);
+
+    // #790: on the final Viewer disconnect an already received Quick child
+    // image must not remain owned by a pending multi-surface composite while
+    // a second child has not completed. A canceled request gets one empty
+    // terminal completion (not stale pixels); late child frames are ignored.
+    // A subsequent Viewer request still assembles a genuinely new full frame.
+    QObject idleBase;
+    QObject idlePopup;
+    CompositeTarget idleComposite;
+    idleComposite.upsertSurface(70, &idleBase, QRect(0, 0, 4, 4), true);
+    idleComposite.upsertSurface(71, &idlePopup, QRect(1, 1, 2, 2), true);
+    std::shared_ptr<const hyremote::FrameStorage> baseStorage;
+    std::function<void()> releaseIdlePopup;
+    const HyRemote::detail::BuiltinTargetResolver idleResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &idleBase) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(
+                    qRgba(255, 0, 0, 255), 4, 4, 1.0F, &baseStorage);
+            } else if (target == &idlePopup) {
+                result.supported = true;
+                result.capture = std::make_unique<DeferredSolidCapture>(&releaseIdlePopup);
+            }
+            return result;
+        };
+    auto idleComponents = idleComposite.createTargetComponents(false, idleResolver);
+    std::vector<hyremote::RemoteFrame> idleFrames;
+    hyremote::FrameReadyHandler noCopyCallback =
+        ThrowOnCopyFrameHandler(&idleFrames);
+    if (!check(idleComponents.capture && idleComponents.capture->start(
+                   std::move(noCopyCallback),
+                   [](const hyremote::CaptureEvent &) {}),
+               "idle composite capture starts without copying a fallible callback")
+        || !check(idleComponents.capture->requestFrame({56, hyremote::Clock::now()}),
+                  "idle composite accepts request"))
+        return 29;
+    QElapsedTimer idleTimer;
+    idleTimer.start();
+    while ((!releaseIdlePopup || !baseStorage) && idleTimer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (!check(static_cast<bool>(releaseIdlePopup) && baseStorage && idleFrames.empty(),
+               "base pixels remain owned by unfinished composite"))
+        return 30;
+    const std::weak_ptr<const hyremote::FrameStorage> pendingPixels = baseStorage;
+    baseStorage.reset();
+    if (!check(!pendingPixels.expired(), "pending composite really owns the completed pixels"))
+        return 31;
+    idleComponents.capture->releaseIdleResources();
+    if (!check(pendingPixels.expired(), "idle release retires unfinished composite pixels")
+        || !check(idleFrames.size() == 1 && idleFrames.front().requestId == hyremote::CaptureRequestId{56}
+                  && !idleFrames.front().storage,
+                  "canceled request gives exactly one empty terminal completion"))
+        return 32;
+    releaseIdlePopup();
+    if (!check(idleFrames.size() == 1, "late child completion cannot revive canceled frame"))
+        return 33;
+
+    releaseIdlePopup = {};
+    if (!check(idleComponents.capture->requestFrame({57, hyremote::Clock::now()}),
+               "fresh viewer request admitted after idle cancellation"))
+        return 34;
+    QElapsedTimer restartTimer;
+    restartTimer.start();
+    while (!releaseIdlePopup && restartTimer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (!check(static_cast<bool>(releaseIdlePopup) && idleFrames.size() == 1,
+               "fresh request waits for second child"))
+        return 35;
+    releaseIdlePopup();
+    if (!check(waitForFrame(idleFrames, 2), "fresh request completes after viewer return")
+        || !check(idleFrames[1].requestId == hyremote::CaptureRequestId{57}
+                  && idleFrames[1].storage,
+                  "new request has independent identity and pixels"))
+        return 36;
+    idleComponents.capture->stop();
 
     QObject oldQtWindow;
     QObject newQtWindow;
