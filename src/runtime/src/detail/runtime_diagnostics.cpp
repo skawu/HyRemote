@@ -131,12 +131,21 @@ QString hyremoteVersion()
 
 QString buildIdentity()
 {
-    const QString sourceSha = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_SHA);
+    // Make the provenance discoverable with read-only ELF/PE string inspection
+    // even when Generic is injected into an application that does not capture
+    // Qt info messages or carry HYREMOTE-MANIFEST.txt alongside its executable.
+    // This string is compiled *into* the shared Runtime, not inferred from the
+    // application directory; the actual ELF still needs an independent hash.
+    constexpr char marker[] = "HYREMOTE_BUILD_SOURCE_SHA=" HYREMOTE_DIAGNOSTIC_SOURCE_SHA;
+    const QString sourceSha = QString::fromLatin1(marker + sizeof("HYREMOTE_BUILD_SOURCE_SHA=") - 1);
     const QString buildType = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_BUILD_TYPE);
+    const QString sourceOrigin = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_ORIGIN);
     if (sourceSha.isEmpty() || sourceSha == QStringLiteral("unknown"))
         return QStringLiteral("unknown");
-    return QStringLiteral("source_sha=%1,build_type=%2")
-        .arg(sourceSha, buildType.isEmpty() ? QStringLiteral("unknown") : buildType);
+    return QStringLiteral("source_sha=%1,build_type=%2,source_origin=%3")
+        .arg(sourceSha,
+             buildType.isEmpty() ? QStringLiteral("unknown") : buildType,
+             sourceOrigin.isEmpty() ? QStringLiteral("unknown") : sourceOrigin);
 }
 
 QString buildFact(const char *value)
