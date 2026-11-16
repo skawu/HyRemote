@@ -9,6 +9,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <new>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -105,6 +106,30 @@ private:
     std::shared_ptr<const hyremote::FrameStorage> *m_observedStorage = nullptr;
     std::shared_ptr<std::atomic<int>> m_releaseCounter;
     hyremote::FrameReadyHandler m_onFrame;
+};
+
+// Legal std::function target with a potentially allocating/throwing copy.
+// The composite must not copy it on a zero-viewer cancellation path: that
+// would drop Core's terminal request notification under memory pressure.
+struct ThrowOnCopyFrameHandler
+{
+    explicit ThrowOnCopyFrameHandler(std::vector<hyremote::RemoteFrame> *frames)
+        : frames(frames) {}
+
+    ThrowOnCopyFrameHandler(const ThrowOnCopyFrameHandler &other)
+        : frames(other.frames)
+    {
+        throw std::bad_alloc();
+    }
+
+    ThrowOnCopyFrameHandler(ThrowOnCopyFrameHandler &&) noexcept = default;
+
+    void operator()(hyremote::RemoteFrame frame) const
+    {
+        frames->push_back(std::move(frame));
+    }
+
+    std::vector<hyremote::RemoteFrame> *frames;
 };
 
 // Hold one child's completion while another child is removed. This exercises
@@ -700,12 +725,12 @@ int main(int argc, char **argv)
         };
     auto idleComponents = idleComposite.createTargetComponents(false, idleResolver);
     std::vector<hyremote::RemoteFrame> idleFrames;
+    hyremote::FrameReadyHandler noCopyCallback =
+        ThrowOnCopyFrameHandler(&idleFrames);
     if (!check(idleComponents.capture && idleComponents.capture->start(
-                   [&](hyremote::RemoteFrame frame) {
-                       idleFrames.push_back(std::move(frame));
-                   },
+                   std::move(noCopyCallback),
                    [](const hyremote::CaptureEvent &) {}),
-               "idle composite capture starts")
+               "idle composite capture starts without copying a fallible callback")
         || !check(idleComponents.capture->requestFrame({56, hyremote::Clock::now()}),
                   "idle composite accepts request"))
         return 29;
