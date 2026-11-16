@@ -50,14 +50,16 @@ void checkDefaultReport()
     const QString buildLine = report.section(QLatin1Char('\n'), 1, 1);
     CHECK(buildLine.startsWith(QStringLiteral("BUILD_IDENTITY=")));
     if (buildLine != QStringLiteral("BUILD_IDENTITY=unknown")) {
-        // Git-less source archives can supply an explicit commit, while Git
-        // builds must use their actual checkout. Neither case claims to be
-        // a cryptographic hash of the compiled binary.
+        // Keep the original two-field identity contract comparable with the
+        // deployed HYREMOTE-MANIFEST; provenance is a separate report field.
         const QRegularExpression identityLine(
-            QStringLiteral("^BUILD_IDENTITY=source_sha=[0-9a-f]{40},"
-                           "build_type=[^,]+,source_origin=(?:git|supplied)$"));
+            QStringLiteral("^BUILD_IDENTITY=source_sha=[0-9a-f]{40},build_type=[^,]+$"));
         CHECK(identityLine.match(buildLine).hasMatch());
     }
+    const QString originLine = report.section(QLatin1Char('\n'), 2, 2);
+    CHECK(QRegularExpression(QStringLiteral("^BUILD_SOURCE_ORIGIN=(?:git|supplied|unknown)$"))
+              .match(originLine).hasMatch());
+    CHECK(buildLine.indexOf(QStringLiteral("source_origin=")) == -1);
     CHECK(report.contains(QStringLiteral("QT_VERSION=%1\n").arg(QString::fromLatin1(QT_VERSION_STR))));
     CHECK(report.contains(QStringLiteral("OS=")));
     CHECK(!report.contains(QStringLiteral("OS=\n")));
