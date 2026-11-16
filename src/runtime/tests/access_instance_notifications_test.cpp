@@ -11,7 +11,7 @@
 //   fatal/target loss: ErrorChanged(non-recoverable), StateChanged(Faulted)
 
 #include "access_instance.hpp"
-#include "automatic/composite_target.hpp"
+#include "detail/target_component_provider.hpp"
 #include "detail/component_factories.hpp"
 #include "hyremote/core/storage.hpp"
 
@@ -160,6 +160,25 @@ struct RuntimeState
     hyremote::InputHandler inputHandler;
     hyremote::CaptureEventHandler captureEventHandler;
     hyremote::TransportEventHandler transportEventHandler;
+};
+
+// A private target provider can supply its output pixel grid without the
+// test executable constructing hidden-in-the-DLL CompositeTarget symbols.
+class SizedProviderTarget final : public QObject, public HyRemote::detail::TargetComponentProvider
+{
+public:
+    explicit SizedProviderTarget(QSize pixels) : m_pixels(pixels) {}
+
+    QSize initialFramebufferPixelSize() const override { return m_pixels; }
+
+    HyRemote::detail::TargetComponents createTargetComponents(
+        bool, const HyRemote::detail::BuiltinTargetResolver &) override
+    {
+        return {}; // existing test factory owns the synthetic capture source
+    }
+
+private:
+    QSize m_pixels;
 };
 
 class FakeInput final : public hyremote::InputSink
@@ -657,26 +676,22 @@ void testStopDrainsInProgressIdleRelease()
     HyRemote::detail::resetFactories();
 }
 
-// #790 Generic/Automatic uses a CompositeTarget as the AccessInstance target.
-// A visible canvas must admit the existing RFB last-viewer raw-frame cleanup.
-// An empty composite must not make an unsafe initial-geometry promise.
+// #790 The common AccessInstance must honor an instance-scoped provider's
+// known output grid. An absent grid must preserve the safe RFB opt-out.
 void testCompositeCanvasEnablesRfbIdleFrameRelease()
 {
     const auto state = std::make_shared<RuntimeState>();
     installRuntime(state);
-    QObject surface;
-    HyRemote::Runtime::Automatic::CompositeTarget composite;
-    composite.upsertSurface(1, &surface, QRect(40, 80, 640, 360), true);
-
-    AccessInstance instance(&composite);
+    SizedProviderTarget valid(QSize(640, 360));
+    AccessInstance instance(&valid);
     CHECK(instance.start());
     CHECK(state->rfbInitialWidth.load() == 640);
     CHECK(state->rfbInitialHeight.load() == 360);
     CHECK(state->rfbReleasesIdleFrameBuffers.load());
     instance.stop();
 
-    HyRemote::Runtime::Automatic::CompositeTarget emptyComposite;
-    AccessInstance emptyInstance(&emptyComposite);
+    SizedProviderTarget empty(QSize{});
+    AccessInstance emptyInstance(&empty);
     CHECK(emptyInstance.start());
     CHECK(state->rfbInitialWidth.load() == 0);
     CHECK(state->rfbInitialHeight.load() == 0);
