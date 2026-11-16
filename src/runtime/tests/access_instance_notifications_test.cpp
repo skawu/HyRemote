@@ -11,6 +11,7 @@
 //   fatal/target loss: ErrorChanged(non-recoverable), StateChanged(Faulted)
 
 #include "access_instance.hpp"
+#include "automatic/composite_target.hpp"
 #include "detail/component_factories.hpp"
 #include "hyremote/core/storage.hpp"
 
@@ -143,6 +144,12 @@ struct RuntimeState
     std::atomic<bool> allowIdleReleaseExit{false};
     std::atomic<bool> stopOverlappedIdleRelease{false};
     std::atomic<int> transportStops{0};
+    // Capture the actual RFB policy handed to transport by AccessInstance.
+    // Generic's CompositeTarget must get the same idle raw-frame release
+    // admission as direct Widget/Quick, but an empty composite must not.
+    std::atomic<bool> rfbReleasesIdleFrameBuffers{false};
+    std::atomic<int> rfbInitialWidth{0};
+    std::atomic<int> rfbInitialHeight{0};
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
     bool oversizedAfterValid = false;
@@ -336,7 +343,10 @@ void installRuntime(const std::shared_ptr<RuntimeState> &state, bool captureSupp
     });
 
     HyRemote::detail::setTransportFactory([state](const QHostAddress &, quint16,
-                                                  const HyRemote::detail::RfbSecurityConfig &) {
+                                                  const HyRemote::detail::RfbSecurityConfig &security) {
+        state->rfbReleasesIdleFrameBuffers.store(security.releaseIdleFrameBuffers);
+        state->rfbInitialWidth.store(security.initialFramebufferWidth);
+        state->rfbInitialHeight.store(security.initialFramebufferHeight);
         HyRemote::detail::TransportComponent result;
         result.transport = std::make_unique<FakeTransport>(state);
         return result;
@@ -644,6 +654,34 @@ void testStopDrainsInProgressIdleRelease()
     instance.stop();
     CHECK(state->captureStops.load() == 2);
     CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+// #790 Generic/Automatic uses a CompositeTarget as the AccessInstance target.
+// A visible canvas must admit the existing RFB last-viewer raw-frame cleanup.
+// An empty composite must not make an unsafe initial-geometry promise.
+void testCompositeCanvasEnablesRfbIdleFrameRelease()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    installRuntime(state);
+    QObject surface;
+    HyRemote::Runtime::Automatic::CompositeTarget composite;
+    composite.upsertSurface(1, &surface, QRect(40, 80, 640, 360), true);
+
+    AccessInstance instance(&composite);
+    CHECK(instance.start());
+    CHECK(state->rfbInitialWidth.load() == 640);
+    CHECK(state->rfbInitialHeight.load() == 360);
+    CHECK(state->rfbReleasesIdleFrameBuffers.load());
+    instance.stop();
+
+    HyRemote::Runtime::Automatic::CompositeTarget emptyComposite;
+    AccessInstance emptyInstance(&emptyComposite);
+    CHECK(emptyInstance.start());
+    CHECK(state->rfbInitialWidth.load() == 0);
+    CHECK(state->rfbInitialHeight.load() == 0);
+    CHECK(!state->rfbReleasesIdleFrameBuffers.load());
+    emptyInstance.stop();
     HyRemote::detail::resetFactories();
 }
 
@@ -1306,6 +1344,7 @@ int main(int argc, char **argv)
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testZeroViewerEdgeReleasesIdleCaptureResourcesOnce();
     testStopDrainsInProgressIdleRelease();
+    testCompositeCanvasEnablesRfbIdleFrameRelease();
     testSlowCaptureIsBoundedWithViewerInputAndStopRestart();
     testTargetDestroyedWhileCaptureIsIdle();
     testTargetLossReportedOnceAcrossWatcherAndPendingCapture();
