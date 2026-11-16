@@ -136,6 +136,12 @@ struct RuntimeState
     // #790: number of zero-viewer idle-resource releases the Shared Runtime
     // delivered to the capture source.
     std::atomic<int> idleCaptureReleases{0};
+    // Deterministic stop-versus-scheduler handoff for the idle release hook.
+    std::atomic<bool> blockIdleRelease{false};
+    std::atomic<bool> idleReleaseEntered{false};
+    std::atomic<bool> idleReleaseInProgress{false};
+    std::atomic<bool> allowIdleReleaseExit{false};
+    std::atomic<bool> stopOverlappedIdleRelease{false};
     std::atomic<int> transportStops{0};
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
@@ -199,6 +205,8 @@ public:
 
     void stop() noexcept override
     {
+        if (m_state->idleReleaseInProgress.load(std::memory_order_acquire))
+            m_state->stopOverlappedIdleRelease.store(true, std::memory_order_release);
         ++m_state->captureStops;
         m_state->captureEventHandler = {};
         // Session joins its scheduler after stop(); do not mutate this
@@ -211,6 +219,15 @@ public:
     void releaseIdleResources() noexcept override
     {
         ++m_state->idleCaptureReleases;
+        if (m_state->blockIdleRelease.load(std::memory_order_acquire)) {
+            m_state->idleReleaseInProgress.store(true, std::memory_order_release);
+            m_state->idleReleaseEntered.store(true, std::memory_order_release);
+            // Test-only pause on the scheduler thread. A separate releaser
+            // unblocks it while the lifecycle thread invokes stop().
+            while (!m_state->allowIdleReleaseExit.load(std::memory_order_acquire))
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            m_state->idleReleaseInProgress.store(false, std::memory_order_release);
+        }
     }
 
     bool requestFrame(const hyremote::CaptureRequest &) override
@@ -574,6 +591,58 @@ void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
     CHECK(state->idleCaptureReleases.load() == 3);
 
     instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+// Core deliberately invokes source->stop() before joining the scheduler.
+// This must not invoke the underlying backend stop() concurrently with a
+// zero-viewer idle release already entered by that scheduler.
+void testStopDrainsInProgressIdleRelease()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    state->blockIdleRelease.store(true, std::memory_order_release);
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+    CHECK(instance.start());
+
+    for (int i = 0; i < 400
+         && !state->idleReleaseEntered.load(std::memory_order_acquire); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(state->idleReleaseEntered.load(std::memory_order_acquire));
+
+    // A bounded release helper prevents deadlock in either implementation.
+    // With the old ordering, backend stop occurs during the held hook and
+    // the helper can release it immediately. With the fixed ordering, stop
+    // waits for this helper to release the hook before invoking backend stop.
+    std::thread releaseIdle([state] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        while (std::chrono::steady_clock::now() < deadline
+               && state->captureStops.load(std::memory_order_acquire) == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        state->allowIdleReleaseExit.store(true, std::memory_order_release);
+    });
+    instance.stop();
+    releaseIdle.join();
+
+    CHECK(instance.state() == AccessState::Stopped);
+    CHECK(state->captureStops.load() == 1);
+    CHECK(!state->idleReleaseInProgress.load(std::memory_order_acquire));
+    CHECK(!state->stopOverlappedIdleRelease.load(std::memory_order_acquire));
+
+    // The lifecycle gate must reset on a subsequent start. No stale
+    // stopping state may reject a second bootstrap/zero-viewer release.
+    state->blockIdleRelease.store(false, std::memory_order_release);
+    CHECK(instance.start());
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 2);
+    instance.stop();
+    CHECK(state->captureStops.load() == 2);
     CHECK(instance.state() == AccessState::Stopped);
     HyRemote::detail::resetFactories();
 }
@@ -1236,6 +1305,7 @@ int main(int argc, char **argv)
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testZeroViewerEdgeReleasesIdleCaptureResourcesOnce();
+    testStopDrainsInProgressIdleRelease();
     testSlowCaptureIsBoundedWithViewerInputAndStopRestart();
     testTargetDestroyedWhileCaptureIsIdle();
     testTargetLossReportedOnceAcrossWatcherAndPendingCapture();

@@ -477,6 +477,10 @@ public:
 
     bool start(hyremote::FrameReadyHandler onFrame, hyremote::CaptureEventHandler onEvent) override
     {
+        {
+            std::lock_guard<std::mutex> lock(m_idleReleaseMutex);
+            m_idleReleaseStopping = false;
+        }
         const auto runActive = m_runActive;
         const auto observe = m_onRuntimeObservation;
         // Both QObject::destroyed and a previously queued widget/Quick capture
@@ -606,6 +610,16 @@ public:
         m_quickActivityConnection = {};
 #endif
         m_demand->stop();
+        // Core stops the source before joining the scheduler. An already
+        // admitted zero-viewer IdleRelease may therefore still be running on
+        // that thread. Close this admission before stopping a backend whose
+        // idle buffer/GPU storage is being released; never hold the mutex
+        // while invoking the backend, its callbacks or its stop().
+        {
+            std::unique_lock<std::mutex> lock(m_idleReleaseMutex);
+            m_idleReleaseStopping = true;
+            m_idleReleaseDrained.wait(lock, [this] { return m_idleReleasesInFlight == 0; });
+        }
         m_source->stop();
     }
 
@@ -621,7 +635,21 @@ public:
                 return false;
             if (wait == ViewerCaptureDemand::WaitResult::Capture)
                 break;
+            {
+                std::lock_guard<std::mutex> lock(m_idleReleaseMutex);
+                if (m_idleReleaseStopping)
+                    return false;
+                ++m_idleReleasesInFlight;
+            }
+            // CaptureSource's idle hook is noexcept and must not wait on a
+            // GPU fence, Qt render or worker join. Stop may wait only for
+            // this already-entered hook to return, not for any capture frame.
             m_source->releaseIdleResources();
+            {
+                std::lock_guard<std::mutex> lock(m_idleReleaseMutex);
+                --m_idleReleasesInFlight;
+            }
+            m_idleReleaseDrained.notify_all();
         }
         HYREMOTE_P1_TRACE_REQUEST(CaptureRequest, request);
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
@@ -642,6 +670,10 @@ public:
     }
 
 private:
+    std::mutex m_idleReleaseMutex;
+    std::condition_variable m_idleReleaseDrained;
+    std::size_t m_idleReleasesInFlight = 0;
+    bool m_idleReleaseStopping = false;
     std::unique_ptr<hyremote::CaptureSource> m_source;
     QPointer<QObject> m_target;
     // Owned by the capture wrapper, created on the AccessInstance lifecycle
