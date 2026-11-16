@@ -137,7 +137,8 @@ QString buildIdentity()
     // This string is compiled *into* the shared Runtime, not inferred from the
     // application directory; the actual ELF still needs an independent hash.
     constexpr char marker[] = "HYREMOTE_BUILD_SOURCE_SHA=" HYREMOTE_DIAGNOSTIC_SOURCE_SHA;
-    const QString sourceSha = QString::fromLatin1(marker + sizeof("HYREMOTE_BUILD_SOURCE_SHA=") - 1);
+    const QString sourceSha = QString::fromLatin1(marker)
+                                  .mid(sizeof("HYREMOTE_BUILD_SOURCE_SHA=") - 1);
     const QString buildType = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_BUILD_TYPE);
     const QString sourceOrigin = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_ORIGIN);
     if (sourceSha.isEmpty() || sourceSha == QStringLiteral("unknown"))
