@@ -69,7 +69,12 @@ public:
         if (m_state->target->thread() != application->thread())
             return false;
 
-        m_state->onFrame = std::move(onFrame);
+        // The accepted per-run handler is allocated once at start. Keeping a
+        // shared owner lets idle cancellation copy the handle without asking
+        // std::function to allocate under memory pressure, while stop() still
+        // drains all callbacks before releasing this per-run owner.
+        m_state->onFrame =
+            std::make_shared<const hyremote::FrameReadyHandler>(std::move(onFrame));
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
 
@@ -253,7 +258,7 @@ private:
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
         quint64 surfaceUnavailableHandler = 0;
-        hyremote::FrameReadyHandler onFrame;
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         std::unordered_map<hyremote::CaptureRequestId, PendingRequest> pending;
@@ -339,10 +344,10 @@ private:
 
     static void publishFrame(const std::shared_ptr<State> &state, hyremote::RemoteFrame frame)
     {
-        hyremote::FrameReadyHandler callback;
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active || !state->onFrame)
+            if (!state->active || !state->onFrame || !*state->onFrame)
                 return;
             // An empty terminal completion is a cancellation, not a new
             // framebuffer. Preserve the last valid canvas geometry so a
@@ -351,13 +356,13 @@ private:
                 state->lastCanvasSize = QSize(static_cast<int>(frame.geometry.size.width),
                                               static_cast<int>(frame.geometry.size.height));
             }
-            callback = state->onFrame;
+            callback = state->onFrame; // shared_ptr copy is noexcept
             ++state->parentCallbacksInFlight;
         }
 
         HYREMOTE_P1_TRACE_FRAME(CompositeCompleted, frame, 0);
         try {
-            callback(std::move(frame));
+            (*callback)(std::move(frame));
         } catch (...) {
         }
 
