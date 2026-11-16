@@ -143,13 +143,20 @@ QString buildIdentity()
     const QString sourceSha = QString::fromLatin1(marker)
                                   .mid(sizeof("HYREMOTE_BUILD_SOURCE_SHA=") - 1);
     const QString buildType = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_BUILD_TYPE);
-    const QString sourceOrigin = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_ORIGIN);
     if (sourceSha.isEmpty() || sourceSha == QStringLiteral("unknown"))
         return QStringLiteral("unknown");
-    return QStringLiteral("source_sha=%1,build_type=%2,source_origin=%3")
-        .arg(sourceSha,
-             buildType.isEmpty() ? QStringLiteral("unknown") : buildType,
-             sourceOrigin.isEmpty() ? QStringLiteral("unknown") : sourceOrigin);
+    // Kept byte-for-byte comparable with DEPLOYMENT_IDENTITY. Installed
+    // consumer checks require this frozen two-field schema; the optional
+    // Git vs archive origin is reported as a *separate* diagnostic field.
+    return QStringLiteral("source_sha=%1,build_type=%2")
+        .arg(sourceSha, buildType.isEmpty() ? QStringLiteral("unknown") : buildType);
+}
+
+QString buildSourceOrigin()
+{
+    const QString origin = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_ORIGIN);
+    return origin == QStringLiteral("git") || origin == QStringLiteral("supplied")
+        ? origin : QStringLiteral("unknown");
 }
 
 QString buildFact(const char *value)
@@ -227,6 +234,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
 
     lines << QStringLiteral("HYREMOTE_VERSION=%1").arg(hyremoteVersion())
           << QStringLiteral("BUILD_IDENTITY=%1").arg(buildIdentity())
+          << QStringLiteral("BUILD_SOURCE_ORIGIN=%1").arg(buildSourceOrigin())
           << QStringLiteral("QT_VERSION=%1").arg(QString::fromLatin1(QT_VERSION_STR))
           << QStringLiteral("OS=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_OS))
           << QStringLiteral("ARCH=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_ARCH))
