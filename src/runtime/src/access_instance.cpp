@@ -1,8 +1,6 @@
 #include "access_instance.hpp"
 
-#if HYREMOTE_HAS_AUTOMATIC_RUNTIME
-#  include "automatic/composite_target.hpp"
-#endif
+#include "detail/target_component_provider.hpp"
 
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
 #include <QBitmap>
@@ -1553,21 +1551,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 #  endif
     }
 #endif
-#if HYREMOTE_HAS_AUTOMATIC_RUNTIME
-    // Generic/QPA's real AccessInstance target is a CompositeTarget, NOT a
-    // QWidget or QQuickWindow. The automatic controller starts the Runtime
-    // only after at least one surface is visible, so the live canvas snapshot
-    // supplies exactly the 1x logical pixel grid the composite publishes.
-    // Without this branch #790's zero-viewer raw-frame release was disabled
-    // for the very zero-code Generic path used in the ARM64 field report.
-    // Do not infer geometry from an empty/hidden composite: recordInitialFramebuffer
-    // bounds the dimensions and the existing RFB bootstrap safety gate remains.
-    if (auto *composite = dynamic_cast<Automatic::CompositeTarget *>(targetObject)) {
-        const auto snapshot = composite->captureSnapshot();
-        if (!snapshot.backToFront.isEmpty())
-            recordInitialFramebuffer(snapshot.canvasBounds.size(), 1.0);
-    }
-#endif
+    // Zero-code Generic/QPA uses a private per-object TargetComponentProvider
+    // rather than passing a QWidget/QQuickWindow to AccessInstance. The
+    // provider reports the actual output pixel grid (CompositeTarget = 1x
+    // logical union) without making this common Runtime depend on a hidden
+    // concrete adapter symbol or an SoC/render-backend-specific condition.
+    // Missing/empty dimensions retain the existing fail-closed opt-out.
+    if (auto *provider = dynamic_cast<detail::TargetComponentProvider *>(targetObject))
+        recordInitialFramebuffer(provider->initialFramebufferPixelSize(), 1.0);
     // #790: release raw idle pixels only for a known-size Qt target with an active
     // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
     // to send a fresh first frame; no SDK API or standalone RFB behavior changes.
