@@ -301,6 +301,13 @@ if(HYREMOTE_REMOTEACCESS_WITH_WIDGETS
     endif()
 endif()
 
+# AccessInstance's CompositeTarget geometry path exists only when the automatic
+# Runtime sources are linked into this binary (runtime-only/standalone Core
+# builds must not acquire an unresolved CompositeTarget symbol).
+target_compile_definitions(hyremote-remoteaccess PRIVATE
+    HYREMOTE_HAS_AUTOMATIC_RUNTIME=$<BOOL:${HYREMOTE_AUTOMATIC_RUNTIME_AVAILABLE}>
+)
+
 # #589 W2: the server-side watermark compositor paints text, so it is a real capability only where Qt Gui exists.
 # The macro is declared explicitly (never left undefined) so a build cannot silently claim a compositor it does
 # not contain; a build without Gui keeps refusing an enabled policy at start().
