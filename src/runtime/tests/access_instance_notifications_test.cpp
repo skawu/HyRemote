@@ -11,6 +11,7 @@
 //   fatal/target loss: ErrorChanged(non-recoverable), StateChanged(Faulted)
 
 #include "access_instance.hpp"
+#include "detail/target_component_provider.hpp"
 #include "detail/component_factories.hpp"
 #include "hyremote/core/storage.hpp"
 
@@ -143,6 +144,12 @@ struct RuntimeState
     std::atomic<bool> allowIdleReleaseExit{false};
     std::atomic<bool> stopOverlappedIdleRelease{false};
     std::atomic<int> transportStops{0};
+    // Capture the actual RFB policy handed to transport by AccessInstance.
+    // Generic's CompositeTarget must get the same idle raw-frame release
+    // admission as direct Widget/Quick, but an empty composite must not.
+    std::atomic<bool> rfbReleasesIdleFrameBuffers{false};
+    std::atomic<int> rfbInitialWidth{0};
+    std::atomic<int> rfbInitialHeight{0};
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
     bool oversizedAfterValid = false;
@@ -153,6 +160,25 @@ struct RuntimeState
     hyremote::InputHandler inputHandler;
     hyremote::CaptureEventHandler captureEventHandler;
     hyremote::TransportEventHandler transportEventHandler;
+};
+
+// A private target provider can supply its output pixel grid without the
+// test executable constructing hidden-in-the-DLL CompositeTarget symbols.
+class SizedProviderTarget final : public QObject, public HyRemote::detail::TargetComponentProvider
+{
+public:
+    explicit SizedProviderTarget(QSize pixels) : m_pixels(pixels) {}
+
+    QSize initialFramebufferPixelSize() const override { return m_pixels; }
+
+    HyRemote::detail::TargetComponents createTargetComponents(
+        bool, const HyRemote::detail::BuiltinTargetResolver &) override
+    {
+        return {}; // existing test factory owns the synthetic capture source
+    }
+
+private:
+    QSize m_pixels;
 };
 
 class FakeInput final : public hyremote::InputSink
@@ -336,7 +362,10 @@ void installRuntime(const std::shared_ptr<RuntimeState> &state, bool captureSupp
     });
 
     HyRemote::detail::setTransportFactory([state](const QHostAddress &, quint16,
-                                                  const HyRemote::detail::RfbSecurityConfig &) {
+                                                  const HyRemote::detail::RfbSecurityConfig &security) {
+        state->rfbReleasesIdleFrameBuffers.store(security.releaseIdleFrameBuffers);
+        state->rfbInitialWidth.store(security.initialFramebufferWidth);
+        state->rfbInitialHeight.store(security.initialFramebufferHeight);
         HyRemote::detail::TransportComponent result;
         result.transport = std::make_unique<FakeTransport>(state);
         return result;
@@ -644,6 +673,30 @@ void testStopDrainsInProgressIdleRelease()
     instance.stop();
     CHECK(state->captureStops.load() == 2);
     CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+// #790 The common AccessInstance must honor an instance-scoped provider's
+// known output grid. An absent grid must preserve the safe RFB opt-out.
+void testCompositeCanvasEnablesRfbIdleFrameRelease()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    installRuntime(state);
+    SizedProviderTarget valid(QSize(640, 360));
+    AccessInstance instance(&valid);
+    CHECK(instance.start());
+    CHECK(state->rfbInitialWidth.load() == 640);
+    CHECK(state->rfbInitialHeight.load() == 360);
+    CHECK(state->rfbReleasesIdleFrameBuffers.load());
+    instance.stop();
+
+    SizedProviderTarget empty(QSize{});
+    AccessInstance emptyInstance(&empty);
+    CHECK(emptyInstance.start());
+    CHECK(state->rfbInitialWidth.load() == 0);
+    CHECK(state->rfbInitialHeight.load() == 0);
+    CHECK(!state->rfbReleasesIdleFrameBuffers.load());
+    emptyInstance.stop();
     HyRemote::detail::resetFactories();
 }
 
@@ -1306,6 +1359,7 @@ int main(int argc, char **argv)
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
     testZeroViewerEdgeReleasesIdleCaptureResourcesOnce();
     testStopDrainsInProgressIdleRelease();
+    testCompositeCanvasEnablesRfbIdleFrameRelease();
     testSlowCaptureIsBoundedWithViewerInputAndStopRestart();
     testTargetDestroyedWhileCaptureIsIdle();
     testTargetLossReportedOnceAcrossWatcherAndPendingCapture();

@@ -808,6 +808,15 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     return snapshot;
 }
 
+QSize CompositeTarget::initialFramebufferPixelSize() const
+{
+    const CompositeTargetSnapshot snapshot = captureSnapshot();
+    // The composite owns a logical-DPR=1 canvas; use the union of visible
+    // surfaces, not any one child's physical DPR or absolute screen offset.
+    // An empty canvas cannot safely enable idle RFB pixel reclamation.
+    return snapshot.backToFront.isEmpty() ? QSize{} : snapshot.canvasBounds.size();
+}
+
 ::HyRemote::detail::TargetComponents CompositeTarget::createTargetComponents(
     bool remoteInputEnabled,
     const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget)

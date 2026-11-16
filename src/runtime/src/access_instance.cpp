@@ -1,5 +1,7 @@
 #include "access_instance.hpp"
 
+#include "detail/target_component_provider.hpp"
+
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
 #include <QBitmap>
 #include <QColor>
@@ -1549,6 +1551,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 #  endif
     }
 #endif
+    // Zero-code Generic/QPA uses a private per-object TargetComponentProvider
+    // rather than passing a QWidget/QQuickWindow to AccessInstance. The
+    // provider reports the actual output pixel grid (CompositeTarget = 1x
+    // logical union) without making this common Runtime depend on a hidden
+    // concrete adapter symbol or an SoC/render-backend-specific condition.
+    // Missing/empty dimensions retain the existing fail-closed opt-out.
+    if (auto *provider = dynamic_cast<detail::TargetComponentProvider *>(targetObject))
+        recordInitialFramebuffer(provider->initialFramebufferPixelSize(), 1.0);
     // #790: release raw idle pixels only for a known-size Qt target with an active
     // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
     // to send a fresh first frame; no SDK API or standalone RFB behavior changes.
