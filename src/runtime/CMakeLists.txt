@@ -71,9 +71,16 @@ if(HYREMOTE_BUILD_TESTS AND HYREMOTE_ENABLE_CPU_PROBE
     set_tests_properties(hyremote-linux-cpu-probe-test PROPERTIES TIMEOUT 15)
 endif()
 
-# #335 build/process identity. SOURCE_SHA deliberately uses the same git fact that build.cmd install writes into
-# HYREMOTE-MANIFEST.txt; source archives or non-git consumers fall back to "unknown" rather than inventing an id.
+# #335/#1008 build/process identity. A Git checkout is authoritative. When
+# an authorized target builder consumes a *detached source archive* (as the
+# existing Buildroot Generic integration does), it may explicitly name the
+# frozen 40-hex Git commit from which that archive was obtained.
+# This is an attribution *claim*, not a digest of the resulting ELF. Its origin
+# remains visible in diagnostics; exact deployed bytes still need SHA-256.
+set(HYREMOTE_SOURCE_SHA "" CACHE STRING
+    "Optional 40-hex source commit for a Git-less source archive (must match HEAD when Git exists)")
 set(_hyremote_diagnostic_source_sha "unknown")
+set(_hyremote_diagnostic_source_origin "unknown")
 # git -C can walk up into a consuming application's repository. Accept a SHA only when the
 # Git worktree root is this HyRemote source tree, not an enclosing checkout.
 execute_process(
@@ -94,7 +101,28 @@ if(_hyremote_diagnostic_root_rc EQUAL 0 AND NOT _hyremote_diagnostic_git_root ST
         )
         if(_hyremote_diagnostic_git_rc EQUAL 0 AND NOT _hyremote_diagnostic_git_out STREQUAL "")
             set(_hyremote_diagnostic_source_sha "${_hyremote_diagnostic_git_out}")
+            set(_hyremote_diagnostic_source_origin "git")
         endif()
+    endif()
+endif()
+if(NOT HYREMOTE_SOURCE_SHA STREQUAL "")
+    string(LENGTH "${HYREMOTE_SOURCE_SHA}" _hyremote_supplied_sha_length)
+    if(NOT _hyremote_supplied_sha_length EQUAL 40
+       OR NOT HYREMOTE_SOURCE_SHA MATCHES "^[0123456789abcdefABCDEF]+$")
+        message(FATAL_ERROR
+            "HYREMOTE_SOURCE_SHA must be exactly 40 hexadecimal characters; "
+            "do not use an abbreviated commit or a non-Git version string")
+    endif()
+    string(TOLOWER "${HYREMOTE_SOURCE_SHA}" _hyremote_supplied_sha)
+    if(_hyremote_diagnostic_source_origin STREQUAL "git"
+       AND NOT _hyremote_supplied_sha STREQUAL _hyremote_diagnostic_source_sha)
+        message(FATAL_ERROR
+            "HYREMOTE_SOURCE_SHA differs from the actual HyRemote Git HEAD; "
+            "a checked-out source tree cannot claim an unrelated commit")
+    endif()
+    if(_hyremote_diagnostic_source_origin STREQUAL "unknown")
+        set(_hyremote_diagnostic_source_sha "${_hyremote_supplied_sha}")
+        set(_hyremote_diagnostic_source_origin "supplied")
     endif()
 endif()
 set(_hyremote_diagnostic_arch "${CMAKE_SYSTEM_PROCESSOR}")
@@ -104,6 +132,7 @@ endif()
 target_compile_definitions(hyremote-remoteaccess PRIVATE
     HYREMOTE_DIAGNOSTIC_VERSION="${PROJECT_VERSION}"
     HYREMOTE_DIAGNOSTIC_SOURCE_SHA="${_hyremote_diagnostic_source_sha}"
+    HYREMOTE_DIAGNOSTIC_SOURCE_ORIGIN="${_hyremote_diagnostic_source_origin}"
     HYREMOTE_DIAGNOSTIC_OS="${CMAKE_SYSTEM_NAME}"
     HYREMOTE_DIAGNOSTIC_ARCH="${_hyremote_diagnostic_arch}"
     HYREMOTE_DIAGNOSTIC_BUILD_TYPE="$<CONFIG>"
@@ -112,6 +141,9 @@ unset(_hyremote_diagnostic_arch)
 unset(_hyremote_diagnostic_git_out)
 unset(_hyremote_diagnostic_git_rc)
 unset(_hyremote_diagnostic_source_sha)
+unset(_hyremote_diagnostic_source_origin)
+unset(_hyremote_supplied_sha)
+unset(_hyremote_supplied_sha_length)
 
 generate_export_header(hyremote-remoteaccess
     BASE_NAME HYREMOTE_REMOTEACCESS
