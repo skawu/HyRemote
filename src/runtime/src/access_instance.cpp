@@ -1,5 +1,9 @@
 #include "access_instance.hpp"
 
+#if HYREMOTE_HAS_AUTOMATIC_RUNTIME
+#  include "automatic/composite_target.hpp"
+#endif
+
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
 #include <QBitmap>
 #include <QColor>
@@ -1547,6 +1551,21 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
 #  else
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
 #  endif
+    }
+#endif
+#if HYREMOTE_HAS_AUTOMATIC_RUNTIME
+    // Generic/QPA's real AccessInstance target is a CompositeTarget, NOT a
+    // QWidget or QQuickWindow. The automatic controller starts the Runtime
+    // only after at least one surface is visible, so the live canvas snapshot
+    // supplies exactly the 1x logical pixel grid the composite publishes.
+    // Without this branch #790's zero-viewer raw-frame release was disabled
+    // for the very zero-code Generic path used in the ARM64 field report.
+    // Do not infer geometry from an empty/hidden composite: recordInitialFramebuffer
+    // bounds the dimensions and the existing RFB bootstrap safety gate remains.
+    if (auto *composite = dynamic_cast<Automatic::CompositeTarget *>(targetObject)) {
+        const auto snapshot = composite->captureSnapshot();
+        if (!snapshot.backToFront.isEmpty())
+            recordInitialFramebuffer(snapshot.canvasBounds.size(), 1.0);
     }
 #endif
     // #790: release raw idle pixels only for a known-size Qt target with an active
