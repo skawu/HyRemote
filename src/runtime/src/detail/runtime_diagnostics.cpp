@@ -136,7 +136,10 @@ QString buildIdentity()
     // Qt info messages or carry HYREMOTE-MANIFEST.txt alongside its executable.
     // This string is compiled *into* the shared Runtime, not inferred from the
     // application directory; the actual ELF still needs an independent hash.
-    constexpr char marker[] = "HYREMOTE_BUILD_SOURCE_SHA=" HYREMOTE_DIAGNOSTIC_SOURCE_SHA;
+    // Static storage preserves a complete binary string across optimized
+    // builds; a local automatic constexpr array may be lowered to stack
+    // chunks that ELF/PE string inspection cannot find.
+    static constexpr char marker[] = "HYREMOTE_BUILD_SOURCE_SHA=" HYREMOTE_DIAGNOSTIC_SOURCE_SHA;
     const QString sourceSha = QString::fromLatin1(marker)
                                   .mid(sizeof("HYREMOTE_BUILD_SOURCE_SHA=") - 1);
     const QString buildType = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_BUILD_TYPE);
