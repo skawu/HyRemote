@@ -144,10 +144,11 @@ HYR_TEST(coreInvalidTerminalValidationFailureRetiresCaptureCredit)
     // mask precisely the credit-starvation regression tested below.
     run.prepare(config);
     HYR_CHECK(run.start());
-    HYR_CHECK(waitFor([&] { return run.session->stats().inFlight == 1; }));
-
-    const std::size_t initialRequests = run.source->requestCalls();
-    HYR_CHECK_EQ(initialRequests, std::size_t{1});
+    // Core increments its credit before calling the source. Synchronize on
+    // the fake actually ACCEPTING request #1, not just Core's inFlight gauge,
+    // or OS thread scheduling can make the injection race an unissued request.
+    HYR_CHECK(waitFor([&] { return run.source->requestCalls() == 1; }));
+    HYR_CHECK_EQ(run.session->stats().inFlight, std::size_t{1});
 
     RemoteFrame emptyTerminal;
     bool escaped = false;
