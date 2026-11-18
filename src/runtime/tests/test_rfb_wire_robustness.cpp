@@ -2055,6 +2055,97 @@ void testHighEntropyTrleRawTileBytesAndAlpha()
     }
 }
 
+// #789/#790: a large solid HMI page is encoded as one 4-byte TRLE solid
+// tile per 16x16 region. Do not allocate 3 bytes per *source* pixel to
+// produce a tiny compressed payload. This checks the real QByteArray capacity
+// in the same Qt5/Qt6 runtime build, not a simulated allocator counter.
+// Wire correctness is still checked by the existing RFB/TRLE decode tests.
+void testTrleCompressiblePageDoesNotReserveRawFramebuffer()
+{
+    constexpr std::uint32_t width = 1920U;
+    constexpr std::uint32_t height = 1080U;
+    const auto frame = makeFrame(width, height, 0x203040U);
+    CHECK(frame.storage != nullptr);
+    if (!frame.storage)
+        return;
+    QByteArray encoded;
+    CHECK(HyRemote::detail::appendNativeTrlePayload(
+        encoded, frame, 0U, 0U, width, height));
+    const auto tileCols = (width + 15U) / 16U;
+    const auto tileRows = (height + 15U) / 16U;
+    CHECK(encoded.size() == static_cast<qsizetype>(tileCols * tileRows * 4U));
+    CHECK(!encoded.isEmpty());
+    if (!encoded.isEmpty()) {
+        CHECK(static_cast<std::uint8_t>(encoded.at(0)) == 1U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(1)) == 0x20U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(2)) == 0x30U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(3)) == 0x40U);
+    }
+    // Old implementation reserved 6,220,800 raw CPIXEL bytes regardless
+    // of compression. A 32,640-byte solid payload should have no multi-MiB
+    // capacity reservation. Leave room for Qt5/Qt6 allocator growth policy.
+    CHECK(encoded.capacity() < static_cast<qsizetype>(width * height));
+}
+
+// The deferred reserve must also handle both mixed-page orders: a solid
+// tile preceding a raw tile, and a raw tile preceding a solid tile. These
+// paths exercise both sides of the first-tile reserve decision without a
+// second palette scan or any change to the on-wire mode sequence.
+void testTrleMixedFirstTileOrderPreservesPixels()
+{
+    constexpr std::uint32_t width = 32U, height = 16U;
+    for (const bool solidFirst : {true, false}) {
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(width * 4U, height);
+        CHECK(storage && storage->mutablePlane(0));
+        if (!storage || !storage->mutablePlane(0))
+            return;
+        auto *base = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        const std::uint32_t rawX = solidFirst ? 16U : 0U;
+        for (std::uint32_t y = 0; y < height; ++y) {
+            for (std::uint32_t x = 0; x < width; ++x) {
+                auto *pixel = base + (static_cast<std::size_t>(y) * width + x) * 4U;
+                if (x >= rawX && x < rawX + 16U) {
+                    const std::uint32_t index = y * 16U + (x - rawX);
+                    pixel[0] = static_cast<std::uint8_t>(index & 255U);
+                    pixel[1] = static_cast<std::uint8_t>((index * 7U) & 255U);
+                    pixel[2] = static_cast<std::uint8_t>((index * 11U) & 255U);
+                } else {
+                    pixel[0] = 0x20U;
+                    pixel[1] = 0x30U;
+                    pixel[2] = 0x40U;
+                }
+                pixel[3] = 255U;
+            }
+        }
+        auto frame = makeFrame(width, height, 0x203040U);
+        frame.storage = std::move(storage);
+        QByteArray encoded;
+        CHECK(HyRemote::detail::appendNativeTrlePayload(
+            encoded, frame, 0U, 0U, width, height));
+        // Each raw 16x16 tile is 1 mode byte + 768 CPIXEL bytes; the solid
+        // tile is 1 mode byte + 3 colour bytes.
+        CHECK(encoded.size() == 773);
+        if (encoded.size() != 773)
+            continue;
+        const qsizetype rawOffset = solidFirst ? 4 : 0;
+        const qsizetype solidOffset = solidFirst ? 0 : 769;
+        CHECK(static_cast<std::uint8_t>(encoded.at(rawOffset)) == 0U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(solidOffset)) == 1U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(solidOffset + 1)) == 0x20U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(solidOffset + 2)) == 0x30U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(solidOffset + 3)) == 0x40U);
+        for (const std::uint32_t index : {0U, 15U, 127U, 255U}) {
+            const qsizetype offset = rawOffset + 1
+                + static_cast<qsizetype>(index * 3U);
+            CHECK(static_cast<std::uint8_t>(encoded.at(offset)) == (index & 255U));
+            CHECK(static_cast<std::uint8_t>(encoded.at(offset + 1))
+                  == ((index * 7U) & 255U));
+            CHECK(static_cast<std::uint8_t>(encoded.at(offset + 2))
+                  == ((index * 11U) & 255U));
+        }
+    }
+}
+
 void testTrlePreferredOverRawOrder()
 {
     const quint16 port = freePort();
@@ -5085,6 +5176,8 @@ int main(int argc, char **argv)
     testNativeRawFastPathAlphaEquivalence();
     testRawFallbackBulkPackingPreservesWireBytes();
     testHighEntropyTrleRawTileBytesAndAlpha();
+    testTrleCompressiblePageDoesNotReserveRawFramebuffer();
+    testTrleMixedFirstTileOrderPreservesPixels();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
