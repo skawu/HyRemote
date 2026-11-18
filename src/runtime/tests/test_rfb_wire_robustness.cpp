@@ -2055,6 +2055,38 @@ void testHighEntropyTrleRawTileBytesAndAlpha()
     }
 }
 
+// #789/#790: a large solid HMI page is encoded as one 4-byte TRLE solid
+// tile per 16x16 region. Do not allocate 3 bytes per *source* pixel to
+// produce a tiny compressed payload. This checks the real QByteArray capacity
+// in the same Qt5/Qt6 runtime build, not a simulated allocator counter.
+// Wire correctness is still checked by the existing RFB/TRLE decode tests.
+void testTrleCompressiblePageDoesNotReserveRawFramebuffer()
+{
+    constexpr std::uint32_t width = 1920U;
+    constexpr std::uint32_t height = 1080U;
+    const auto frame = makeFrame(width, height, 0x203040U);
+    CHECK(frame.storage != nullptr);
+    if (!frame.storage)
+        return;
+    QByteArray encoded;
+    CHECK(HyRemote::detail::appendNativeTrlePayload(
+        encoded, frame, 0U, 0U, width, height));
+    const auto tileCols = (width + 15U) / 16U;
+    const auto tileRows = (height + 15U) / 16U;
+    CHECK(encoded.size() == static_cast<qsizetype>(tileCols * tileRows * 4U));
+    CHECK(!encoded.isEmpty());
+    if (!encoded.isEmpty()) {
+        CHECK(static_cast<std::uint8_t>(encoded.at(0)) == 1U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(1)) == 0x20U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(2)) == 0x30U);
+        CHECK(static_cast<std::uint8_t>(encoded.at(3)) == 0x40U);
+    }
+    // Old implementation reserved 6,220,800 raw CPIXEL bytes regardless
+    // of compression. A 32,640-byte solid payload should have no multi-MiB
+    // capacity reservation. Leave room for Qt5/Qt6 allocator growth policy.
+    CHECK(encoded.capacity() < static_cast<qsizetype>(width * height));
+}
+
 void testTrlePreferredOverRawOrder()
 {
     const quint16 port = freePort();
@@ -5085,6 +5117,7 @@ int main(int argc, char **argv)
     testNativeRawFastPathAlphaEquivalence();
     testRawFallbackBulkPackingPreservesWireBytes();
     testHighEntropyTrleRawTileBytesAndAlpha();
+    testTrleCompressiblePageDoesNotReserveRawFramebuffer();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
     testCursorSentAfterPixelFormatWithoutRequest();
