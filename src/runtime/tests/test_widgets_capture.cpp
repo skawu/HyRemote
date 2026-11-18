@@ -11,7 +11,6 @@
 
 #include <functional>
 #include <iostream>
-#include <new>
 #include <optional>
 #include <utility>
 
@@ -33,14 +32,13 @@ int failures = 0;
     } while (false)
 
 // The C++ std::function implementation is allowed to copy a target while
-// installing the callback at start() (notably MSVC). Arm the negative only
-// *after* start returned: callback publication must not copy its function
-// even when such a copy would now throw std::bad_alloc.
+// installing the callback at start() (notably MSVC). Record any copy only *after* start returns: callback publication must
+// not copy its function, regardless of whether that copy would allocate.
 template <typename Fn>
-struct ThrowOnCopyCallback {
-    ThrowOnCopyCallback(Fn fn, const bool *armed, int *postStartCopies)
+struct CountPostStartCopiesCallback {
+    CountPostStartCopiesCallback(Fn fn, const bool *armed, int *postStartCopies)
         : fn(std::move(fn)), armed(armed), postStartCopies(postStartCopies) {}
-    ThrowOnCopyCallback(const ThrowOnCopyCallback &other)
+    CountPostStartCopiesCallback(const CountPostStartCopiesCallback &other)
         : fn(other.fn), armed(other.armed), postStartCopies(other.postStartCopies)
     {
         // Keep Qt's GUI event loop alive even if a copy occurs so a test
@@ -49,7 +47,7 @@ struct ThrowOnCopyCallback {
         if (*armed)
             ++*postStartCopies;
     }
-    ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
+    CountPostStartCopiesCallback(CountPostStartCopiesCallback &&) noexcept = default;
 
     template <typename... Args>
     void operator()(Args &&...args) const
@@ -63,9 +61,9 @@ struct ThrowOnCopyCallback {
 };
 
 template <typename Fn>
-ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn, const bool *armed, int *postStartCopies)
+CountPostStartCopiesCallback<Fn> countPostStartCopies(Fn fn, const bool *armed, int *postStartCopies)
 {
-    return ThrowOnCopyCallback<Fn>(std::move(fn), armed, postStartCopies);
+    return CountPostStartCopiesCallback<Fn>(std::move(fn), armed, postStartCopies);
 }
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 100)
@@ -188,9 +186,9 @@ void testWidgetsFactoryAndOwnedFrame()
     bool rejectPostStartCopy = false;
     int postStartCopies = 0;
     CHECK(components.capture->start(
-        throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        countPostStartCopies([&](hyremote::RemoteFrame frame) { received = std::move(frame); },
                     &rejectPostStartCopy, &postStartCopies),
-        throwOnCopy([&](const hyremote::CaptureEvent &) { ++events; },
+        countPostStartCopies([&](const hyremote::CaptureEvent &) { ++events; },
                     &rejectPostStartCopy, &postStartCopies)));
     rejectPostStartCopy = true;
 
@@ -460,9 +458,9 @@ void testDestroyedTargetReportsTargetLost()
     bool rejectPostStartCopy = false;
     int postStartCopies = 0;
     CHECK(components.capture->start(
-        throwOnCopy([&](hyremote::RemoteFrame) { ++frames; },
+        countPostStartCopies([&](hyremote::RemoteFrame) { ++frames; },
                     &rejectPostStartCopy, &postStartCopies),
-        throwOnCopy([&](const hyremote::CaptureEvent &event) { lastEvent = event; },
+        countPostStartCopies([&](const hyremote::CaptureEvent &event) { lastEvent = event; },
                     &rejectPostStartCopy, &postStartCopies)));
     rejectPostStartCopy = true;
 
