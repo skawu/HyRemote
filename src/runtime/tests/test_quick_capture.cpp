@@ -71,15 +71,18 @@ int failures = 0;
         }                                                                                          \
     } while (false)
 
-// A legal std::function target whose copy deterministically throws. It is
-// moved into the CaptureSource once at start(); a later frame/terminal/event
-// publication must only snapshot its shared owner, not copy the target.
+// The C++ std::function implementation is allowed to copy a target while
+// installing the callback at start() (notably MSVC). Arm the negative only
+// *after* start returned: callback publication must not copy its function
+// even when such a copy would now throw std::bad_alloc.
 template <typename Fn>
 struct ThrowOnCopyCallback {
-    explicit ThrowOnCopyCallback(Fn fn) : fn(std::move(fn)) {}
-    ThrowOnCopyCallback(const ThrowOnCopyCallback &other) : fn(other.fn)
+    ThrowOnCopyCallback(Fn fn, const bool *armed) : fn(std::move(fn)), armed(armed) {}
+    ThrowOnCopyCallback(const ThrowOnCopyCallback &other)
+        : fn(other.fn), armed(other.armed)
     {
-        throw std::bad_alloc{};
+        if (*armed)
+            throw std::bad_alloc{};
     }
     ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
 
@@ -90,12 +93,13 @@ struct ThrowOnCopyCallback {
     }
 
     Fn fn;
+    const bool *armed;
 };
 
 template <typename Fn>
-ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn)
+ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn, const bool *armed)
 {
-    return ThrowOnCopyCallback<Fn>(std::move(fn));
+    return ThrowOnCopyCallback<Fn>(std::move(fn), armed);
 }
 
 // A single Qt-free CPU normalization contract is used by the GL provider and
@@ -1531,12 +1535,15 @@ void testUnavailableQuickCaptureHasBoundedRetryAndRecovers()
     std::optional<hyremote::RemoteFrame> received;
     std::optional<hyremote::CaptureEvent> lastEvent;
     int eventCount = 0;
+    bool rejectPostStartCopy = false;
     CHECK(components.capture->start(
-        throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); }),
+        throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+                    &rejectPostStartCopy),
         throwOnCopy([&](const hyremote::CaptureEvent &event) {
             lastEvent = event;
             ++eventCount;
-        })));
+        }, &rejectPostStartCopy)));
+    rejectPostStartCopy = true;
 
     hyremote::CaptureRequest hiddenRequest{31, hyremote::Clock::now()};
     CHECK(components.capture->requestFrame(hiddenRequest));
