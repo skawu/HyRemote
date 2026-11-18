@@ -38,12 +38,16 @@ int failures = 0;
 // even when such a copy would now throw std::bad_alloc.
 template <typename Fn>
 struct ThrowOnCopyCallback {
-    ThrowOnCopyCallback(Fn fn, const bool *armed) : fn(std::move(fn)), armed(armed) {}
+    ThrowOnCopyCallback(Fn fn, const bool *armed, int *postStartCopies)
+        : fn(std::move(fn)), armed(armed), postStartCopies(postStartCopies) {}
     ThrowOnCopyCallback(const ThrowOnCopyCallback &other)
-        : fn(other.fn), armed(other.armed)
+        : fn(other.fn), armed(other.armed), postStartCopies(other.postStartCopies)
     {
+        // Keep Qt's GUI event loop alive even if a copy occurs so a test
+        // failure reports the *count*, not an opaque MSVC 0xC0000409 abort.
+        // Copying after start is forbidden even when the callable is cheap.
         if (*armed)
-            throw std::bad_alloc{};
+            ++*postStartCopies;
     }
     ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
 
@@ -55,12 +59,13 @@ struct ThrowOnCopyCallback {
 
     Fn fn;
     const bool *armed;
+    int *postStartCopies;
 };
 
 template <typename Fn>
-ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn, const bool *armed)
+ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn, const bool *armed, int *postStartCopies)
 {
-    return ThrowOnCopyCallback<Fn>(std::move(fn), armed);
+    return ThrowOnCopyCallback<Fn>(std::move(fn), armed, postStartCopies);
 }
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 100)
@@ -181,11 +186,12 @@ void testWidgetsFactoryAndOwnedFrame()
     std::optional<hyremote::RemoteFrame> received;
     int events = 0;
     bool rejectPostStartCopy = false;
+    int postStartCopies = 0;
     CHECK(components.capture->start(
         throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); },
-                    &rejectPostStartCopy),
+                    &rejectPostStartCopy, &postStartCopies),
         throwOnCopy([&](const hyremote::CaptureEvent &) { ++events; },
-                    &rejectPostStartCopy)));
+                    &rejectPostStartCopy, &postStartCopies)));
     rejectPostStartCopy = true;
 
     hyremote::CaptureRequest request;
@@ -288,6 +294,7 @@ void testWidgetsFactoryAndOwnedFrame()
     probe.close();
 
     components.capture->stop();
+    CHECK(postStartCopies == 0);
 }
 
 void testOwnedTransientSurfaceCaptureInputAndIsolation()
@@ -451,10 +458,12 @@ void testDestroyedTargetReportsTargetLost()
     int frames = 0;
     std::optional<hyremote::CaptureEvent> lastEvent;
     bool rejectPostStartCopy = false;
+    int postStartCopies = 0;
     CHECK(components.capture->start(
-        throwOnCopy([&](hyremote::RemoteFrame) { ++frames; }, &rejectPostStartCopy),
+        throwOnCopy([&](hyremote::RemoteFrame) { ++frames; },
+                    &rejectPostStartCopy, &postStartCopies),
         throwOnCopy([&](const hyremote::CaptureEvent &event) { lastEvent = event; },
-                    &rejectPostStartCopy)));
+                    &rejectPostStartCopy, &postStartCopies)));
     rejectPostStartCopy = true;
 
     hyremote::CaptureRequest request{11, hyremote::Clock::now()};
@@ -469,6 +478,7 @@ void testDestroyedTargetReportsTargetLost()
         CHECK(!lastEvent->recoverable);
     }
     components.capture->stop();
+    CHECK(postStartCopies == 0);
 }
 
 void testNormalizedInputIsQueuedAndDeliveredToChild()
