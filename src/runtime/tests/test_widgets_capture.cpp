@@ -38,7 +38,10 @@ int failures = 0;
 template <typename Fn>
 struct ThrowOnCopyCallback {
     explicit ThrowOnCopyCallback(Fn fn) : fn(std::move(fn)) {}
-    ThrowOnCopyCallback(const ThrowOnCopyCallback &) { throw std::bad_alloc{}; }
+    ThrowOnCopyCallback(const ThrowOnCopyCallback &other) : fn(other.fn)
+    {
+        throw std::bad_alloc{};
+    }
     ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
 
     template <typename... Args>
