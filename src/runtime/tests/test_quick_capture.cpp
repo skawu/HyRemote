@@ -25,6 +25,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <new>
 #include <thread>
 #include <utility>
 
@@ -69,6 +70,30 @@ int failures = 0;
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
+
+// A legal std::function target whose copy deterministically throws. It is
+// moved into the CaptureSource once at start(); a later frame/terminal/event
+// publication must only snapshot its shared owner, not copy the target.
+template <typename Fn>
+struct ThrowOnCopyCallback {
+    explicit ThrowOnCopyCallback(Fn fn) : fn(std::move(fn)) {}
+    ThrowOnCopyCallback(const ThrowOnCopyCallback &) { throw std::bad_alloc{}; }
+    ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
+
+    template <typename... Args>
+    void operator()(Args &&...args) const
+    {
+        fn(std::forward<Args>(args)...);
+    }
+
+    Fn fn;
+};
+
+template <typename Fn>
+ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn)
+{
+    return ThrowOnCopyCallback<Fn>(std::move(fn));
+}
 
 // A single Qt-free CPU normalization contract is used by the GL provider and
 // can also handle pitched D3D staging and Qt5 source rows without QtPrivate.
@@ -1504,11 +1529,11 @@ void testUnavailableQuickCaptureHasBoundedRetryAndRecovers()
     std::optional<hyremote::CaptureEvent> lastEvent;
     int eventCount = 0;
     CHECK(components.capture->start(
-        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
-        [&](const hyremote::CaptureEvent &event) {
+        throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); }),
+        throwOnCopy([&](const hyremote::CaptureEvent &event) {
             lastEvent = event;
             ++eventCount;
-        }));
+        })));
 
     hyremote::CaptureRequest hiddenRequest{31, hyremote::Clock::now()};
     CHECK(components.capture->requestFrame(hiddenRequest));
