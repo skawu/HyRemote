@@ -190,8 +190,17 @@ public:
         std::lock_guard<std::mutex> lock(m_state->mutex);
         if (m_state->active)
             return false;
-        m_state->onFrame = std::move(onFrame);
-        m_state->onEvent = std::move(onEvent);
+        // The public Widget factory selects this scoped capture source.
+        // Snapshotting an application std::function on every publication can
+        // allocate/throw before the accepted Core request is completed.
+        // Allocate both immutable callbacks at start (before committing state)
+        // so frame and TargetLost publication only copy shared_ptr handles.
+        auto frameHandler =
+            std::make_shared<const hyremote::FrameReadyHandler>(std::move(onFrame));
+        auto eventHandler =
+            std::make_shared<const hyremote::CaptureEventHandler>(std::move(onEvent));
+        m_state->onFrame = std::move(frameHandler);
+        m_state->onEvent = std::move(eventHandler);
         m_state->active = true;
         return true;
     }
@@ -234,8 +243,8 @@ private:
         QPointer<QWidget> root;
         bool active = false;
         std::size_t callbacksInFlight = 0;
-        hyremote::FrameReadyHandler onFrame;
-        hyremote::CaptureEventHandler onEvent;
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
+        std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
     };
 
     template <typename Handler, typename Payload>
@@ -248,13 +257,13 @@ private:
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active)
                 return;
-            callback = state.get()->*member;
-            if (!callback)
+            callback = state.get()->*member; // shared_ptr copy is noexcept
+            if (!callback || !*callback)
                 return;
             ++state->callbacksInFlight;
         }
         try {
-            callback(std::move(payload));
+            (*callback)(std::move(payload));
         } catch (...) {
         }
         {
