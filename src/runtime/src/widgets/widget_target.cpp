@@ -69,8 +69,16 @@ public:
         if (m_state->target->thread() != QCoreApplication::instance()->thread())
             return false;
 
-        m_state->onFrame = std::move(onFrame);
-        m_state->onEvent = std::move(onEvent);
+        // Allocate handlers once per source run. Captures, unavailable
+        // terminal completions and failure events must never copy an
+        // allocating std::function on the GUI callback path: if that copy
+        // throws, the accepted Core request can lose its in-flight credit.
+        // A shared owner can be snapped under the state lock without allocation;
+        // the existing callbacksInFlight counter still drains stop() safely.
+        m_state->onFrame =
+            std::make_shared<const hyremote::FrameReadyHandler>(std::move(onFrame));
+        m_state->onEvent =
+            std::make_shared<const hyremote::CaptureEventHandler>(std::move(onEvent));
         m_state->active = true;
         return true;
     }
@@ -115,8 +123,8 @@ private:
         QPointer<QWidget> target;
         bool active = false;
         std::size_t callbacksInFlight = 0;
-        hyremote::FrameReadyHandler onFrame;
-        hyremote::CaptureEventHandler onEvent;
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
+        std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
     };
 
     template <typename Handler, typename Payload>
@@ -129,14 +137,14 @@ private:
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active)
                 return;
-            callback = state.get()->*member;
-            if (!callback)
+            callback = state.get()->*member; // shared_ptr copy is noexcept
+            if (!callback || !*callback)
                 return;
             ++state->callbacksInFlight;
         }
 
         try {
-            callback(std::move(payload));
+            (*callback)(std::move(payload));
         } catch (...) {
             // Core callbacks are specified not to leak exceptions through adapter boundaries.
             // Treat an unexpected violation as a dropped callback while preserving stop quiescence.
