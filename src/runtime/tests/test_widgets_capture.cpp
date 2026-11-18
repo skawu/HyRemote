@@ -11,7 +11,9 @@
 
 #include <functional>
 #include <iostream>
+#include <new>
 #include <optional>
+#include <utility>
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
@@ -29,6 +31,30 @@ int failures = 0;
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
+
+// A legal std::function target whose copy deterministically throws. It is
+// moved into the CaptureSource once at start(); a later frame/terminal/event
+// publication must only snapshot its shared owner, not copy the target.
+template <typename Fn>
+struct ThrowOnCopyCallback {
+    explicit ThrowOnCopyCallback(Fn fn) : fn(std::move(fn)) {}
+    ThrowOnCopyCallback(const ThrowOnCopyCallback &) { throw std::bad_alloc{}; }
+    ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
+
+    template <typename... Args>
+    void operator()(Args &&...args) const
+    {
+        fn(std::forward<Args>(args)...);
+    }
+
+    Fn fn;
+};
+
+template <typename Fn>
+ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn)
+{
+    return ThrowOnCopyCallback<Fn>(std::move(fn));
+}
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 100)
 {
@@ -148,8 +174,8 @@ void testWidgetsFactoryAndOwnedFrame()
     std::optional<hyremote::RemoteFrame> received;
     int events = 0;
     CHECK(components.capture->start(
-        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
-        [&](const hyremote::CaptureEvent &) { ++events; }));
+        throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); }),
+        throwOnCopy([&](const hyremote::CaptureEvent &) { ++events; })));
 
     hyremote::CaptureRequest request;
     request.id = 7;
@@ -414,8 +440,8 @@ void testDestroyedTargetReportsTargetLost()
     int frames = 0;
     std::optional<hyremote::CaptureEvent> lastEvent;
     CHECK(components.capture->start(
-        [&](hyremote::RemoteFrame) { ++frames; },
-        [&](const hyremote::CaptureEvent &event) { lastEvent = event; }));
+        throwOnCopy([&](hyremote::RemoteFrame) { ++frames; }),
+        throwOnCopy([&](const hyremote::CaptureEvent &event) { lastEvent = event; })));
 
     hyremote::CaptureRequest request{11, hyremote::Clock::now()};
     CHECK(components.capture->requestFrame(request));
