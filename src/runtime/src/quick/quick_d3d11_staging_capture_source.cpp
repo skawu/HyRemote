@@ -111,7 +111,7 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         hyremote::TimePoint submittedPts{};
         int pixelWidth = 0, pixelHeight = 0;
         float dpr = 1.0f;
-        int forcedRenders = 0;
+        QuickRetirementRenderGate retirementGate;
     };
 
     struct WorkerDrain {
@@ -159,6 +159,7 @@ public:
         s->cpuConversionPending = false;
         s->guiKickPosted = false;
         s->fallbackTimerArmed = false;
+        s->retirementGate.reset();
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->active = true;
@@ -180,6 +181,7 @@ public:
             s->cpuConversionPending = false;
             s->guiKickPosted = false;
             s->fallbackTimerArmed = false;
+            s->retirementGate.reset();
             s->cleanupRequested = true;
             s->onFrame = {};
             s->onEvent = {};
@@ -399,31 +401,33 @@ private:
     {
         if (!window)
             return;
-        int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
+        // A render loop may produce many natural frames while a single GPU
+        // staging Map remains outstanding. Only ONE retirement timer may be
+        // queued for a particular staging batch; an expired ticket from the
+        // previous batch cannot force a new batch's Qt render.
+        std::optional<QuickRetirementRenderGate::Ticket> ticket;
         {
             std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != generation
-                || !s->staging || s->forcedRenders >= kMaxExtraRenders)
+            if (!s->active || s->generation != generation)
                 return;
-            if (s->forcedRenders > 0)
-                delayMs = QuickReadbackTiming::secondRetirementRenderMs;
+            ticket = s->retirementGate.arm(static_cast<bool>(s->staging));
         }
-        QTimer::singleShot(delayMs, window.data(),
-            [s, window, generation] {
-                bool shouldRender = false;
-                {
-                    std::lock_guard<std::mutex> lock(s->mutex);
-                    if (s->active && s->generation == generation && s->staging
-                        && s->forcedRenders < kMaxExtraRenders) {
-                        ++s->forcedRenders;
-                        shouldRender = true;
-                    }
-                }
-                if (shouldRender && window && window->isVisible()) {
-                    HYREMOTE_P1_COUNT(QuickGlRetirementRender);
-                    window->update();
-                }
-            });
+        if (!ticket)
+            return;
+        QTimer::singleShot(ticket->delayMs, window.data(),
+                           [s, window, generation, ticket = *ticket] {
+            bool shouldRender = false;
+            {
+                std::lock_guard<std::mutex> lock(s->mutex);
+                if (s->active && s->generation == generation)
+                    shouldRender = s->retirementGate.fire(
+                        ticket, static_cast<bool>(s->staging));
+            }
+            if (shouldRender && window && window->isVisible()) {
+                HYREMOTE_P1_COUNT(QuickGlRetirementRender);
+                window->update();
+            }
+        });
     }
 
     static void releaseActiveReadback(State &state)
@@ -432,7 +436,7 @@ private:
         state.staging.Reset();
         state.stagingDevice.Reset();
         state.stagingDesc = {};
-        state.forcedRenders = 0;
+        state.retirementGate.reset();
         state.pixelWidth = state.pixelHeight = 0;
     }
 
@@ -634,7 +638,7 @@ private:
                     const HRESULT hr = context->Map(s->staging.Get(), 0,
                         D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
                     if (hr == DXGI_ERROR_WAS_STILL_DRAWING) {
-                        if (s->forcedRenders < kMaxExtraRenders) pump = true;
+                        if (s->retirementGate.forcedRenders() < kMaxExtraRenders) pump = true;
                         else {
                             failed.swap(s->submitted);
                             failure = "D3D11 staging Map not ready after bounded renders";
@@ -732,7 +736,7 @@ private:
                     s->submittedPts = s->capturedPts;
                     s->submitted.swap(s->queued);
                     s->capturedTarget.Reset();
-                    s->forcedRenders = 0;
+                    s->retirementGate.reset();
                     context->CopyResource(s->staging.Get(), rendered.Get());
                     #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
 
