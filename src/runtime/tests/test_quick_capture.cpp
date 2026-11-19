@@ -46,6 +46,7 @@
 #include "detail/cursor_mapping.hpp"
 #include "quick/quick_capture_backend.hpp"
 #include "quick/quick_readback_batch.hpp"
+#include "quick/quick_readback_timing.hpp"
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
@@ -2013,6 +2014,65 @@ void runPublicQuickProfile()
     // correctness test and NEVER permission to cherry-pick a better run.
 }
 
+// Both public Qt5 GL and Qt6 RHI GL/D3D11 native research sources schedule
+// retirement via this same allocation-free ticket gate under their State
+// mutex. A busy natural Qt render loop must not enqueue unbounded timers or
+// use a delayed timer from a previous physical GPU readback batch.
+void testReadbackRetirementTimersAreSingleFlightAndGenerationBound()
+{
+    using HyRemote::detail::QuickReadbackTiming;
+    using HyRemote::detail::QuickRetirementRenderGate;
+    QuickRetirementRenderGate gate;
+
+    CHECK(!gate.arm(false).has_value()); // zero GPU demand never pumps Qt
+    const auto first = gate.arm(true);
+    CHECK(first.has_value());
+    if (!first)
+        return;
+    CHECK(first->delayMs == QuickReadbackTiming::firstRetirementRenderMs);
+    CHECK(gate.timerArmed());
+    for (int naturalFrames = 0; naturalFrames < 120; ++naturalFrames)
+        CHECK(!gate.arm(true).has_value()); // one timer, not 120 timers
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.fire(*first, true));
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 1);
+
+    const auto second = gate.arm(true);
+    CHECK(second.has_value());
+    if (!second)
+        return;
+    CHECK(second->delayMs == QuickReadbackTiming::secondRetirementRenderMs);
+    CHECK(!gate.arm(true).has_value());
+    CHECK(gate.fire(*second, true));
+    CHECK(gate.forcedRenders() == QuickReadbackTiming::maxExtraRenders);
+    CHECK(!gate.arm(true).has_value()); // hard bounded extra-render budget
+
+    // A successful retirement with a queued timer does not render again.
+    gate.reset(); // next GPU batch starts with a fresh epoch
+    const auto canceled = gate.arm(true);
+    CHECK(canceled.has_value());
+    if (!canceled)
+        return;
+    CHECK(!gate.fire(*canceled, false));
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    const auto next = gate.arm(true);
+    CHECK(next.has_value());
+    if (!next)
+        return;
+    gate.reset(); // next batch arrived before this timer could run
+    const auto current = gate.arm(true);
+    CHECK(current.has_value());
+    if (!current)
+        return;
+    CHECK(!gate.fire(*next, true)); // stale timer cannot claim new batch
+    CHECK(gate.timerArmed()); // nor disarm the current batch timer
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.fire(*current, true));
+    CHECK(gate.forcedRenders() == 1);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -2025,6 +2085,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testReadbackRetirementTimersAreSingleFlightAndGenerationBound();
     testUpstreamQtGrabTargetDprVersionContract();
     testAdaptiveQuickSceneGraphInvalidationFailClosed();
     testNativeReadbackBatchTimeoutIsOneFailure();
