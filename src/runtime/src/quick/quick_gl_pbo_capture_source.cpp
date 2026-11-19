@@ -116,7 +116,7 @@ class GlPboCaptureSource final : public hyremote::CaptureSource
         int pixelWidth = 0;
         int pixelHeight = 0;
         float dpr = 1.0f;
-        int forcedRenders = 0;
+        QuickRetirementRenderGate retirementGate;
     };
 
     // Prevent a queued/running conversion from surviving CaptureSource::stop()
@@ -170,6 +170,7 @@ public:
         // generation. Old tasks still verify their captured generation.
         s->kickPosted = false;
         s->fallbackRenderTimerArmed = false;
+        s->retirementGate.reset();
         s->onFrame = std::move(frame);
         s->onEvent = std::move(event);
         s->active = true;
@@ -193,6 +194,7 @@ public:
             s->cpuConversionPending = false;
             s->kickPosted = false;
             s->fallbackRenderTimerArmed = false;
+            s->retirementGate.reset();
             s->onFrame = {};
             s->onEvent = {};
             s->cleanupRequested = true;
@@ -383,7 +385,7 @@ private:
         s.pboCapacityBytes = 0;
         s.pixelWidth = 0;
         s.pixelHeight = 0;
-        s.forcedRenders = 0;
+        s.retirementGate.reset();
     }
 
     static void onInvalidated(const std::shared_ptr<State> &s)
@@ -582,27 +584,25 @@ private:
                                            QQuickWindow *window,
                                            std::uint64_t generation)
     {
-        // At most two extra renders per submitted GPU readback. Never
-        // continuously redraw a static application to wait for a fence.
-        int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
+        // Natural Qt frame callbacks may arrive before a pending GPU fence
+        // retires. Keep ONE timer per readback epoch instead of posting an
+        // additional timer for each natural frame callback.
+        std::optional<QuickRetirementRenderGate::Ticket> ticket;
         {
             std::lock_guard<std::mutex> guard(s->mutex);
-            if (!s->active || s->generation != generation
-                || !s->gpuPending
-                || s->forcedRenders >= QuickReadbackTiming::maxExtraRenders)
+            if (!s->active || s->generation != generation)
                 return;
-            if (s->forcedRenders > 0)
-                delayMs = QuickReadbackTiming::secondRetirementRenderMs;
+            ticket = s->retirementGate.arm(s->gpuPending);
         }
-        QTimer::singleShot(delayMs, window, [s, window, generation] {
+        if (!ticket)
+            return;
+        QTimer::singleShot(ticket->delayMs, window,
+                           [s, window, generation, ticket = *ticket] {
             bool shouldRender = false;
             {
                 std::lock_guard<std::mutex> guard(s->mutex);
-                if (s->active && s->generation == generation
-                    && s->gpuPending && s->forcedRenders < 2) {
-                    ++s->forcedRenders;
-                    shouldRender = true;
-                }
+                if (s->active && s->generation == generation)
+                    shouldRender = s->retirementGate.fire(ticket, s->gpuPending);
             }
             if (shouldRender) {
                 HYREMOTE_P1_COUNT(QuickGlRetirementRender);
@@ -779,9 +779,9 @@ private:
                         gl->glDeleteSync(s->fence);
                         s->fence = nullptr;
                         s->gpuPending = false;
-                        s->forcedRenders = 0;
+                        s->retirementGate.reset();
                         kickAgain = !s->queued.empty() && !s->cpuConversionPending;
-                    } else if (s->forcedRenders < 2) {
+                    } else if (s->retirementGate.forcedRenders() < QuickReadbackTiming::maxExtraRenders) {
                         pumpAgain = true;
                     } else {
                         failed.swap(s->inFlight);
@@ -833,7 +833,7 @@ private:
                             s->dpr = static_cast<float>(dpr);
                             s->gpuPending = true;
                             s->readbackRenderTime = hyremote::Clock::now();
-                            s->forcedRenders = 0;
+                            s->retirementGate.reset();
                             s->inFlight.swap(s->queued);
                             #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
 
