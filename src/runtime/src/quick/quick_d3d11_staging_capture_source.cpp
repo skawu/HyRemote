@@ -502,6 +502,16 @@ private:
                              QQuickWindow *window)
     {
         std::lock_guard<std::mutex> lock(s->mutex);
+        // This callback precedes onAfterRender() for the same Qt frame.
+        // After stop/restart, cleanupRequested can still describe the OLD
+        // GPU generation. Release it BEFORE borrowing this frame's new
+        // RenderTarget; cleaning later in onAfterRender would also clear
+        // capturedTarget and strand a static scene's admitted request until
+        // its 750ms deadline. Qt owns this callback on the render thread.
+        if (s->cleanupRequested) {
+            releaseNative(*s);
+            s->cleanupRequested = false;
+        }
         if (!s->active || s->queued.empty() || s->staging
             || s->cpuConversionPending || !window->rendererInterface()
             || window->rendererInterface()->graphicsApi()
