@@ -108,6 +108,13 @@ def analyze(records):
         duplicate_socket_keys = {key for key, count in socket_keys.items()
                                  if count > 1}
         socket_collisions += len(duplicate_socket_keys)
+        # Count invalid wire identities once per event, independently of
+        # whether a valid encode/socket pair can be formed.
+        missing_wire_identity += sum(
+            int(event.get("viewer_id", 0)) <= 0
+            or int(event.get("update_id", 0)) <= 0
+            for step_name in ("rfb_encoded", "rfb_socket_queued")
+            for event in steps[step_name])
         valid_socket_events = [
             queued for queued in steps["rfb_socket_queued"]
             if int(queued.get("viewer_id", 0)) > 0
@@ -152,16 +159,12 @@ def analyze(records):
                     key = (int(encoded.get("viewer_id", 0)),
                            int(encoded.get("update_id", 0)))
                     if key[0] <= 0 or key[1] <= 0:
-                        missing_wire_identity += 1
                         continue
                     if key in per_viewer:
                         duplicate_viewer_keys.add(key)
                     else:
                         per_viewer[key] = int(encoded["at_ns"])
                 encode_collisions += len(duplicate_viewer_keys)
-                missing_wire_identity += sum(
-                    int(x.get("viewer_id", 0)) <= 0 or int(x.get("update_id", 0)) <= 0
-                    for x in steps["rfb_socket_queued"])
             for event in ends:
                 # One frame may be encoded independently for 2+ viewers.
                 # Do not combine one viewer's encode with another's write.
