@@ -121,17 +121,27 @@ def analyze(records):
                         (last - start_times[index]) / 1_000_000.0)
                 continue
             first = min(int(x["at_ns"]) for x in starts)
-            per_viewer = {
-                (int(x.get("viewer_id", 0)), int(x.get("update_id", 0))):
-                    int(x["at_ns"]) for x in starts
-            } if earlier == "rfb_encoded" else {}
+            # A viewer/update identity must identify one encode event. A
+            # duplicate is ambiguous even if its timestamp happens to match:
+            # never silently overwrite it and report a fabricated latency.
+            per_viewer = {}
+            duplicate_viewer_keys = set()
+            if earlier == "rfb_encoded":
+                for encoded in starts:
+                    key = (int(encoded.get("viewer_id", 0)),
+                           int(encoded.get("update_id", 0)))
+                    if key in per_viewer:
+                        duplicate_viewer_keys.add(key)
+                    else:
+                        per_viewer[key] = int(encoded["at_ns"])
+                ambiguous += len(duplicate_viewer_keys)
             for event in ends:
                 # One frame may be encoded independently for 2+ viewers.
                 # Do not combine one viewer's encode with another's write.
                 if earlier == "rfb_encoded":
                     key = (int(event.get("viewer_id", 0)),
                            int(event.get("update_id", 0)))
-                    if key not in per_viewer:
+                    if key in duplicate_viewer_keys or key not in per_viewer:
                         continue
                     earlier_ns = per_viewer[key]
                 else:
@@ -269,6 +279,27 @@ def self_test():
     assert result["intervals"]["render_pts_to_source"]["p50_ms"] == 1.0
     assert result["intervals"]["render_pts_to_socket_queue"]["p50_ms"] == 7.5
     assert result["content_change_to_present"] == "NOT_MEASURED"
+    # Duplicate encode identity must not silently overwrite the first
+    # timestamp or report a misleading encode-to-socket interval.
+    duplicated = analyze([
+        point("capture_request", 1_000_000, request=5),
+        point("rfb_encoded", 2_000_000, request=5, viewer=1, update=9),
+        point("rfb_encoded", 4_000_000, request=5, viewer=1, update=9),
+        point("rfb_socket_queued", 7_000_000, request=5, viewer=1, update=9),
+        point("rfb_encoded", 3_000_000, request=5, viewer=2, update=9),
+        point("rfb_socket_queued", 8_000_000, request=5, viewer=2, update=9),
+    ])
+    assert duplicated["request_identity_collisions_skipped"] == 1
+    assert duplicated["intervals"]["rfb_encode_to_socket_queue"]["n"] == 1
+    assert duplicated["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+    # Reversed JSONL order cannot alter the unique viewer pairing.
+    reversed_order = analyze([
+        point("rfb_socket_queued", 8_000_000, request=6, viewer=2, update=9),
+        point("rfb_encoded", 3_000_000, request=6, viewer=2, update=9),
+        point("capture_request", 1_000_000, request=6),
+    ])
+    assert reversed_order["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+
     # Negative: without quick_grab_ready the returned->ready interval must be
     # absent rather than inferred from a later stage.
     without_ready = analyze([
