@@ -85,6 +85,12 @@ jobs:
           cmake --build build-r4-d3d11-native --target hyremote-qt68-d3d11-staging-source-r4 --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = '.\\build-r4-d3d11-native\\hyremote-qt68-d3d11-staging-source-r4.exe'
+          $failure = & $exe --dispatch-rejection 2>&1
+          $failureExit = $LASTEXITCODE
+          $failure | ForEach-Object { Write-Host $_ }
+          if ($failureExit -ne 0 -or !($failure -match 'R4_D3D11_DISPATCH_REJECTION=PASS')) {
+            throw "D3D11 per-ID failure/restart terminal regression failed exit=$failureExit"
+          }
           foreach ($scenario in @('default', 'resize')) {
             $args = @()
             if ($scenario -eq 'resize') { $args += '--resize' }
