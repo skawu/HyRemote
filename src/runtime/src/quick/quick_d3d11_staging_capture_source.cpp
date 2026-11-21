@@ -235,8 +235,18 @@ public:
         if (!app)
             return;
         if (QThread::currentThread() != app->thread()) {
-            QMetaObject::invokeMethod(app, [s] { stopOnGuiThread(s); },
-                                      Qt::BlockingQueuedConnection);
+            // The GUI loop may exit after the post but before it is serviced.
+            // A BlockingQueuedConnection would then leave this Core worker
+            // blocked forever despite the aboutToQuit hook quiescing D3D.
+            // Wait on the real source completion state instead.
+            try {
+                (void)QMetaObject::invokeMethod(
+                    app, [s] { stopOnGuiThread(s); }, Qt::QueuedConnection);
+            } catch (...) {
+                // aboutToQuit/targetDestroyed can still synchronously drain.
+            }
+            std::unique_lock<std::mutex> lock(s->mutex);
+            s->drained.wait(lock, [&] { return s->stopComplete; });
             return;
         }
         stopOnGuiThread(s);
