@@ -30,6 +30,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -138,13 +139,30 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     bool resizeScenario = false;
-#if !defined(HYREMOTE_R4_D3D11)
+    bool destroyWindowScenario = false;
+    bool quitActiveScenario = false;
+    bool quitConcurrentScenario = false;
+    bool stopRetryLiveScenario = false;
+#if defined(HYREMOTE_R4_D3D11)
+    bool dispatchRejectionScenario = false;
+#else
     bool rebuildScenario = false;
 #endif
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--resize")
             resizeScenario = true;
-#if !defined(HYREMOTE_R4_D3D11)
+        else if (std::string(argv[i]) == "--window-destroy")
+            destroyWindowScenario = true;
+        else if (std::string(argv[i]) == "--quit-active")
+            quitActiveScenario = true;
+        else if (std::string(argv[i]) == "--quit-concurrent")
+            quitConcurrentScenario = true;
+        else if (std::string(argv[i]) == "--stop-retry-live")
+            stopRetryLiveScenario = true;
+#if defined(HYREMOTE_R4_D3D11)
+        else if (std::string(argv[i]) == "--dispatch-rejection")
+            dispatchRejectionScenario = true;
+#else
         else if (std::string(argv[i]) == "--rebuild-scene-graph")
             rebuildScenario = true;
 #endif
@@ -159,6 +177,11 @@ int main(int argc, char **argv)
         return 10;
     }
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
+    if (dispatchRejectionScenario) {
+        const bool ok = HyRemote::detail::runQuickD3d11DispatchRejectionRegression();
+        std::cout << "R4_D3D11_DISPATCH_REJECTION=" << (ok ? "PASS" : "FAIL") << '\n';
+        return ok ? 0 : 34;
+    }
 #else
     if (qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("opengl")) {
         std::cerr << "R4=BLOCKED_NOT_OPENGL_RHI\n";
@@ -170,6 +193,233 @@ int main(int argc, char **argv)
     QQuickWindow::setSceneGraphBackend(QSGRendererInterface::OpenGL);
 #endif
 #endif
+    if (destroyWindowScenario || quitActiveScenario || quitConcurrentScenario
+        || stopRetryLiveScenario) {
+        // Real QQuickWindow/renderer, not a source-only state mock. Deleting
+        // a live target or quitting the active Qt event loop must quiesce the
+        // source BEFORE the Qt GUI/platform integration becomes unavailable.
+        app.setQuitOnLastWindowClosed(false);
+        auto dyingWindow = std::make_unique<QQuickWindow>();
+        dyingWindow->resize(kW, kH);
+        dyingWindow->setColor(Qt::black);
+        auto *dyingScene = new RealScene(dyingWindow->contentItem());
+        dyingScene->setPhase(0);
+#if defined(HYREMOTE_R4_D3D11)
+        auto dyingSource =
+            HyRemote::detail::createExperimentalQuickD3d11StagingCaptureSource(
+                dyingWindow.get());
+#else
+        auto dyingSource =
+            HyRemote::detail::createExperimentalQuickGlPboCaptureSource(
+                dyingWindow.get());
+#endif
+        if (!dyingSource) {
+            std::cerr << "R4_LIFECYCLE=FAIL_NO_SOURCE\n";
+            return 41;
+        }
+
+        int delivered = 0;
+        int unexpected = 0;
+        bool closing = false;
+        bool lateRequestRejected = false;
+        bool quitHookComplete = false;
+        bool resourcesQuiescentOnDelete = true;
+        bool stopPostRaceObserved = false;
+        bool liveStopRecovered = false;
+        HyRemote::detail::QuickNativeStopPostEvidence liveStopBefore;
+        QTimer liveStopPoll;
+        liveStopPoll.setInterval(10);
+        std::thread concurrentStop;
+        std::atomic<bool> stopEntered{false};
+        std::atomic<bool> stopReturned{false};
+        QObject::connect(&liveStopPoll, &QTimer::timeout, &app, [&] {
+            if (!stopReturned.load(std::memory_order_acquire))
+                return;
+            liveStopPoll.stop();
+#if defined(HYREMOTE_R4_D3D11)
+            const auto after = HyRemote::detail::quickD3d11StopPostEvidence();
+#else
+            const auto after = HyRemote::detail::quickGlPboStopPostEvidence();
+#endif
+            liveStopRecovered = after.failures > liveStopBefore.failures
+                && after.accepted > liveStopBefore.accepted;
+            if (!liveStopRecovered)
+                ++unexpected;
+            // This is NOT a shutdown-rescued stop: Qt was allowed to service
+            // the accepted queued stop before we request app termination.
+            app.quit();
+        });
+        const bool started = dyingSource->start(
+            [&](hyremote::RemoteFrame frame) {
+                if (closing || !frame.storage || frame.requestId != 991
+                    || !validateFrame(frame, 0, kW, kH)) {
+                    ++unexpected;
+                    return;
+                }
+                ++delivered;
+                closing = true;
+                QTimer::singleShot(0, &app, [&] {
+                    if (destroyWindowScenario) {
+                        // The window's destroyed() hook must drain while
+                        // a still-started Source retains a real GPU allocation.
+                        dyingWindow.reset();
+#if !defined(HYREMOTE_R4_D3D11)
+                        // Assert BEFORE an explicit stop() could conceal a
+                        // broken destroyed() hook. Real GL PBO/fence/worker
+                        // allocations must already have retired here.
+                        const auto counters =
+                            HyRemote::detail::quickGlPboResourceCounts();
+                        resourcesQuiescentOnDelete =
+                            counters.buffersCreated > 0
+                            && counters.buffersCreated == counters.buffersDeleted
+                            && counters.workersCreated == counters.workersRetired;
+#endif
+                        hyremote::CaptureRequest late;
+                        late.id = 992;
+                        late.requestTime = hyremote::Clock::now();
+                        lateRequestRejected = !dyingSource->requestFrame(late);
+                        dyingSource->stop(); // idempotence after target loss
+                    } else {
+                        if (stopRetryLiveScenario) {
+#if defined(HYREMOTE_R4_D3D11)
+                            liveStopBefore = HyRemote::detail::quickD3d11StopPostEvidence();
+                            HyRemote::detail::quickD3d11RejectNextStopPostForTest(1);
+#else
+                            liveStopBefore = HyRemote::detail::quickGlPboStopPostEvidence();
+                            HyRemote::detail::quickGlPboRejectNextStopPostForTest(1);
+#endif
+                            concurrentStop = std::thread([&] {
+                                stopEntered.store(true, std::memory_order_release);
+                                dyingSource->stop();
+                                stopReturned.store(true, std::memory_order_release);
+                            });
+                            liveStopPoll.start();
+                            return;
+                        }
+                        // Compete a Core worker stop against the final GUI
+                        // aboutToQuit emission. A Qt BlockingQueued invoke
+                        // could remain forever queued as the eventloop exits;
+                        // the State CV must instead observe the direct hook.
+                        if (quitConcurrentScenario) {
+                            // Inject ONE transient rejected Qt stop post, then
+                            // require a real accepted provider-originated
+                            // queued invoke while the GUI loop is still busy
+                            // in this callback. app.quit() may then cancel
+                            // that queued event; the synchronous Qt lifecycle
+                            // hook, not the queued event, must drain workers.
+#if defined(HYREMOTE_R4_D3D11)
+                            const auto before = HyRemote::detail::quickD3d11StopPostEvidence();
+                            HyRemote::detail::quickD3d11RejectNextStopPostForTest(1);
+#else
+                            const auto before = HyRemote::detail::quickGlPboStopPostEvidence();
+                            HyRemote::detail::quickGlPboRejectNextStopPostForTest(1);
+#endif
+                            concurrentStop = std::thread([&] {
+                                stopEntered.store(true, std::memory_order_release);
+                                dyingSource->stop();
+                                stopReturned.store(true, std::memory_order_release);
+                            });
+                            const auto deadline = std::chrono::steady_clock::now()
+                                + std::chrono::seconds(3);
+                            while (std::chrono::steady_clock::now() < deadline) {
+#if defined(HYREMOTE_R4_D3D11)
+                                const auto after =
+                                    HyRemote::detail::quickD3d11StopPostEvidence();
+#else
+                                const auto after =
+                                    HyRemote::detail::quickGlPboStopPostEvidence();
+#endif
+                                if (after.failures > before.failures
+                                    && after.accepted > before.accepted) {
+                                    stopPostRaceObserved = true;
+                                    break;
+                                }
+                                std::this_thread::yield();
+                            }
+                            if (!stopPostRaceObserved)
+                                ++unexpected;
+                        }
+                        app.quit();
+                    }
+                    if (destroyWindowScenario) {
+                        QTimer::singleShot(100, &app, [&] {
+                            const bool pass = delivered == 1 && unexpected == 0
+                                && lateRequestRejected && resourcesQuiescentOnDelete;
+                            std::cout << "R4_LIFECYCLE="
+                                      << (pass ? "PASS_WINDOW_DESTROY"
+                                               : "FAIL_WINDOW_DESTROY") << '\n';
+                            app.exit(pass ? 0 : 42);
+                        });
+                    }
+                });
+            },
+            [&](const hyremote::CaptureEvent &) {
+                ++unexpected;
+            });
+        if (!started) {
+            std::cerr << "R4_LIFECYCLE=FAIL_START\n";
+            return 43;
+        }
+        if (quitActiveScenario || quitConcurrentScenario || stopRetryLiveScenario) {
+            QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [&] {
+                hyremote::CaptureRequest late;
+                late.id = 993;
+                late.requestTime = hyremote::Clock::now();
+                quitHookComplete = !dyingSource->requestFrame(late);
+            }, Qt::DirectConnection);
+        }
+        QTimer guard;
+        guard.setSingleShot(true);
+        QObject::connect(&guard, &QTimer::timeout, &app, [&] {
+            ++unexpected;
+            app.exit(44);
+        });
+        guard.start(15000);
+        dyingWindow->show();
+        QTimer::singleShot(125, &app, [&] {
+            hyremote::CaptureRequest request;
+            request.id = 991;
+            request.requestTime = hyremote::Clock::now();
+            if (!dyingSource->requestFrame(request)) {
+                ++unexpected;
+                app.exit(45);
+            }
+        });
+        const int result = app.exec();
+        if (quitConcurrentScenario || stopRetryLiveScenario) {
+            if (concurrentStop.joinable())
+                concurrentStop.join();
+        } else if (quitActiveScenario) {
+            // Even with no GUI event loop left, a Core worker's repeated
+            // stop() MUST return instead of posting a blocking Qt event.
+            std::thread postLoopStop([&] { dyingSource->stop(); });
+            postLoopStop.join();
+        } else {
+            dyingSource->stop();
+        }
+        if (quitActiveScenario || quitConcurrentScenario || stopRetryLiveScenario) {
+            const bool pass = result == 0 && delivered == 1
+                && unexpected == 0 && quitHookComplete
+                && (!quitConcurrentScenario
+                    || (stopPostRaceObserved
+                        && stopEntered.load(std::memory_order_acquire)
+                        && stopReturned.load(std::memory_order_acquire)))
+                && (!stopRetryLiveScenario
+                    || (liveStopRecovered
+                        && stopEntered.load(std::memory_order_acquire)
+                        && stopReturned.load(std::memory_order_acquire)));
+            std::cout << "R4_LIFECYCLE="
+                      << (stopRetryLiveScenario
+                            ? (pass ? "PASS_STOP_RETRY_LIVE" : "FAIL_STOP_RETRY_LIVE")
+                            : quitConcurrentScenario
+                                ? (pass ? "PASS_QUIT_CONCURRENT" : "FAIL_QUIT_CONCURRENT")
+                                : (pass ? "PASS_QUIT_ACTIVE" : "FAIL_QUIT_ACTIVE"))
+                      << '\n';
+            return pass ? 0 : 46;
+        }
+        return result;
+    }
+
     QQuickWindow window;
     app.setQuitOnLastWindowClosed(false);
     window.resize(kW, kH);
