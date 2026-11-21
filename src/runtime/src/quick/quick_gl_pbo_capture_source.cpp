@@ -80,6 +80,11 @@ std::atomic<unsigned> g_quickGlPboWorkersCreated{0};
 std::atomic<unsigned> g_quickGlPboWorkersRetired{0};
 std::atomic<unsigned> g_quickGlPboBuffersDeleted{0};
 std::atomic<unsigned> g_quickGlPboInvalidations{0};
+// Test-only deterministic fault injection and proof that a foreign Core
+// thread really posted into the still-active Qt GUI event loop.
+std::atomic<unsigned> g_quickGlStopPostRejectBudget{0};
+std::atomic<unsigned> g_quickGlStopPostsFailed{0};
+std::atomic<unsigned> g_quickGlStopPostsAccepted{0};
 
 // #967: on this route a normal Qt frame is consumed by afterRendering as soon
 // as it happens, so no fixed opportunity wait is needed. Fixed-SHA traces
@@ -705,16 +710,41 @@ public:
             // Either this event OR the direct aboutToQuit/destroyed hook
             // completes teardown, wakes this waiter and prevents unload
             // while Qt worker/OffscreenSurface still exist.
-            try {
-                (void)QMetaObject::invokeMethod(QCoreApplication::instance(),
-                    [s] { stopOnGuiThread(s); }, Qt::QueuedConnection);
-            } catch (...) {
-                // Allocation failure cannot turn a stop() noexcept boundary
-                // into std::terminate. The Qt lifecycle hooks remain armed.
+            for (;;) {
+                // A single failed post can be an OOM transient while the Qt
+                // GUI event loop is still running. An accepted request must
+                // eventually be quiesced; never swallow an exception and
+                // wait forever for an unrelated window/app shutdown signal.
+                bool posted = false;
+                if (!consumeNativeStopPostTestRejection(
+                        g_quickGlStopPostRejectBudget)) {
+                    try {
+                        posted = QMetaObject::invokeMethod(
+                            QCoreApplication::instance(),
+                            [s] { stopOnGuiThread(s); }, Qt::QueuedConnection);
+                    } catch (...) {
+                        // stop() is noexcept. Retry in a bounded backoff;
+                        // allocation may recover while the app stays alive.
+                    }
+                }
+                if (posted)
+                    ++g_quickGlStopPostsAccepted;
+                else
+                    ++g_quickGlStopPostsFailed;
+                std::unique_lock<std::mutex> lock(s->mutex);
+                if (s->stopComplete)
+                    return;
+                if (posted) {
+                    s->drained.wait(lock, [&] { return s->stopComplete; });
+                    return;
+                }
+                // This CV is also woken by aboutToQuit/destroyed. Delay
+                // only after REJECTION, never on the healthy stop path.
+                s->drained.wait_for(lock, std::chrono::milliseconds(20),
+                                    [&] { return s->stopComplete; });
+                if (s->stopComplete)
+                    return;
             }
-            std::unique_lock<std::mutex> lock(s->mutex);
-            s->drained.wait(lock, [&] { return s->stopComplete; });
-            return;
         }
         stopOnGuiThread(s);
     }
@@ -1884,6 +1914,17 @@ QuickGlPboResourceCounts quickGlPboResourceCounts()
 {
     return {g_quickGlPboBuffersCreated.load(), g_quickGlPboBuffersDeleted.load(),
             g_quickGlPboWorkersCreated.load(), g_quickGlPboWorkersRetired.load()};
+}
+
+void quickGlPboRejectNextStopPostForTest(unsigned count) noexcept
+{
+    g_quickGlStopPostRejectBudget.store(count, std::memory_order_release);
+}
+
+QuickNativeStopPostEvidence quickGlPboStopPostEvidence() noexcept
+{
+    return {g_quickGlStopPostsFailed.load(std::memory_order_acquire),
+            g_quickGlStopPostsAccepted.load(std::memory_order_acquire)};
 }
 
 bool runQuickGlPboBatchOwnershipRegression()
