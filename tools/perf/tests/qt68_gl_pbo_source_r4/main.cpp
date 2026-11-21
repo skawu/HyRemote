@@ -215,6 +215,7 @@ int main(int argc, char **argv)
         bool closing = false;
         bool lateRequestRejected = false;
         bool quitHookComplete = false;
+        bool resourcesQuiescentOnDelete = true;
         const bool started = dyingSource->start(
             [&](hyremote::RemoteFrame frame) {
                 if (closing || !frame.storage || frame.requestId != 991
@@ -229,6 +230,17 @@ int main(int argc, char **argv)
                         // The window's destroyed() hook must drain while
                         // a still-started Source retains a real GPU allocation.
                         dyingWindow.reset();
+#if !defined(HYREMOTE_R4_D3D11)
+                        // Assert BEFORE an explicit stop() could conceal a
+                        // broken destroyed() hook. Real GL PBO/fence/worker
+                        // allocations must already have retired here.
+                        const auto counters =
+                            HyRemote::detail::quickGlPboResourceCounts();
+                        resourcesQuiescentOnDelete =
+                            counters.buffersCreated > 0
+                            && counters.buffersCreated == counters.buffersDeleted
+                            && counters.workersCreated == counters.workersRetired;
+#endif
                         hyremote::CaptureRequest late;
                         late.id = 992;
                         late.requestTime = hyremote::Clock::now();
@@ -242,7 +254,7 @@ int main(int argc, char **argv)
                     if (destroyWindowScenario) {
                         QTimer::singleShot(100, &app, [&] {
                             const bool pass = delivered == 1 && unexpected == 0
-                                && lateRequestRejected;
+                                && lateRequestRejected && resourcesQuiescentOnDelete;
                             std::cout << "R4_LIFECYCLE="
                                       << (pass ? "PASS_WINDOW_DESTROY"
                                                : "FAIL_WINDOW_DESTROY") << '\n';
