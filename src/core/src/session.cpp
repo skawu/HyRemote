@@ -235,8 +235,9 @@ struct Session::Impl
 
     // Requires Impl::mutex. An identified completion cannot release
     // another request's credit, even when the provider repeats an old frame.
-    // Legacy SDK adapters may omit requestId; retain their historical
-    // oldest-outstanding completion semantics for source compatibility.
+    // Legacy SDK adapters may omit requestId. This retires the oldest
+    // available slot; when there is none, the caller still accepts valid
+    // no-ID frames to preserve the existing unscheduled-frame behavior.
     static bool retireRequestLocked(Impl &impl,
                                     std::optional<CaptureRequestId> requestId) noexcept
     {
@@ -359,7 +360,11 @@ struct Session::Impl
             {
                 std::lock_guard<std::mutex> lock(impl.mutex);
                 const bool matched = retireRequestLocked(impl, frame.requestId);
-                if (!matched && impl.state == SessionState::Running && impl.mailbox) {
+                // A missing ID is a documented legacy source shape. Core
+                // historically accepted even unsolicited no-ID frames; keep
+                // that compatibility while enforcing IDs when supplied.
+                if (!matched && frame.requestId
+                    && impl.state == SessionState::Running && impl.mailbox) {
                     // This branch is already handling allocation failure:
                     // never allocate a second long diagnostic string here.
                     // reportCallbackFailure below records the best-effort error.
@@ -380,7 +385,8 @@ struct Session::Impl
             // A duplicate or unrelated RequestId is NOT a completion of
             // some other outstanding capture request. Preserve that credit.
             const bool matched = retireRequestLocked(impl, frame.requestId);
-            if (!matched && impl.state == SessionState::Running && impl.mailbox) {
+            if (!matched && frame.requestId
+                && impl.state == SessionState::Running && impl.mailbox) {
                 ++impl.stats.framesRejectedInvalid;
                 impl.stats.lastFrameRejection =
                     "duplicate or unknown capture RequestId";
