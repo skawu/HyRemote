@@ -95,8 +95,9 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         std::vector<hyremote::CaptureRequest> queued;
         std::vector<hyremote::CaptureRequest> submitted;
         std::vector<hyremote::CaptureRequest> converting;
-        hyremote::FrameReadyHandler onFrame;
-        hyremote::CaptureEventHandler onEvent;
+        // Per-run immutable owners; no std::function copy before terminal.
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
+        std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
         QMetaObject::Connection passConnection;
         QMetaObject::Connection renderConnection;
         QMetaObject::Connection invalidationConnection;
@@ -178,6 +179,10 @@ public:
         auto *app = QCoreApplication::instance();
         if (!app || QThread::currentThread() != app->thread())
             return false;
+        auto frameHandler = std::make_shared<const hyremote::FrameReadyHandler>(
+            std::move(frame));
+        auto eventHandler = std::make_shared<const hyremote::CaptureEventHandler>(
+            std::move(event));
         std::lock_guard<std::mutex> lock(s->mutex);
         if (s->active || !s->target || s->target->thread() != app->thread())
             return false;
@@ -191,8 +196,8 @@ public:
         s->guiKickPosted = false;
         s->fallbackTimerArmed = false;
         s->idleRelease.clear();
-        s->onFrame = std::move(frame);
-        s->onEvent = std::move(event);
+        s->onFrame = std::move(frameHandler);
+        s->onEvent = std::move(eventHandler);
         s->active = true;
         return true;
     }
@@ -389,6 +394,49 @@ private:
         }
     }
 
+    struct CallbackDrain {
+        std::shared_ptr<State> state;
+        bool admitted = false;
+        ~CallbackDrain() noexcept
+        {
+            if (!admitted) return;
+            std::lock_guard<std::mutex> lock(state->mutex);
+            --state->callbacksInFlight;
+            state->drained.notify_all();
+        }
+    };
+
+    // Backends may call Core's frameReady from their own thread. If the Qt
+    // dispatcher is unavailable, send EMPTY terminals rather than silently
+    // consuming already-accepted requests. No D3D/GUI objects touched here.
+    static void finishUndispatched(const std::shared_ptr<State> &s,
+                                   std::uint64_t generation,
+                                   const std::vector<hyremote::CaptureRequest> &requests) noexcept
+    {
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
+        CallbackDrain drain{s};
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (!s->active || s->generation != generation)
+                return;
+            callback = s->onFrame;
+            if (!callback || !*callback)
+                return;
+            ++s->callbacksInFlight;
+            drain.admitted = true;
+        }
+        for (const auto &req : requests) {
+            try {
+                hyremote::RemoteFrame empty;
+                empty.requestId = req.id;
+                empty.timing.requestTime = req.requestTime;
+                empty.timing.completionTime = hyremote::Clock::now();
+                empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                (*callback)(std::move(empty));
+            } catch (...) {}
+        }
+    }
+
     static void deliver(const std::shared_ptr<State> &s,
                         std::uint64_t generation,
                         std::vector<hyremote::CaptureRequest> requests,
@@ -399,11 +447,18 @@ private:
     {
         if (requests.empty())
             return;
-        postToDispatcher(s,
-            [s, generation, requests = std::move(requests),
+        std::shared_ptr<std::vector<hyremote::CaptureRequest>> batch;
+        try { batch = std::make_shared<std::vector<hyremote::CaptureRequest>>(std::move(requests)); }
+        catch (...) {
+            finishUndispatched(s, generation, requests);
+            return;
+        }
+        if (!postToDispatcher(s,
+            [s, generation, batch,
              storage = std::move(storage), width, height, dpr, renderPts, error] {
-                hyremote::FrameReadyHandler frameCallback;
-                hyremote::CaptureEventHandler eventCallback;
+                std::shared_ptr<const hyremote::FrameReadyHandler> frameCallback;
+                std::shared_ptr<const hyremote::CaptureEventHandler> eventCallback;
+                CallbackDrain drain{s};
                 {
                     std::lock_guard<std::mutex> lock(s->mutex);
                     if (!s->active || s->generation != generation)
@@ -411,18 +466,19 @@ private:
                     frameCallback = s->onFrame;
                     eventCallback = s->onEvent;
                     ++s->callbacksInFlight;
+                    drain.admitted = true;
                 }
-                if (!storage && eventCallback) {
+                if (!storage && eventCallback && *eventCallback) {
                     try {
                         hyremote::CaptureEvent event;
                         event.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
                         event.recoverable = true;
                         event.message = error ? error : "D3D11 readback unavailable";
-                        eventCallback(event);
+                        (*eventCallback)(event);
                     } catch (...) {}
                 }
-                if (frameCallback) {
-                    for (const auto &request : requests) {
+                if (frameCallback && *frameCallback) {
+                    for (const auto &request : *batch) {
                         try {
                             hyremote::RemoteFrame frame;
                             frame.requestId = request.id;
@@ -442,16 +498,13 @@ private:
                                 frame.timing.pts = renderPts;
                                 frame.timing.ptsSource = hyremote::PtsSource::Render;
                             }
-                            frameCallback(std::move(frame));
+                            (*frameCallback)(std::move(frame));
                         } catch (...) {}
                     }
                 }
-                {
-                    std::lock_guard<std::mutex> lock(s->mutex);
-                    --s->callbacksInFlight;
-                    s->drained.notify_all();
-                }
-            });
+            })) {
+            finishUndispatched(s, generation, *batch);
+        }
     }
 
     static void requestFallbackRender(const std::shared_ptr<State> &s,
