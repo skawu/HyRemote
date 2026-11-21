@@ -267,8 +267,10 @@ public:
             std::lock_guard<std::mutex> lock(s->mutex);
             if (!s->active || !s->target)
                 return false;
-            s->queued.push_back(request);
+            try { s->queued.push_back(request); }
+            catch (...) { return false; } // no accepted identity on allocation failure
             generation = s->generation;
+            try {
             QTimer::singleShot(kRequestDeadlineMs, s->dispatcher,
                 [s, generation, id = request.id] {
                     std::vector<hyremote::CaptureRequest> expired;
@@ -290,6 +292,12 @@ public:
                         deliver(s, generation, std::move(expired), {},
                                 0, 0, 1.f, {}, "D3D11 capture exceeded bounded deadline");
                 });
+            } catch (...) {
+                // The request was never accepted by Core; a failed timer
+                // arm must not leave a future unsolicited completion.
+                s->queued.pop_back();
+                return false;
+            }
             if (s->guiKickPosted)
                 return true;
             s->guiKickPosted = true;
@@ -342,11 +350,14 @@ public:
             std::lock_guard<std::mutex> lock(s->mutex);
             if (s->active && s->generation == generation) {
                 s->guiKickPosted = false;
-                for (const auto &r : s->queued) {
-                    if (r.id != request.id)
-                        accepted.push_back(r);
-                }
-                s->queued.clear();
+                // Failed post recovery must not allocate/copy another ID.
+                // Keep every already-accepted concurrent peer, not this
+                // request that returns false to Core.
+                accepted.swap(s->queued);
+                accepted.erase(std::remove_if(
+                    accepted.begin(), accepted.end(),
+                    [id = request.id](const auto &r) { return r.id == id; }),
+                    accepted.end());
             }
         }
         if (!accepted.empty())
