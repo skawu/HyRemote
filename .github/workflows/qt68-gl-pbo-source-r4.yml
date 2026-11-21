@@ -109,6 +109,19 @@ jobs:
               throw "Unexpected D3D11 real-pixel outcome: $($dataLine[0])"
             }
           }
+          foreach ($scenario in @('window-destroy', 'quit-active')) {
+            $output = & $exe "--$scenario" 2>&1
+            $exit = $LASTEXITCODE
+            $output | ForEach-Object { Write-Host $_ }
+            $verdict = if ($scenario -eq 'window-destroy') {
+              'R4_LIFECYCLE=PASS_WINDOW_DESTROY'
+            } else {
+              'R4_LIFECYCLE=PASS_QUIT_ACTIVE'
+            }
+            if ($exit -ne 0 -or !($output -match $verdict)) {
+              throw "D3D11 active Qt lifecycle $scenario failed exit=$exit"
+            }
+          }
 
   qt5-windows-quick-gl:
     name: Windows MSVC Qt5.15.2 direct-GL Quick opt-in compile (NON-PRODUCT)
@@ -205,15 +218,23 @@ jobs:
           for loop in basic threaded; do
             export QSG_RENDER_LOOP="$loop"
             export XDG_CACHE_HOME="$RUNNER_TEMP/r4-$loop-cache"
-            for scenario in default resize; do
+            for scenario in default resize window-destroy quit-active; do
               args=()
               if [ "$scenario" = resize ]; then args+=(--resize); fi
+              if [ "$scenario" = window-destroy ]; then args+=(--window-destroy); fi
+              if [ "$scenario" = quit-active ]; then args+=(--quit-active); fi
               timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 "${args[@]}" | tee "tmp/r4-source/$loop-$scenario.jsonl" || status=1
             done
           done
           python - <<'PY'
           import json
           from pathlib import Path
+          for loop in ("basic", "threaded"):
+              for scenario, verdict in (("window-destroy", "R4_LIFECYCLE=PASS_WINDOW_DESTROY"),
+                                        ("quit-active", "R4_LIFECYCLE=PASS_QUIT_ACTIVE")):
+                  log = Path(f"tmp/r4-source/{loop}-{scenario}.jsonl").read_text()
+                  assert verdict in log, (loop, scenario, log)
+                  print("R4_SOURCE_QT_LIFECYCLE=PASS_SCOPED", loop, scenario)
           for loop, scenario in (("basic", "default"), ("basic", "resize"),
                                  ("threaded", "default"), ("threaded", "resize")):
               log = Path(f"tmp/r4-source/{loop}-{scenario}.jsonl").read_text()
