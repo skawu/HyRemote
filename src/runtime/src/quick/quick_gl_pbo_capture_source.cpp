@@ -698,12 +698,22 @@ public:
         if (!QCoreApplication::instance())
             return;
         if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
-            // P1 (#962 review): QOffscreenSurface and the session state are
-            // GUI-thread owned. A worker/transport caller blocks here while
-            // the GUI thread performs the synchronous stop; the GUI thread never
-            // blocks on itself.
-            QMetaObject::invokeMethod(QCoreApplication::instance(),
-                [s] { stopOnGuiThread(s); }, Qt::BlockingQueuedConnection);
+            // Never use BlockingQueuedConnection across Qt's shutdown edge:
+            // a GUI aboutToQuit() can synchronously finish the source while
+            // the queued blocking invocation is no longer serviced. Queue
+            // asynchronously, then wait on the STATE's own stop-complete CV.
+            // Either this event OR the direct aboutToQuit/destroyed hook
+            // completes teardown, wakes this waiter and prevents unload
+            // while Qt worker/OffscreenSurface still exist.
+            try {
+                (void)QMetaObject::invokeMethod(QCoreApplication::instance(),
+                    [s] { stopOnGuiThread(s); }, Qt::QueuedConnection);
+            } catch (...) {
+                // Allocation failure cannot turn a stop() noexcept boundary
+                // into std::terminate. The Qt lifecycle hooks remain armed.
+            }
+            std::unique_lock<std::mutex> lock(s->mutex);
+            s->drained.wait(lock, [&] { return s->stopComplete; });
             return;
         }
         stopOnGuiThread(s);
