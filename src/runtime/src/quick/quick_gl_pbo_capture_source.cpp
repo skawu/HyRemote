@@ -453,6 +453,11 @@ public:
         QPointer<QQuickWindow> window;
         std::uint64_t generation = 0;
         bool active = false;
+        // A stopped source may receive stop() from a Core worker AFTER
+        // Qt's event loop has exited. Never queue a BlockingQueuedConnection
+        // in that case; it would deadlock the source destructor.
+        bool stopComplete = true;
+        bool stopInProgress = false;
         bool windowBound = false;
         bool connected = false;
         bool kickPosted = false;
@@ -632,6 +637,7 @@ public:
         // calling thread, not just the window's affinity.
         if (QThread::currentThread() != QCoreApplication::instance()->thread())
             return false;
+        s->stopComplete = false; // includes partially-started GUI objects
         ++s->generation;
         s->queued.clear();
         s->inFlight.clear();
@@ -680,6 +686,15 @@ public:
     void stop() noexcept override
     {
         auto s = m_state;
+        {
+            std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete)
+                return; // safe even from a non-GUI thread after app.quit()
+            if (s->stopInProgress) {
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+        }
         if (!QCoreApplication::instance())
             return;
         if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
@@ -701,6 +716,9 @@ public:
         QObject *dispatcher = nullptr;
         {
             std::unique_lock<std::mutex> guard(s->mutex);
+            if (s->stopComplete || s->stopInProgress)
+                return;
+            s->stopInProgress = true;
             s->active = false;
             ++s->generation;
             QObject::disconnect(s->frameConnection);
@@ -744,6 +762,12 @@ public:
             surface->destroy();
             delete surface;
         }
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            s->stopComplete = true;
+            s->stopInProgress = false;
+        }
+        s->drained.notify_all();
     }
 
     bool requestFrame(const hyremote::CaptureRequest &req) override
