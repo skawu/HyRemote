@@ -102,6 +102,10 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         QMetaObject::Connection passConnection;
         QMetaObject::Connection renderConnection;
         QMetaObject::Connection invalidationConnection;
+        // Qt shutdown and target deletion must quiesce before a later
+        // ~CaptureSource can no longer queue to the stopped GUI loop.
+        QMetaObject::Connection targetDestroyedConnection;
+        QMetaObject::Connection appQuitConnection;
 
         // Only accessed under mutex inside Qt's render-thread callbacks.
         // Never share these Qt-owned D3D11 resources with a CPU pool worker.
@@ -200,6 +204,15 @@ public:
         s->onFrame = std::move(frameHandler);
         s->onEvent = std::move(eventHandler);
         s->active = true;
+        // Direct GUI-thread lifecycle edges also work if no new Qt event
+        // is pumped after the window is destroyed. These hooks are undone
+        // by stopOnGuiThread() before releasing COM staging resources.
+        s->targetDestroyedConnection = QObject::connect(
+            s->target.data(), &QObject::destroyed, s->target.data(),
+            [s] { stopOnGuiThread(s); }, Qt::DirectConnection);
+        s->appQuitConnection = QObject::connect(
+            app, &QCoreApplication::aboutToQuit, app,
+            [s] { stopOnGuiThread(s); }, Qt::DirectConnection);
         return true;
     }
 
@@ -227,6 +240,10 @@ public:
             QObject::disconnect(s->passConnection);
             QObject::disconnect(s->renderConnection);
             QObject::disconnect(s->invalidationConnection);
+            QObject::disconnect(s->targetDestroyedConnection);
+            QObject::disconnect(s->appQuitConnection);
+            s->targetDestroyedConnection = {};
+            s->appQuitConnection = {};
             s->passConnection = {};
             s->renderConnection = {};
             s->invalidationConnection = {};
