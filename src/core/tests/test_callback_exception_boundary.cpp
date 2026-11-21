@@ -274,6 +274,9 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 // away entirely, which is how an earlier revision of this case passed without ever allocating.
 HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
 {
+    // Parent and worker each use a local constant; no captured variable is
+    // required by either MSVC or Clang, and both still allocate 64 bytes.
+    constexpr std::size_t probeBytes = 64;
     RunningSession run;
     run.prepare();
     HYR_CHECK(run.start());
