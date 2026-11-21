@@ -131,11 +131,21 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
         HYR_CHECK(!issued.empty());
         RemoteFrame next = makeFrame();
         next.requestId = issued.back().id;
+        const auto sentId = *next.requestId;
         const bool delivered = run.source->deliver(std::move(next));
         const hyremote::SessionStats stats = run.session->stats();
 
         HYR_CHECK(delivered);
-        HYR_CHECK(stats.framesAccepted >= 1);
+        HYR_CHECK_MSG(stats.framesAccepted >= 1,
+                      "position=" + std::to_string(position)
+                          + " inFlight=" + std::to_string(stats.inFlight)
+                          + " rejectedInvalid=" + std::to_string(stats.framesRejectedInvalid)
+                          + " rejectedTiming=" + std::to_string(stats.framesRejectedTiming)
+                          + " accepted=" + std::to_string(stats.framesAccepted)
+                          + " lastFrameRejection=" + stats.lastFrameRejection
+                          + " sourceOutstanding="
+                          + std::to_string(run.source->outstanding())
+                          + " sentId=" + std::to_string(sentId));
     }
 }
 
