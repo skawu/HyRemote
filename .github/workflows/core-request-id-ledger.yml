@@ -66,6 +66,7 @@ jobs:
           # Prevent a renamed/skipped Core test from making a green lane.
           grep -Fq "[ PASS ] identified_completion_is_exactly_once_and_never_steals_another_credit"             "$out/tests/test_session_lifecycle.log"
           grep -Fq "[ PASS ] legacy_unidentified_frame_still_retires_oldest_credit"             "$out/tests/test_session_lifecycle.log"
+          grep -Fq "[ PASS ] legacy_unidentified_unsolicited_frame_preserves_prior_acceptance" "$out/tests/test_session_lifecycle.log"
           echo "CORE_TEST_PROGRAMS_EXECUTED=${#tests[@]}"
           echo "CORE_LEDGER_RESULT=PASS"
 
