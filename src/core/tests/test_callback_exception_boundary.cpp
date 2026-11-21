@@ -77,7 +77,9 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
 
     for (int position = firstCallbackAllocation; position < allocationPositions; ++position) {
         RunningSession run;
-        run.prepare();
+        SessionConfig config;
+        config.capture.maxInFlight = 1; // one unambiguous admitted credit
+        run.prepare(config);
         if (!run.start()) {
             const std::optional<SessionError> startError = run.session->lastError();
             HYR_CHECK_MSG(false, "session did not start: "
@@ -89,6 +91,9 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
         // rejection reason turned out to be short enough for the small-string buffer, so this path may
         // allocate nothing at all and every position may pass without the injection landing anywhere - which
         // is why the reporting half of the contract is asserted by the capture-event case, not here.
+        // A Core callback for an unrequested frame is not a valid terminal.
+        // Wait until the source actually accepts request #1 before injecting.
+        HYR_CHECK(waitFor([&] { return run.source->requestCalls() >= 1; }));
         RemoteFrame frame;
 
         bool escaped = false;
@@ -122,6 +127,7 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
         // request even for a legacy unidentified frame. The old test sent a
         // second frame immediately without synchronizing on a new admission,
         // so it could accidentally assert success for unsolicited frames.
+        HYR_CHECK(waitFor([&] { return run.source->requestCalls() >= 2; }));
         HYR_CHECK(waitFor([&] { return run.source->outstanding() > 0; }));
 
         // The independent callback-exception regression must deliver a
