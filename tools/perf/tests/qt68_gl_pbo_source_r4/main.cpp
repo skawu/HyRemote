@@ -226,7 +226,7 @@ int main(int argc, char **argv)
         bool resourcesQuiescentOnDelete = true;
         bool stopPostRaceObserved = false;
         bool liveStopRecovered = false;
-        QuickNativeStopPostEvidence liveStopBefore;
+        HyRemote::detail::QuickNativeStopPostEvidence liveStopBefore;
         QTimer liveStopPoll;
         liveStopPoll.setInterval(10);
         std::thread concurrentStop;
