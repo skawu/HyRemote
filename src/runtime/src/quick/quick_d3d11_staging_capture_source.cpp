@@ -226,6 +226,7 @@ public:
     void stop() noexcept override
     {
         auto s = m_state;
+        bool onGuiThread = false;
         {
             std::unique_lock<std::mutex> lock(s->mutex);
             if (s->stopComplete)
@@ -234,49 +235,62 @@ public:
                 s->drained.wait(lock, [&] { return s->stopComplete; });
                 return;
             }
+            auto *app = QCoreApplication::instance();
+            if (!app)
+                return; // Qt must outlive an active native CaptureSource
+            onGuiThread = QThread::currentThread() == app->thread();
         }
-        auto *app = QCoreApplication::instance();
-        if (!app)
+        if (onGuiThread) {
+            stopOnGuiThread(s);
             return;
-        if (QThread::currentThread() != app->thread()) {
-            // The GUI loop may exit after the post but before it is serviced.
-            // A BlockingQueuedConnection would then leave this Core worker
-            // blocked forever despite the aboutToQuit hook quiescing D3D.
-            // Wait on the real source completion state instead.
-            for (;;) {
-                // A thrown or rejected Qt queue post while the application
-                // stays alive must not strand Core's stop() permanently.
-                // Retry a transient allocation failure, and wait only after
-                // the dispatcher really accepted the shutdown event.
-                bool posted = false;
-                if (!consumeNativeStopPostTestRejection(
-                        g_d3dStopPostRejectBudget)) {
-                    try {
-                        posted = QMetaObject::invokeMethod(
-                            app, [s] { stopOnGuiThread(s); },
-                            Qt::QueuedConnection);
-                    } catch (...) {
-                        // noexcept boundary: another attempt can succeed.
-                    }
-                }
-                if (posted)
-                    ++g_d3dStopPostsAccepted;
-                else
-                    ++g_d3dStopPostsFailed;
-                std::unique_lock<std::mutex> lock(s->mutex);
-                if (s->stopComplete)
-                    return;
-                if (posted) {
-                    s->drained.wait(lock, [&] { return s->stopComplete; });
-                    return;
-                }
-                s->drained.wait_for(lock, std::chrono::milliseconds(20),
-                                    [&] { return s->stopComplete; });
-                if (s->stopComplete)
-                    return;
-            }
         }
-        stopOnGuiThread(s);
+
+        for (;;) {
+            std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete)
+                return;
+            if (s->stopInProgress) {
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            // Hold State::mutex from reading the Qt receiver to the END of
+            // the QUEUED invoke. aboutToQuit() must first acquire this same
+            // lock inside stopOnGuiThread(); thus it cannot complete teardown
+            // and destroy QCoreApplication between our check and Qt post.
+            // Do not cache the QObject* across retry sleeps. Qt::QueuedConnection
+            // posts asynchronously, so the GUI lambda cannot reenter this
+            // mutex while invokeMethod itself is running.
+            auto *app = QCoreApplication::instance();
+            if (!app)
+                return; // abnormal owner-first destruction cannot use Qt
+
+            bool posted = false;
+            if (!consumeNativeStopPostTestRejection(g_d3dStopPostRejectBudget)) {
+                try {
+                    posted = QMetaObject::invokeMethod(
+                        app, [s] { stopOnGuiThread(s); },
+                        Qt::QueuedConnection);
+                } catch (...) {
+                    // The Qt post allocation can fail; stop() is noexcept.
+                    // Retry after a bounded backoff, not a terminal wait.
+                }
+            }
+            if (posted)
+                ++g_d3dStopPostsAccepted;
+            else
+                ++g_d3dStopPostsFailed;
+            if (posted) {
+                // An accepted GUI post (or Qt's direct lifecycle hook)
+                // owns the actual worker/GPU quiescence. Do not return before
+                // the source's terminal stop state has been published.
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            s->drained.wait_for(lock, std::chrono::milliseconds(20),
+                                [&] { return s->stopComplete; });
+            if (s->stopComplete)
+                return;
+        }
     }
 
     static void stopOnGuiThread(const std::shared_ptr<State> &s) noexcept
