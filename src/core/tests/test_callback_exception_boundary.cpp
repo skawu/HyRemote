@@ -124,8 +124,13 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
         // so it could accidentally assert success for unsolicited frames.
         HYR_CHECK(waitFor([&] { return run.source->outstanding() > 0; }));
 
-        // Frame delivery keeps working after a contained callback failure.
+        // The independent callback-exception regression must deliver a
+        // completion for a currently issued ID, not an unsolicited frame.
+        // The explicit legacy no-ID compatibility is tested separately.
+        const auto issued = run.source->requests();
+        HYR_CHECK(!issued.empty());
         RemoteFrame next = makeFrame();
+        next.requestId = issued.back().id;
         const bool delivered = run.source->deliver(std::move(next));
         const hyremote::SessionStats stats = run.session->stats();
 
