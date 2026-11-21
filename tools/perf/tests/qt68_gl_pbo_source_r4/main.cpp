@@ -142,6 +142,7 @@ int main(int argc, char **argv)
     bool destroyWindowScenario = false;
     bool quitActiveScenario = false;
     bool quitConcurrentScenario = false;
+    bool stopRetryLiveScenario = false;
 #if defined(HYREMOTE_R4_D3D11)
     bool dispatchRejectionScenario = false;
 #else
@@ -156,6 +157,8 @@ int main(int argc, char **argv)
             quitActiveScenario = true;
         else if (std::string(argv[i]) == "--quit-concurrent")
             quitConcurrentScenario = true;
+        else if (std::string(argv[i]) == "--stop-retry-live")
+            stopRetryLiveScenario = true;
 #if defined(HYREMOTE_R4_D3D11)
         else if (std::string(argv[i]) == "--dispatch-rejection")
             dispatchRejectionScenario = true;
@@ -190,7 +193,8 @@ int main(int argc, char **argv)
     QQuickWindow::setSceneGraphBackend(QSGRendererInterface::OpenGL);
 #endif
 #endif
-    if (destroyWindowScenario || quitActiveScenario || quitConcurrentScenario) {
+    if (destroyWindowScenario || quitActiveScenario || quitConcurrentScenario
+        || stopRetryLiveScenario) {
         // Real QQuickWindow/renderer, not a source-only state mock. Deleting
         // a live target or quitting the active Qt event loop must quiesce the
         // source BEFORE the Qt GUI/platform integration becomes unavailable.
@@ -221,9 +225,30 @@ int main(int argc, char **argv)
         bool quitHookComplete = false;
         bool resourcesQuiescentOnDelete = true;
         bool stopPostRaceObserved = false;
+        bool liveStopRecovered = false;
+        QuickNativeStopPostEvidence liveStopBefore;
+        QTimer liveStopPoll;
+        liveStopPoll.setInterval(10);
         std::thread concurrentStop;
         std::atomic<bool> stopEntered{false};
         std::atomic<bool> stopReturned{false};
+        QObject::connect(&liveStopPoll, &QTimer::timeout, &app, [&] {
+            if (!stopReturned.load(std::memory_order_acquire))
+                return;
+            liveStopPoll.stop();
+#if defined(HYREMOTE_R4_D3D11)
+            const auto after = HyRemote::detail::quickD3d11StopPostEvidence();
+#else
+            const auto after = HyRemote::detail::quickGlPboStopPostEvidence();
+#endif
+            liveStopRecovered = after.failures > liveStopBefore.failures
+                && after.accepted > liveStopBefore.accepted;
+            if (!liveStopRecovered)
+                ++unexpected;
+            // This is NOT a shutdown-rescued stop: Qt was allowed to service
+            // the accepted queued stop before we request app termination.
+            app.quit();
+        });
         const bool started = dyingSource->start(
             [&](hyremote::RemoteFrame frame) {
                 if (closing || !frame.storage || frame.requestId != 991
@@ -255,6 +280,22 @@ int main(int argc, char **argv)
                         lateRequestRejected = !dyingSource->requestFrame(late);
                         dyingSource->stop(); // idempotence after target loss
                     } else {
+                        if (stopRetryLiveScenario) {
+#if defined(HYREMOTE_R4_D3D11)
+                            liveStopBefore = HyRemote::detail::quickD3d11StopPostEvidence();
+                            HyRemote::detail::quickD3d11RejectNextStopPostForTest(1);
+#else
+                            liveStopBefore = HyRemote::detail::quickGlPboStopPostEvidence();
+                            HyRemote::detail::quickGlPboRejectNextStopPostForTest(1);
+#endif
+                            concurrentStop = std::thread([&] {
+                                stopEntered.store(true, std::memory_order_release);
+                                dyingSource->stop();
+                                stopReturned.store(true, std::memory_order_release);
+                            });
+                            liveStopPoll.start();
+                            return;
+                        }
                         // Compete a Core worker stop against the final GUI
                         // aboutToQuit emission. A Qt BlockingQueued invoke
                         // could remain forever queued as the eventloop exits;
@@ -319,7 +360,7 @@ int main(int argc, char **argv)
             std::cerr << "R4_LIFECYCLE=FAIL_START\n";
             return 43;
         }
-        if (quitActiveScenario || quitConcurrentScenario) {
+        if (quitActiveScenario || quitConcurrentScenario || stopRetryLiveScenario) {
             QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [&] {
                 hyremote::CaptureRequest late;
                 late.id = 993;
@@ -345,7 +386,7 @@ int main(int argc, char **argv)
             }
         });
         const int result = app.exec();
-        if (quitConcurrentScenario) {
+        if (quitConcurrentScenario || stopRetryLiveScenario) {
             if (concurrentStop.joinable())
                 concurrentStop.join();
         } else if (quitActiveScenario) {
@@ -356,19 +397,23 @@ int main(int argc, char **argv)
         } else {
             dyingSource->stop();
         }
-        if (quitActiveScenario || quitConcurrentScenario) {
+        if (quitActiveScenario || quitConcurrentScenario || stopRetryLiveScenario) {
             const bool pass = result == 0 && delivered == 1
                 && unexpected == 0 && quitHookComplete
                 && (!quitConcurrentScenario
                     || (stopPostRaceObserved
                         && stopEntered.load(std::memory_order_acquire)
+                        && stopReturned.load(std::memory_order_acquire)))
+                && (!stopRetryLiveScenario
+                    || (liveStopRecovered
+                        && stopEntered.load(std::memory_order_acquire)
                         && stopReturned.load(std::memory_order_acquire)));
             std::cout << "R4_LIFECYCLE="
-                      << (pass
-                          ? (quitConcurrentScenario
-                              ? "PASS_QUIT_CONCURRENT" : "PASS_QUIT_ACTIVE")
-                          : (quitConcurrentScenario
-                              ? "FAIL_QUIT_CONCURRENT" : "FAIL_QUIT_ACTIVE"))
+                      << (stopRetryLiveScenario
+                            ? (pass ? "PASS_STOP_RETRY_LIVE" : "FAIL_STOP_RETRY_LIVE")
+                            : quitConcurrentScenario
+                                ? (pass ? "PASS_QUIT_CONCURRENT" : "FAIL_QUIT_CONCURRENT")
+                                : (pass ? "PASS_QUIT_ACTIVE" : "FAIL_QUIT_ACTIVE"))
                       << '\n';
             return pass ? 0 : 46;
         }
