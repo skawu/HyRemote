@@ -109,14 +109,14 @@ jobs:
               throw "Unexpected D3D11 real-pixel outcome: $($dataLine[0])"
             }
           }
-          foreach ($scenario in @('window-destroy', 'quit-active')) {
+          foreach ($scenario in @('window-destroy', 'quit-active', 'quit-concurrent')) {
             $output = & $exe "--$scenario" 2>&1
             $exit = $LASTEXITCODE
             $output | ForEach-Object { Write-Host $_ }
-            $verdict = if ($scenario -eq 'window-destroy') {
-              'R4_LIFECYCLE=PASS_WINDOW_DESTROY'
-            } else {
-              'R4_LIFECYCLE=PASS_QUIT_ACTIVE'
+            $verdict = switch ($scenario) {
+              'window-destroy' { 'R4_LIFECYCLE=PASS_WINDOW_DESTROY' }
+              'quit-active' { 'R4_LIFECYCLE=PASS_QUIT_ACTIVE' }
+              'quit-concurrent' { 'R4_LIFECYCLE=PASS_QUIT_CONCURRENT' }
             }
             if ($exit -ne 0 -or !($output -match $verdict)) {
               throw "D3D11 active Qt lifecycle $scenario failed exit=$exit"
@@ -218,11 +218,12 @@ jobs:
           for loop in basic threaded; do
             export QSG_RENDER_LOOP="$loop"
             export XDG_CACHE_HOME="$RUNNER_TEMP/r4-$loop-cache"
-            for scenario in default resize window-destroy quit-active; do
+            for scenario in default resize window-destroy quit-active quit-concurrent; do
               args=()
               if [ "$scenario" = resize ]; then args+=(--resize); fi
               if [ "$scenario" = window-destroy ]; then args+=(--window-destroy); fi
               if [ "$scenario" = quit-active ]; then args+=(--quit-active); fi
+              if [ "$scenario" = quit-concurrent ]; then args+=(--quit-concurrent); fi
               timeout 60s xvfb-run -a -s '-screen 0 1920x1080x24 +extension GLX' ./build-r4-gl-source/hyremote-qt68-gl-pbo-source-r4 "${args[@]}" | tee "tmp/r4-source/$loop-$scenario.jsonl" || status=1
             done
           done
@@ -231,7 +232,8 @@ jobs:
           from pathlib import Path
           for loop in ("basic", "threaded"):
               for scenario, verdict in (("window-destroy", "R4_LIFECYCLE=PASS_WINDOW_DESTROY"),
-                                        ("quit-active", "R4_LIFECYCLE=PASS_QUIT_ACTIVE")):
+                                        ("quit-active", "R4_LIFECYCLE=PASS_QUIT_ACTIVE"),
+                                        ("quit-concurrent", "R4_LIFECYCLE=PASS_QUIT_CONCURRENT")):
                   log = Path(f"tmp/r4-source/{loop}-{scenario}.jsonl").read_text()
                   assert verdict in log, (loop, scenario, log)
                   print("R4_SOURCE_QT_LIFECYCLE=PASS_SCOPED", loop, scenario)
