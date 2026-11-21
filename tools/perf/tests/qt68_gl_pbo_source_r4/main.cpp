@@ -220,6 +220,7 @@ int main(int argc, char **argv)
         bool lateRequestRejected = false;
         bool quitHookComplete = false;
         bool resourcesQuiescentOnDelete = true;
+        bool stopPostRaceObserved = false;
         std::thread concurrentStop;
         std::atomic<bool> stopEntered{false};
         std::atomic<bool> stopReturned{false};
@@ -259,13 +260,43 @@ int main(int argc, char **argv)
                         // could remain forever queued as the eventloop exits;
                         // the State CV must instead observe the direct hook.
                         if (quitConcurrentScenario) {
+                            // Inject ONE transient rejected Qt stop post, then
+                            // require a real accepted provider-originated
+                            // queued invoke while the GUI loop is still busy
+                            // in this callback. app.quit() may then cancel
+                            // that queued event; the synchronous Qt lifecycle
+                            // hook, not the queued event, must drain workers.
+#if defined(HYREMOTE_R4_D3D11)
+                            const auto before = HyRemote::detail::quickD3d11StopPostEvidence();
+                            HyRemote::detail::quickD3d11RejectNextStopPostForTest(1);
+#else
+                            const auto before = HyRemote::detail::quickGlPboStopPostEvidence();
+                            HyRemote::detail::quickGlPboRejectNextStopPostForTest(1);
+#endif
                             concurrentStop = std::thread([&] {
                                 stopEntered.store(true, std::memory_order_release);
                                 dyingSource->stop();
                                 stopReturned.store(true, std::memory_order_release);
                             });
-                            while (!stopEntered.load(std::memory_order_acquire))
+                            const auto deadline = std::chrono::steady_clock::now()
+                                + std::chrono::seconds(3);
+                            while (std::chrono::steady_clock::now() < deadline) {
+#if defined(HYREMOTE_R4_D3D11)
+                                const auto after =
+                                    HyRemote::detail::quickD3d11StopPostEvidence();
+#else
+                                const auto after =
+                                    HyRemote::detail::quickGlPboStopPostEvidence();
+#endif
+                                if (after.failures > before.failures
+                                    && after.accepted > before.accepted) {
+                                    stopPostRaceObserved = true;
+                                    break;
+                                }
                                 std::this_thread::yield();
+                            }
+                            if (!stopPostRaceObserved)
+                                ++unexpected;
                         }
                         app.quit();
                     }
@@ -329,7 +360,8 @@ int main(int argc, char **argv)
             const bool pass = result == 0 && delivered == 1
                 && unexpected == 0 && quitHookComplete
                 && (!quitConcurrentScenario
-                    || (stopEntered.load(std::memory_order_acquire)
+                    || (stopPostRaceObserved
+                        && stopEntered.load(std::memory_order_acquire)
                         && stopReturned.load(std::memory_order_acquire)));
             std::cout << "R4_LIFECYCLE="
                       << (pass
