@@ -360,9 +360,10 @@ struct Session::Impl
                 std::lock_guard<std::mutex> lock(impl.mutex);
                 const bool matched = retireRequestLocked(impl, frame.requestId);
                 if (!matched && impl.state == SessionState::Running && impl.mailbox) {
+                    // This branch is already handling allocation failure:
+                    // never allocate a second long diagnostic string here.
+                    // reportCallbackFailure below records the best-effort error.
                     ++impl.stats.framesRejectedInvalid;
-                    impl.stats.lastFrameRejection =
-                        "duplicate or unknown capture RequestId during frame validation";
                 } else if (impl.state != SessionState::Running || !impl.mailbox)
                     ++impl.stats.framesArrivedAfterStop;
                 else
