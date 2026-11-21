@@ -206,7 +206,7 @@ int main(int argc, char **argv)
                 dyingWindow.get());
 #endif
         if (!dyingSource) {
-            std::cerr << "R4_LIFECYCLE=FAIL_NO_SOURCE\\n";
+            std::cerr << "R4_LIFECYCLE=FAIL_NO_SOURCE\n";
             return 41;
         }
 
@@ -245,7 +245,7 @@ int main(int argc, char **argv)
                                 && lateRequestRejected;
                             std::cout << "R4_LIFECYCLE="
                                       << (pass ? "PASS_WINDOW_DESTROY"
-                                               : "FAIL_WINDOW_DESTROY") << '\\n';
+                                               : "FAIL_WINDOW_DESTROY") << '\n';
                             app.exit(pass ? 0 : 42);
                         });
                     }
@@ -255,7 +255,7 @@ int main(int argc, char **argv)
                 ++unexpected;
             });
         if (!started) {
-            std::cerr << "R4_LIFECYCLE=FAIL_START\\n";
+            std::cerr << "R4_LIFECYCLE=FAIL_START\n";
             return 43;
         }
         if (quitActiveScenario) {
@@ -289,7 +289,7 @@ int main(int argc, char **argv)
             const bool pass = result == 0 && delivered == 1
                 && unexpected == 0 && quitHookComplete;
             std::cout << "R4_LIFECYCLE="
-                      << (pass ? "PASS_QUIT_ACTIVE" : "FAIL_QUIT_ACTIVE") << '\\n';
+                      << (pass ? "PASS_QUIT_ACTIVE" : "FAIL_QUIT_ACTIVE") << '\n';
             return pass ? 0 : 46;
         }
         return result;
