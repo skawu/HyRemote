@@ -2,6 +2,7 @@
 
 #include <QAbstractSocket>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QMetaObject>
 #include <QObject>
@@ -2285,7 +2286,32 @@ bool runRfbNotificationPostFailureRegression()
     frames.notificationPending = true;
     const bool postsOnce = postFrameNotification(frames, [] { return true; })
         && frames.notificationPending;
-    return rejectsFalse && rejectsThrow && postsOnce;
+
+    // Exercise Qt's ACTUAL queued-invoke return path, not just a synthetic
+    // boolean functor. A destroyed QObject becomes null through QPointer;
+    // invoking it must fail and free the notificationPending token.
+    auto *doomed = new QObject;
+    QPointer<QObject> deadTarget(doomed);
+    delete doomed;
+    frames.notificationPending = true;
+    const bool actualQtRejectsDeadTarget = !postFrameNotification(
+        frames, [deadTarget] {
+            return QMetaObject::invokeMethod(
+                deadTarget.data(), [] {}, Qt::QueuedConnection);
+        }) && !frames.notificationPending;
+
+    // Also prove Qt's real QUEUED success is not misclassified as failure.
+    // The callback cannot run until this test explicitly pumps events.
+    QObject live;
+    bool invoked = false;
+    frames.notificationPending = true;
+    const bool realQtQueuedSuccess = postFrameNotification(frames, [&] {
+        return QMetaObject::invokeMethod(
+            &live, [&] { invoked = true; }, Qt::QueuedConnection);
+    }) && frames.notificationPending && !invoked;
+    QCoreApplication::processEvents();
+    return rejectsFalse && rejectsThrow && postsOnce
+        && actualQtRejectsDeadTarget && realQtQueuedSuccess && invoked;
 }
 
 std::unique_ptr<hyremote::Transport> createRfbTransport(const QHostAddress &listenAddress,
