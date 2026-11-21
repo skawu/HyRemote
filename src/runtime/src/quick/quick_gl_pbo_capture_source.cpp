@@ -464,8 +464,9 @@ public:
         unsigned int cpuWorkersInFlight = 0;
         std::vector<hyremote::CaptureRequest> queued;
         std::vector<hyremote::CaptureRequest> inFlight;
-        hyremote::FrameReadyHandler onFrame;
-        hyremote::CaptureEventHandler onEvent;
+        // Immutable start-time handlers; no callback-path std::function copy.
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
+        std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
         QMetaObject::Connection frameConnection;
         QMetaObject::Connection invalidatedConnection;
         // Session-scoped retire resources: created once per (window, Qt
@@ -524,12 +525,61 @@ public:
         }
     };
 
+    struct CallbackDrain {
+        std::shared_ptr<State> state;
+        bool admitted = false;
+        ~CallbackDrain() noexcept
+        {
+            if (!admitted) return;
+            std::lock_guard<std::mutex> lock(state->mutex);
+            --state->callbacksInFlight;
+            state->drained.notify_all();
+        }
+    };
+
     template<typename Callback>
-    static bool postToDispatcher(const std::shared_ptr<State> &s, Callback callback)
+    static bool postToDispatcher(const std::shared_ptr<State> &s,
+                                 Callback &&callback) noexcept
     {
-        std::lock_guard<std::mutex> lock(s->mutex);
-        return s->active && s->dispatcher
-            && QMetaObject::invokeMethod(s->dispatcher, std::move(callback), Qt::QueuedConnection);
+        try {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            return s->active && s->dispatcher
+                && QMetaObject::invokeMethod(s->dispatcher,
+                    std::forward<Callback>(callback), Qt::QueuedConnection);
+        } catch (...) {
+            return false; // Qt event allocation/dispatch failed
+        }
+    }
+
+    // Core permits a terminal frameReady on a backend-defined thread. If
+    // Qt cannot enqueue the GUI-only pixel publication, retire each accepted
+    // ID as an EMPTY frame. Never access QQuickWindow or a GL object here.
+    static void finishUndispatched(const std::shared_ptr<State> &s,
+                                   std::uint64_t generation,
+                                   const std::vector<hyremote::CaptureRequest> &requests) noexcept
+    {
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
+        CallbackDrain drain{s};
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (!s->active || s->generation != generation)
+                return; // stop has already revoked the run
+            callback = s->onFrame;
+            if (!callback || !*callback)
+                return;
+            ++s->callbacksInFlight;
+            drain.admitted = true;
+        }
+        for (const auto &request : requests) {
+            try {
+                hyremote::RemoteFrame empty;
+                empty.requestId = request.id;
+                empty.timing.requestTime = request.requestTime;
+                empty.timing.completionTime = hyremote::Clock::now();
+                empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                (*callback)(std::move(empty));
+            } catch (...) {} // external callback boundary
+        }
     }
 
 public:
@@ -555,6 +605,12 @@ public:
                hyremote::CaptureEventHandler event) override
     {
         auto s = m_state;
+        // Callback owners allocate only during start(), before a request can
+        // be accepted; shared_ptr snapshots are noexcept at delivery.
+        auto frameHandler = std::make_shared<const hyremote::FrameReadyHandler>(
+            std::move(frame));
+        auto eventHandler = std::make_shared<const hyremote::CaptureEventHandler>(
+            std::move(event));
         std::lock_guard<std::mutex> guard(s->mutex);
         if (s->active || s->window.isNull() || !QCoreApplication::instance())
             return false;
@@ -591,8 +647,8 @@ public:
         s->workerStopRequested = false;
         s->workerFailed = false;
         s->idleRelease.clear();
-        s->onFrame = std::move(frame);
-        s->onEvent = std::move(event);
+        s->onFrame = std::move(frameHandler);
+        s->onEvent = std::move(eventHandler);
         s->windowBound = true;
         s->active = true;
         return true;
@@ -949,44 +1005,48 @@ private:
                                   std::vector<hyremote::CaptureRequest> requests,
                                   const char *reason)
     {
-        postToDispatcher(s,
-            [s, generation, requests = std::move(requests), reason] {
-                hyremote::FrameReadyHandler callback;
-                hyremote::CaptureEventHandler eventCallback;
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    if (!s->active || s->generation != generation) return;
-                    callback = s->onFrame;
-                    eventCallback = s->onEvent;
-                    ++s->callbacksInFlight;
-                }
-                if (eventCallback) {
+        std::shared_ptr<std::vector<hyremote::CaptureRequest>> batch;
+        try { batch = std::make_shared<std::vector<hyremote::CaptureRequest>>(std::move(requests)); }
+        catch (...) {
+            finishUndispatched(s, generation, requests);
+            return;
+        }
+        if (!postToDispatcher(s, [s, generation, batch, reason] {
+            std::shared_ptr<const hyremote::FrameReadyHandler> callback;
+            std::shared_ptr<const hyremote::CaptureEventHandler> eventCallback;
+            CallbackDrain drain{s};
+            {
+                std::lock_guard<std::mutex> guard(s->mutex);
+                if (!s->active || s->generation != generation) return;
+                callback = s->onFrame;
+                eventCallback = s->onEvent;
+                ++s->callbacksInFlight;
+                drain.admitted = true;
+            }
+            if (eventCallback && *eventCallback) {
+                try {
+                    hyremote::CaptureEvent e;
+                    e.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+                    e.recoverable = true;
+                    e.message = reason;
+                    (*eventCallback)(e);
+                } catch (...) {}
+            }
+            if (callback && *callback) {
+                for (const auto &req : *batch) {
                     try {
-                        hyremote::CaptureEvent e;
-                        e.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
-                        e.recoverable = true;
-                        e.message = reason;
-                        eventCallback(e);
+                        hyremote::RemoteFrame empty;
+                        empty.requestId = req.id;
+                        empty.timing.requestTime = req.requestTime;
+                        empty.timing.completionTime = hyremote::Clock::now();
+                        empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                        (*callback)(std::move(empty));
                     } catch (...) {}
                 }
-                if (callback) {
-                    for (const auto &req : requests) {
-                        try {
-                            hyremote::RemoteFrame empty;
-                            empty.requestId = req.id;
-                            empty.timing.requestTime = req.requestTime;
-                            empty.timing.completionTime = hyremote::Clock::now();
-                            empty.timing.ptsSource = hyremote::PtsSource::Completion;
-                            callback(std::move(empty));
-                        } catch (...) {}
-                    }
-                }
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    --s->callbacksInFlight;
-                    s->drained.notify_all();
-                }
-            });
+            }
+        })) {
+            finishUndispatched(s, generation, *batch);
+        }
     }
 
     static void reportFrame(const std::shared_ptr<State> &s,
@@ -997,11 +1057,18 @@ private:
                             int width, int height, float dpr,
                             hyremote::TimePoint renderTime)
     {
-        postToDispatcher(s,
-            [s, generation, contextEpoch, requests = std::move(requests),
+        std::shared_ptr<std::vector<hyremote::CaptureRequest>> batch;
+        try { batch = std::make_shared<std::vector<hyremote::CaptureRequest>>(std::move(requests)); }
+        catch (...) {
+            finishUndispatched(s, generation, requests);
+            return;
+        }
+        if (!postToDispatcher(s,
+            [s, generation, contextEpoch, batch,
              storage = std::move(storage), width, height, dpr, renderTime] {
-                hyremote::FrameReadyHandler callback;
+                std::shared_ptr<const hyremote::FrameReadyHandler> callback;
                 bool current = false;
+                CallbackDrain drain{s};
                 {
                     std::lock_guard<std::mutex> guard(s->mutex);
                     if (!s->active || s->generation != generation) return;
@@ -1016,8 +1083,11 @@ private:
                     }
                     callback = s->onFrame;
                     ++s->callbacksInFlight;
+                    drain.admitted = true;
                 }
-                if (callback) {
+                if (!callback || !*callback)
+                    return;
+                try {
                     hyremote::RemoteFrame prototype;
                     prototype.geometry.size = {
                         static_cast<std::uint32_t>(width),
@@ -1029,27 +1099,34 @@ private:
                     prototype.damage = hyremote::Damage::fullFrame();
                     if (current)
                         prototype.storage = storage;
-                    // The content was produced during the actual Qt render,
-                    // NOT when the GPU->CPU result arrived. Frame age must
-                    // include fence retirement and worker conversion time.
                     prototype.timing.pts = renderTime;
                     prototype.timing.ptsSource = hyremote::PtsSource::Render;
                     prototype.timing.completionTime = hyremote::Clock::now();
-                    for (const auto &req : requests) {
+                    for (const auto &req : *batch) {
                         try {
                             auto frame = prototype;
                             frame.requestId = req.id;
                             frame.timing.requestTime = req.requestTime;
-                            callback(std::move(frame));
+                            (*callback)(std::move(frame));
+                        } catch (...) {}
+                    }
+                } catch (...) {
+                    // Prototype allocation failed before the first delivery.
+                    // A later callback is not retried: Core owns its boundary.
+                    for (const auto &req : *batch) {
+                        try {
+                            hyremote::RemoteFrame empty;
+                            empty.requestId = req.id;
+                            empty.timing.requestTime = req.requestTime;
+                            empty.timing.completionTime = hyremote::Clock::now();
+                            empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                            (*callback)(std::move(empty));
                         } catch (...) {}
                     }
                 }
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    --s->callbacksInFlight;
-                    s->drained.notify_all();
-                }
-            });
+            })) {
+            finishUndispatched(s, generation, *batch);
+        }
     }
 
     static void finishCpuConversion(
@@ -1559,13 +1636,14 @@ public:
         s->cpuConversionPending = true;
         s->cpuWorkersInFlight = 1;
         std::vector<std::pair<hyremote::CaptureRequestId, unsigned>> delivered;
-        s->onFrame = [&](hyremote::RemoteFrame frame) {
+        s->onFrame = std::make_shared<const hyremote::FrameReadyHandler>(
+            [&](hyremote::RemoteFrame frame) {
             if (!frame.requestId || !frame.storage)
                 return;
             const auto plane = frame.storage->mapRead(0);
             if (plane)
                 delivered.emplace_back(*frame.requestId, std::to_integer<unsigned>(plane->data[0]));
-        };
+        });
         const auto submitNext = [](const std::shared_ptr<State> &state) {
             std::lock_guard<std::mutex> guard(state->mutex);
             if (!canSubmitQueuedReadback(*state))
