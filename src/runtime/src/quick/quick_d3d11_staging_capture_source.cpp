@@ -1023,43 +1023,94 @@ public:
     // each ID must retire once without pixels, with stop/old generation inert.
     static bool dispatchRejectionRegression()
     {
+        // Arm copy-throw AFTER publishing run-owned std::function handlers.
+        // A callback-path copy would fail this test before Core got a frame.
+        struct FrameSink {
+            std::vector<hyremote::CaptureRequestId> *ids;
+            std::vector<bool> *emptyFlags;
+            const bool *throwOnCopy;
+            FrameSink(std::vector<hyremote::CaptureRequestId> *i,
+                      std::vector<bool> *e, const bool *arm)
+                : ids(i), emptyFlags(e), throwOnCopy(arm) {}
+            FrameSink(const FrameSink &other)
+                : ids(other.ids), emptyFlags(other.emptyFlags),
+                  throwOnCopy(other.throwOnCopy)
+            {
+                if (*throwOnCopy) throw std::bad_alloc{};
+            }
+            void operator()(hyremote::RemoteFrame frame) const
+            {
+                if (!frame.requestId) return;
+                ids->push_back(*frame.requestId);
+                emptyFlags->push_back(!frame.storage && frame.timing.requestTime
+                    && frame.timing.completionTime
+                    && *frame.timing.completionTime >= *frame.timing.requestTime);
+            }
+        };
+        struct EventSink {
+            int *count;
+            const bool *throwOnCopy;
+            EventSink(int *c, const bool *arm) : count(c), throwOnCopy(arm) {}
+            EventSink(const EventSink &other)
+                : count(other.count), throwOnCopy(other.throwOnCopy)
+            {
+                if (*throwOnCopy) throw std::bad_alloc{};
+            }
+            void operator()(const hyremote::CaptureEvent &event) const
+            {
+                if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable
+                    && event.recoverable)
+                    ++*count;
+            }
+        };
         auto s = std::make_shared<State>();
         s->active = true;
         s->generation = 1;
         s->dispatcher = nullptr; // deterministic rejected queued invoke
+        bool throwOnCopy = false;
+        int eventCount = 0;
         std::vector<hyremote::CaptureRequestId> terminalIds;
         std::vector<bool> terminalWasEmpty;
         s->onFrame = std::make_shared<const hyremote::FrameReadyHandler>(
-            [&](hyremote::RemoteFrame frame) {
-                if (!frame.requestId)
-                    return;
-                terminalIds.push_back(*frame.requestId);
-                terminalWasEmpty.push_back(!frame.storage && frame.timing.requestTime
-                    && frame.timing.completionTime
-                    && *frame.timing.completionTime >= *frame.timing.requestTime);
-            });
+            FrameSink{&terminalIds, &terminalWasEmpty, &throwOnCopy});
+        s->onEvent = std::make_shared<const hyremote::CaptureEventHandler>(
+            EventSink{&eventCount, &throwOnCopy});
+        throwOnCopy = true;
         const auto issued = hyremote::Clock::now();
         deliver(s, 1, {{701, issued}, {702, issued}}, {},
                 0, 0, 1.f, {}, "forced Qt dispatch rejection");
-        const bool firstBatch = terminalIds
+        const bool rejectedBatch = terminalIds
                 == std::vector<hyremote::CaptureRequestId>{701, 702}
             && terminalWasEmpty == std::vector<bool>{true, true}
-            && s->callbacksInFlight == 0;
+            && s->callbacksInFlight == 0
+            && eventCount == 0; // no GUI dispatcher: frame terminals only
+
+        // Same handlers, now with a live Qt dispatcher: both the frame and
+        // advisory event must be delivered without copying either handler.
+        QObject dispatcher;
+        s->dispatcher = &dispatcher;
+        deliver(s, 1, {{704, issued}}, {},
+                0, 0, 1.f, {}, "normal queued unavailable");
+        QCoreApplication::processEvents();
+        const bool queuedBatch = terminalIds
+                == std::vector<hyremote::CaptureRequestId>{701, 702, 704}
+            && terminalWasEmpty == std::vector<bool>{true, true, true}
+            && eventCount == 1 && s->callbacksInFlight == 0;
 
         // Stop invalidates callbacks and revokes the generation. A late
-        // completion cannot resurrect the old IDs or debit Core again.
+        // completion cannot resurrect those IDs or debit Core again.
         {
             std::lock_guard<std::mutex> lock(s->mutex);
             s->active = false;
             ++s->generation;
+            s->dispatcher = nullptr;
         }
         deliver(s, 1, {{701, issued}}, {},
                 0, 0, 1.f, {}, "old-generation post rejection");
-        const bool oldGenerationInert = terminalIds.size() == 2
+        const bool oldGenerationInert = terminalIds.size() == 3
             && s->callbacksInFlight == 0;
 
-        // A separate run is allowed to reuse a request ID, but it must
-        // never use handlers or pending credits from the revoked run.
+        // A controlled restart may publish new IDs; old callbacks are inert.
         {
             std::lock_guard<std::mutex> lock(s->mutex);
             s->active = true;
@@ -1067,11 +1118,11 @@ public:
         }
         deliver(s, 3, {{703, issued}}, {},
                 0, 0, 1.f, {}, "new-generation post rejection");
-        return firstBatch && oldGenerationInert
+        return rejectedBatch && queuedBatch && oldGenerationInert
             && terminalIds
-                == std::vector<hyremote::CaptureRequestId>{701, 702, 703}
-            && terminalWasEmpty == std::vector<bool>{true, true, true}
-            && s->callbacksInFlight == 0;
+                == std::vector<hyremote::CaptureRequestId>{701, 702, 704, 703}
+            && terminalWasEmpty == std::vector<bool>{true, true, true, true}
+            && eventCount == 1 && s->callbacksInFlight == 0;
     }
 
 private:
