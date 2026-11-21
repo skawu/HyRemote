@@ -5,6 +5,9 @@
 class QQuickWindow;
 #include "hyremote/core/capture_source.hpp"
 namespace HyRemote::detail {
+// Repository-only deterministic failure-injection seam, not public SDK API.
+bool runQuickD3d11DispatchRejectionRegression();
+
 std::unique_ptr<hyremote::CaptureSource>
 createExperimentalQuickD3d11StagingCaptureSource(QQuickWindow *window);
 } // namespace HyRemote::detail
