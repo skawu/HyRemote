@@ -20,6 +20,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <stdexcept>
 #include <string>
