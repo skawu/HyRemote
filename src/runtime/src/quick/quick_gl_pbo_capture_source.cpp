@@ -1673,8 +1673,27 @@ public:
             hyremote::CaptureRequestId{101}, 17u);
         submitNext(s);
         complete(29, nullptr);
-        return first && delivered.size() == 2 && delivered[1] == std::make_pair(
+        const bool second = delivered.size() == 2 && delivered[1] == std::make_pair(
             hyremote::CaptureRequestId{102}, 29u);
+
+        // Deterministic queued-invoke rejection: no GUI event loop or GPU is
+        // needed. Both the error and nominal pixel routes MUST retire the
+        // correct accepted ID as an empty completion when no dispatcher exists.
+        auto rejected = std::make_shared<State>();
+        rejected->active = true;
+        rejected->generation = 1;
+        rejected->dispatcher = nullptr;
+        std::vector<hyremote::CaptureRequestId> rejectedIds;
+        rejected->onFrame = std::make_shared<const hyremote::FrameReadyHandler>(
+            [&](hyremote::RemoteFrame frame) {
+                if (frame.requestId && !frame.storage)
+                    rejectedIds.push_back(*frame.requestId);
+            });
+        reportUnavailable(rejected, 1, {{103, now}}, "dispatch refused");
+        reportFrame(rejected, 1, 0, {{104, now}}, {}, 1, 1, 1.0f, now);
+        return first && second
+            && rejectedIds == std::vector<hyremote::CaptureRequestId>{103, 104}
+            && rejected->callbacksInFlight == 0;
     }
 
     static QuickGlPboFallbackPolicyRegression fallbackPolicyRegression()
