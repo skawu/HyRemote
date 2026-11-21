@@ -129,6 +129,92 @@ HYR_TEST(legacy_unidentified_unsolicited_frame_preserves_prior_acceptance)
     }));
 }
 
+// The source contract forbids completing a request it returns false for,
+// but a faulty adapter can still call back synchronously before it returns.
+// The completion and subsequent false result must never debit the other
+// still-outstanding request. This is a cross-thread scheduler negative.
+class CallbackThenRejectCapture final : public CaptureSource
+{
+public:
+    CaptureCapabilities capabilities() const override
+    {
+        CaptureCapabilities c;
+        c.asynchronous = true;
+        c.cpuReadable = true;
+        c.cpuFormats = {PixelFormat::Bgra8888};
+        return c;
+    }
+    bool start(FrameReadyHandler frame, CaptureEventHandler) override
+    {
+        m_frame = std::move(frame);
+        m_running.store(true, std::memory_order_release);
+        return true;
+    }
+    void stop() noexcept override
+    {
+        m_running.store(false, std::memory_order_release);
+    }
+    bool requestFrame(const CaptureRequest &request) override
+    {
+        if (!m_running.load(std::memory_order_acquire))
+            return false;
+        const int call = m_calls.fetch_add(1, std::memory_order_acq_rel) + 1;
+        if (call == 1) {
+            m_first.store(request.id, std::memory_order_release);
+            return true;
+        }
+        if (call == 2) {
+            RemoteFrame empty;
+            empty.requestId = request.id;
+            empty.timing.requestTime = request.requestTime;
+            empty.timing.completionTime = Clock::now();
+            m_frame(std::move(empty)); // reentrant Core callback
+        }
+        return false; // source incorrectly rejects an already-completed ID
+    }
+    int calls() const { return m_calls.load(std::memory_order_acquire); }
+    void completeFirst()
+    {
+        RemoteFrame frame = makeFrame(16, 8);
+        frame.requestId = m_first.load(std::memory_order_acquire);
+        m_frame(std::move(frame));
+    }
+private:
+    FrameReadyHandler m_frame;
+    std::atomic<bool> m_running{false};
+    std::atomic<int> m_calls{0};
+    std::atomic<CaptureRequestId> m_first{0};
+};
+
+HYR_TEST(sync_terminal_then_request_rejection_cannot_steal_peer_credit)
+{
+    SessionConfig config;
+    config.capture.maxInFlight = 2;
+    Session session(config);
+    auto capture = std::make_unique<CallbackThenRejectCapture>();
+    auto *source = capture.get();
+    auto transport = std::make_unique<FakeTransport>();
+    auto *sink = transport.get();
+    HYR_CHECK(session.setCaptureSource(std::move(capture)));
+    HYR_CHECK(session.setTransport(std::move(transport)));
+    HYR_CHECK(session.start());
+    HYR_CHECK(waitFor([&] {
+        return source->calls() >= 2
+            && session.stats().captureRequestsRejected >= 1;
+    }));
+    const auto afterRejected = session.stats();
+    HYR_CHECK_EQ(afterRejected.inFlight, std::size_t{1});
+    HYR_CHECK_EQ(afterRejected.framesAccepted, std::uint64_t{0});
+    HYR_CHECK(afterRejected.framesRejectedInvalid >= 1);
+
+    source->completeFirst(); // the first accepted ID still owns its credit
+    HYR_CHECK(sink->waitForAccepted(1));
+    const auto afterFirst = session.stats();
+    HYR_CHECK_EQ(afterFirst.inFlight, std::size_t{0});
+    HYR_CHECK_EQ(afterFirst.framesAccepted, std::uint64_t{1});
+    session.stop();
+}
+
 HYR_TEST(repeated_start_stop_is_deterministic)
 {
     RunningSession running;
