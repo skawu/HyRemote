@@ -138,6 +138,8 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     bool resizeScenario = false;
+    bool destroyWindowScenario = false;
+    bool quitActiveScenario = false;
 #if defined(HYREMOTE_R4_D3D11)
     bool dispatchRejectionScenario = false;
 #else
@@ -146,6 +148,10 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--resize")
             resizeScenario = true;
+        else if (std::string(argv[i]) == "--window-destroy")
+            destroyWindowScenario = true;
+        else if (std::string(argv[i]) == "--quit-active")
+            quitActiveScenario = true;
 #if defined(HYREMOTE_R4_D3D11)
         else if (std::string(argv[i]) == "--dispatch-rejection")
             dispatchRejectionScenario = true;
@@ -180,6 +186,115 @@ int main(int argc, char **argv)
     QQuickWindow::setSceneGraphBackend(QSGRendererInterface::OpenGL);
 #endif
 #endif
+    if (destroyWindowScenario || quitActiveScenario) {
+        // Real QQuickWindow/renderer, not a source-only state mock. Deleting
+        // a live target or quitting the active Qt event loop must quiesce the
+        // source BEFORE the Qt GUI/platform integration becomes unavailable.
+        app.setQuitOnLastWindowClosed(false);
+        auto dyingWindow = std::make_unique<QQuickWindow>();
+        dyingWindow->resize(kW, kH);
+        dyingWindow->setColor(Qt::black);
+        auto *dyingScene = new RealScene(dyingWindow->contentItem());
+        dyingScene->setPhase(0);
+#if defined(HYREMOTE_R4_D3D11)
+        auto dyingSource =
+            HyRemote::detail::createExperimentalQuickD3d11StagingCaptureSource(
+                dyingWindow.get());
+#else
+        auto dyingSource =
+            HyRemote::detail::createExperimentalQuickGlPboCaptureSource(
+                dyingWindow.get());
+#endif
+        if (!dyingSource) {
+            std::cerr << "R4_LIFECYCLE=FAIL_NO_SOURCE\\n";
+            return 41;
+        }
+
+        int delivered = 0;
+        int unexpected = 0;
+        bool closing = false;
+        bool lateRequestRejected = false;
+        bool quitHookComplete = false;
+        const bool started = dyingSource->start(
+            [&](hyremote::RemoteFrame frame) {
+                if (closing || !frame.storage || frame.requestId != 991
+                    || !validateFrame(frame, 0, kW, kH)) {
+                    ++unexpected;
+                    return;
+                }
+                ++delivered;
+                closing = true;
+                QTimer::singleShot(0, &app, [&] {
+                    if (destroyWindowScenario) {
+                        // The window's destroyed() hook must drain while
+                        // a still-started Source retains a real GPU allocation.
+                        dyingWindow.reset();
+                        hyremote::CaptureRequest late;
+                        late.id = 992;
+                        late.requestTime = hyremote::Clock::now();
+                        lateRequestRejected = !dyingSource->requestFrame(late);
+                        dyingSource->stop(); // idempotence after target loss
+                    } else {
+                        // aboutToQuit() is the last guaranteed GUI-thread
+                        // signal while Qt platform resources are usable.
+                        app.quit();
+                    }
+                    if (destroyWindowScenario) {
+                        QTimer::singleShot(100, &app, [&] {
+                            const bool pass = delivered == 1 && unexpected == 0
+                                && lateRequestRejected;
+                            std::cout << "R4_LIFECYCLE="
+                                      << (pass ? "PASS_WINDOW_DESTROY"
+                                               : "FAIL_WINDOW_DESTROY") << '\\n';
+                            app.exit(pass ? 0 : 42);
+                        });
+                    }
+                });
+            },
+            [&](const hyremote::CaptureEvent &) {
+                ++unexpected;
+            });
+        if (!started) {
+            std::cerr << "R4_LIFECYCLE=FAIL_START\\n";
+            return 43;
+        }
+        if (quitActiveScenario) {
+            QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [&] {
+                hyremote::CaptureRequest late;
+                late.id = 993;
+                late.requestTime = hyremote::Clock::now();
+                quitHookComplete = !dyingSource->requestFrame(late);
+            }, Qt::DirectConnection);
+        }
+        QTimer guard;
+        guard.setSingleShot(true);
+        QObject::connect(&guard, &QTimer::timeout, &app, [&] {
+            ++unexpected;
+            app.exit(44);
+        });
+        guard.start(15000);
+        dyingWindow->show();
+        QTimer::singleShot(125, &app, [&] {
+            hyremote::CaptureRequest request;
+            request.id = 991;
+            request.requestTime = hyremote::Clock::now();
+            if (!dyingSource->requestFrame(request)) {
+                ++unexpected;
+                app.exit(45);
+            }
+        });
+        const int result = app.exec();
+        dyingSource->stop(); // must be inert even after aboutToQuit
+        if (quitActiveScenario) {
+            const bool pass = result == 0 && delivered == 1
+                && unexpected == 0 && quitHookComplete;
+            std::cout << "R4_LIFECYCLE="
+                      << (pass ? "PASS_QUIT_ACTIVE" : "FAIL_QUIT_ACTIVE") << '\\n';
+            return pass ? 0 : 46;
+        }
+        return result;
+    }
+
     QQuickWindow window;
     app.setQuitOnLastWindowClosed(false);
     window.resize(kW, kH);
