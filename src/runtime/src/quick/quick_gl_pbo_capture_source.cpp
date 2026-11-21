@@ -469,6 +469,10 @@ public:
         std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
         QMetaObject::Connection frameConnection;
         QMetaObject::Connection invalidatedConnection;
+        // Terminate while Qt's GUI resources and event loop are still valid.
+        // QObject::destroyed is synchronous even without Qt event delivery.
+        QMetaObject::Connection targetDestroyedConnection;
+        QMetaObject::Connection appQuitConnection;
         // Session-scoped retire resources: created once per (window, Qt
         // render-context) generation, never per CaptureRequest. The
         // QOffscreenSurface is created/destroyed on the GUI thread; the
@@ -658,6 +662,18 @@ public:
         s->onEvent = std::move(eventHandler);
         s->windowBound = true;
         s->active = true;
+        // The owner must not rely on Session::~Session() running after
+        // QQuickWindow / QGuiApplication destruction: Qt can no longer
+        // safely destroy QOffscreenSurface or render thread resources then.
+        // Signal handlers run on the GUI thread and synchronously quiesce
+        // the worker before the target or application is torn down.
+        s->targetDestroyedConnection = QObject::connect(
+            s->window.data(), &QObject::destroyed, s->window.data(),
+            [s] { stopOnGuiThread(s); }, Qt::DirectConnection);
+        s->appQuitConnection = QObject::connect(
+            QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+            QCoreApplication::instance(), [s] { stopOnGuiThread(s); },
+            Qt::DirectConnection);
         return true;
     }
 
@@ -689,6 +705,10 @@ public:
             ++s->generation;
             QObject::disconnect(s->frameConnection);
             QObject::disconnect(s->invalidatedConnection);
+            QObject::disconnect(s->targetDestroyedConnection);
+            QObject::disconnect(s->appQuitConnection);
+            s->targetDestroyedConnection = {};
+            s->appQuitConnection = {};
             QObject::disconnect(s->workerFinished);
             s->frameConnection = {};
             s->invalidatedConnection = {};
