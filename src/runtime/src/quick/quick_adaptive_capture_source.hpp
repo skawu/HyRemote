@@ -55,8 +55,9 @@ class AdaptiveQuickCaptureSource final : public hyremote::CaptureSource
         std::string lastNativeUnavailableReason;
         hyremote::TimePoint newestContentPts{};
         std::unordered_map<hyremote::CaptureRequestId, Pending> pending;
-        hyremote::FrameReadyHandler onFrame;
-        hyremote::CaptureEventHandler onEvent;
+        // Per-run immutable callbacks: admission must never copy std::function.
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
+        std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
     };
 
     // Reserve callback admission under the same lock used by stop().
@@ -140,6 +141,11 @@ public:
     bool start(hyremote::FrameReadyHandler onFrame,
                hyremote::CaptureEventHandler onEvent) override
     {
+        // Allocate before publishing an active run or accepting a request.
+        auto frameHandler = std::make_shared<const hyremote::FrameReadyHandler>(
+            std::move(onFrame));
+        auto eventHandler = std::make_shared<const hyremote::CaptureEventHandler>(
+            std::move(onEvent));
         auto state = m_state;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
@@ -153,8 +159,8 @@ public:
             state->lastNativeUnavailableReason.clear();
             state->newestContentPts = {};
             state->pending.clear();
-            state->onFrame = std::move(onFrame);
-            state->onEvent = std::move(onEvent);
+            state->onFrame = std::move(frameHandler);
+            state->onEvent = std::move(eventHandler);
         }
         const std::uint64_t generation = currentGeneration(state);
         // Prepare the public fallback, but never issue a public grab while
@@ -326,25 +332,24 @@ private:
                              std::uint64_t generation, Route route,
                              const hyremote::CaptureEvent &event)
     {
-        hyremote::CaptureEventHandler callback;
-        hyremote::CaptureEvent delivered = event;
+        std::shared_ptr<const hyremote::CaptureEventHandler> callback;
         CallbackDrain drain{state};
         bool fallback = false;
+        bool toRecoverable = false;
         const char *fallbackCause = nullptr;
-        std::string reason;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (!state->active || state->generation != generation)
                 return;
-            // One provider TemporarilyUnavailable event describes one GPU
-            // failure episode, possibly terminating several accepted IDs.
             if (route == Route::Native && event.recoverable
                 && event.code == hyremote::CaptureEventCode::TemporarilyUnavailable) {
                 ++state->nativeUnavailableSerial;
-                state->lastNativeUnavailableReason = event.message;
+                // Diagnostic allocation must not prevent subsequent per-ID
+                // frame completion from retiring Core's credit.
+                try { state->lastNativeUnavailableReason = event.message; }
+                catch (...) {}
                 fallback = countNativeFailure(*state);
                 fallbackCause = "consecutive_native_unavailable_events";
-                reason = state->lastNativeUnavailableReason;
             }
             if (route == Route::Native && !event.recoverable
                 && event.code == hyremote::CaptureEventCode::BackendFailure) {
@@ -353,23 +358,31 @@ private:
                     HYREMOTE_P1_COUNT(QuickNativeFallback);
                     fallback = true;
                     fallbackCause = "native_backend_failure";
-                    reason = event.message;
                 }
-                // Public Qt route is already prepared. Surface TargetLost
-                // remains fatal; BackendFailure alone is recoverable.
-                delivered.recoverable = true;
-                delivered.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+                // TargetLost remains fatal; only BackendFailure recovers.
+                toRecoverable = true;
             }
-            callback = state->onEvent;
-            if (callback) {
+            callback = state->onEvent; // shared_ptr copy is noexcept
+            if (callback && *callback) {
                 ++state->callbacksInFlight;
                 drain.admitted = true;
             }
         }
-        if (fallback)
-            logNativeFallback(fallbackCause, reason);
-        if (callback) {
-            try { callback(delivered); } catch (...) {}
+        if (fallback) {
+            try { logNativeFallback(fallbackCause, event.message); }
+            catch (...) {}
+        }
+        if (callback && *callback) {
+            try {
+                if (toRecoverable) {
+                    auto delivered = event; // copy after admission
+                    delivered.recoverable = true;
+                    delivered.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+                    (*callback)(delivered);
+                } else {
+                    (*callback)(event);
+                }
+            } catch (...) {} // event is advisory; never unwind into provider
         }
     }
 
@@ -379,7 +392,7 @@ private:
     {
         if (!frame.requestId)
             return;
-        hyremote::FrameReadyHandler callback;
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
         CallbackDrain drain{state};
         bool dropPixels = false;
         bool fallback = false;
@@ -443,7 +456,8 @@ private:
                 fallbackCause = oldContent ? "native_content_too_old"
                               : invalidNativeFrame ? "invalid_native_frame"
                               : "native_empty_frame_without_event";
-                providerReason = state->lastNativeUnavailableReason;
+                try { providerReason = state->lastNativeUnavailableReason; }
+                catch (...) {} // optional diagnostic only
             } else if (route == Route::Native && frame.storage && !dropPixels) {
                 state->consecutiveNativeFailures = 0;
             }
@@ -452,13 +466,15 @@ private:
                 state->newestContentPts = contentPts;
             callback = state->onFrame;
             state->pending.erase(it);
-            if (!callback)
+            if (!callback || !*callback)
                 return;
             ++state->callbacksInFlight;
             drain.admitted = true;
         }
-        if (fallback)
-            logNativeFallback(fallbackCause, providerReason);
+        if (fallback) {
+            try { logNativeFallback(fallbackCause, providerReason); }
+            catch (...) {}
+        }
         if (dropPixels) {
             // One terminal outcome per admitted request. An empty completion
             // retires Core's in-flight slot without publishing stale pixels.
@@ -469,11 +485,14 @@ private:
             frame.timing.ptsSource = hyremote::PtsSource::Completion;
             frame.timing.completionTime = now;
         }
-        if (state->traceAcceptedFrames && frame.storage)
-            qInfo().noquote() << (route == Route::Native
-                ? "HYREMOTE_QUICK_ACCEPTED_FRAME=NATIVE"
-                : "HYREMOTE_QUICK_ACCEPTED_FRAME=PUBLIC");
-        try { callback(std::move(frame)); } catch (...) {}
+        if (state->traceAcceptedFrames && frame.storage) {
+            try {
+                qInfo().noquote() << (route == Route::Native
+                    ? "HYREMOTE_QUICK_ACCEPTED_FRAME=NATIVE"
+                    : "HYREMOTE_QUICK_ACCEPTED_FRAME=PUBLIC");
+            } catch (...) {}
+        }
+        try { (*callback)(std::move(frame)); } catch (...) {}
     }
 
     std::unique_ptr<hyremote::CaptureSource> m_native;
