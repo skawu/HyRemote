@@ -60,6 +60,12 @@ jobs:
             --tests --no-examples \
             -j4
 
+      - name: Verify rejected RFB frame notification resets one-shot state (P1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test --rfb-notify-post-failure
+
       - name: Run W1-W4 profile
         shell: bash
         run: |
@@ -120,6 +126,13 @@ jobs:
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           call build.cmd build --integrations=cpp --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-profile --tests --no-examples -j4
+
+      - name: Verify rejected RFB frame notification resets one-shot state (P1)
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
+          & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe --rfb-notify-post-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Run W1-W4 profile
         shell: pwsh

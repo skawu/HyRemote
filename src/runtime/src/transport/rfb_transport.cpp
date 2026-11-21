@@ -2,6 +2,7 @@
 
 #include <QAbstractSocket>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QMetaObject>
 #include <QObject>
@@ -20,7 +21,9 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -413,6 +416,23 @@ struct SharedFrameState
     std::optional<hyremote::RemoteFrame> latest;
     bool notificationPending = false;
 };
+
+// The producer has already set notificationPending=true. Returning false
+// from the Qt queued invoke without rolling it back leaves all subsequent
+// frames unnotified, because only frameAvailable() normally clears the flag.
+// On either rejection or allocation exception, release the one-shot token
+// and let the caller escalate through Core's transport failure boundary.
+template<typename Post>
+bool postFrameNotification(SharedFrameState &frames, Post &&post) noexcept
+{
+    try {
+        if (std::forward<Post>(post)())
+            return true;
+    } catch (...) {}
+    std::lock_guard<std::mutex> lock(frames.mutex);
+    frames.notificationPending = false;
+    return false;
+}
 
 enum class ClientPhase {
     AwaitVersion,
@@ -2228,7 +2248,16 @@ public:
         }
         if (notify) {
             RfbWorker *worker = m_worker;
-            QMetaObject::invokeMethod(worker, [worker] { worker->frameAvailable(); }, Qt::QueuedConnection);
+            if (!postFrameNotification(*m_frames, [worker] {
+                    return QMetaObject::invokeMethod(
+                        worker, [worker] { worker->frameAvailable(); },
+                        Qt::QueuedConnection);
+                })) {
+                // Core::runDispatcher catches transport enqueue exceptions,
+                // records a visible ComponentFailure and stops scheduling.
+                // Never pretend that an unqueued frame was served.
+                throw std::runtime_error("failed to queue RFB frame notification");
+            }
         }
     }
 
@@ -2243,6 +2272,47 @@ private:
 };
 
 }  // namespace
+
+bool runRfbNotificationPostFailureRegression()
+{
+    SharedFrameState frames;
+    frames.notificationPending = true;
+    const bool rejectsFalse = !postFrameNotification(frames, [] { return false; })
+        && !frames.notificationPending;
+    frames.notificationPending = true;
+    const bool rejectsThrow = !postFrameNotification(frames, []() -> bool {
+        throw std::bad_alloc{};
+    }) && !frames.notificationPending;
+    frames.notificationPending = true;
+    const bool postsOnce = postFrameNotification(frames, [] { return true; })
+        && frames.notificationPending;
+
+    // Exercise Qt's ACTUAL queued-invoke return path, not just a synthetic
+    // boolean functor. A destroyed QObject becomes null through QPointer;
+    // invoking it must fail and free the notificationPending token.
+    auto *doomed = new QObject;
+    QPointer<QObject> deadTarget(doomed);
+    delete doomed;
+    frames.notificationPending = true;
+    const bool actualQtRejectsDeadTarget = !postFrameNotification(
+        frames, [deadTarget] {
+            return QMetaObject::invokeMethod(
+                deadTarget.data(), [] {}, Qt::QueuedConnection);
+        }) && !frames.notificationPending;
+
+    // Also prove Qt's real QUEUED success is not misclassified as failure.
+    // The callback cannot run until this test explicitly pumps events.
+    QObject live;
+    bool invoked = false;
+    frames.notificationPending = true;
+    const bool realQtQueuedSuccess = postFrameNotification(frames, [&] {
+        return QMetaObject::invokeMethod(
+            &live, [&] { invoked = true; }, Qt::QueuedConnection);
+    }) && frames.notificationPending && !invoked;
+    QCoreApplication::processEvents();
+    return rejectsFalse && rejectsThrow && postsOnce
+        && actualQtRejectsDeadTarget && realQtQueuedSuccess && invoked;
+}
 
 std::unique_ptr<hyremote::Transport> createRfbTransport(const QHostAddress &listenAddress,
                                                         quint16 port,

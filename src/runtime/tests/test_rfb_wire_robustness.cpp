@@ -5131,6 +5131,10 @@ int main(int argc, char **argv)
     }
 #endif
     QCoreApplication app(argc, argv);
+    if (argc == 2 && std::string(argv[1]) == "--rfb-notify-post-failure") {
+        CHECK(HyRemote::detail::runRfbNotificationPostFailureRegression());
+        return failures == 0 ? 0 : 1;
+    }
 
     const QByteArray trleRawPath = qgetenv("HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE");
     if (!trleRawPath.isEmpty()) {
@@ -5156,6 +5160,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    CHECK(HyRemote::detail::runRfbNotificationPostFailureRegression());
     testTrleRawAndIncrementalDelivery();
     testRfbConsumerPressureAndFullRequestWake();
     testDamageAndEncodedFrameShareSnapshot();
