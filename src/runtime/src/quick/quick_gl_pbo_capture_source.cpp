@@ -691,62 +691,71 @@ public:
     void stop() noexcept override
     {
         auto s = m_state;
+        bool onGuiThread = false;
         {
             std::unique_lock<std::mutex> lock(s->mutex);
             if (s->stopComplete)
-                return; // safe even from a non-GUI thread after app.quit()
+                return;
             if (s->stopInProgress) {
                 s->drained.wait(lock, [&] { return s->stopComplete; });
                 return;
             }
+            auto *app = QCoreApplication::instance();
+            if (!app)
+                return; // Qt must outlive an active native CaptureSource
+            onGuiThread = QThread::currentThread() == app->thread();
         }
-        if (!QCoreApplication::instance())
+        if (onGuiThread) {
+            stopOnGuiThread(s);
             return;
-        if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
-            // Never use BlockingQueuedConnection across Qt's shutdown edge:
-            // a GUI aboutToQuit() can synchronously finish the source while
-            // the queued blocking invocation is no longer serviced. Queue
-            // asynchronously, then wait on the STATE's own stop-complete CV.
-            // Either this event OR the direct aboutToQuit/destroyed hook
-            // completes teardown, wakes this waiter and prevents unload
-            // while Qt worker/OffscreenSurface still exist.
-            for (;;) {
-                // A single failed post can be an OOM transient while the Qt
-                // GUI event loop is still running. An accepted request must
-                // eventually be quiesced; never swallow an exception and
-                // wait forever for an unrelated window/app shutdown signal.
-                bool posted = false;
-                if (!consumeNativeStopPostTestRejection(
-                        g_quickGlStopPostRejectBudget)) {
-                    try {
-                        posted = QMetaObject::invokeMethod(
-                            QCoreApplication::instance(),
-                            [s] { stopOnGuiThread(s); }, Qt::QueuedConnection);
-                    } catch (...) {
-                        // stop() is noexcept. Retry in a bounded backoff;
-                        // allocation may recover while the app stays alive.
-                    }
-                }
-                if (posted)
-                    ++g_quickGlStopPostsAccepted;
-                else
-                    ++g_quickGlStopPostsFailed;
-                std::unique_lock<std::mutex> lock(s->mutex);
-                if (s->stopComplete)
-                    return;
-                if (posted) {
-                    s->drained.wait(lock, [&] { return s->stopComplete; });
-                    return;
-                }
-                // This CV is also woken by aboutToQuit/destroyed. Delay
-                // only after REJECTION, never on the healthy stop path.
-                s->drained.wait_for(lock, std::chrono::milliseconds(20),
-                                    [&] { return s->stopComplete; });
-                if (s->stopComplete)
-                    return;
-            }
         }
-        stopOnGuiThread(s);
+
+        for (;;) {
+            std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete)
+                return;
+            if (s->stopInProgress) {
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            // Hold State::mutex from reading the Qt receiver to the END of
+            // the QUEUED invoke. aboutToQuit() must first acquire this same
+            // lock inside stopOnGuiThread(); thus it cannot complete teardown
+            // and destroy QCoreApplication between our check and Qt post.
+            // Do not cache the QObject* across retry sleeps. Qt::QueuedConnection
+            // posts asynchronously, so the GUI lambda cannot reenter this
+            // mutex while invokeMethod itself is running.
+            auto *app = QCoreApplication::instance();
+            if (!app)
+                return; // abnormal owner-first destruction cannot use Qt
+
+            bool posted = false;
+            if (!consumeNativeStopPostTestRejection(g_quickGlStopPostRejectBudget)) {
+                try {
+                    posted = QMetaObject::invokeMethod(
+                        app, [s] { stopOnGuiThread(s); },
+                        Qt::QueuedConnection);
+                } catch (...) {
+                    // The Qt post allocation can fail; stop() is noexcept.
+                    // Retry after a bounded backoff, not a terminal wait.
+                }
+            }
+            if (posted)
+                ++g_quickGlStopPostsAccepted;
+            else
+                ++g_quickGlStopPostsFailed;
+            if (posted) {
+                // An accepted GUI post (or Qt's direct lifecycle hook)
+                // owns the actual worker/GPU quiescence. Do not return before
+                // the source's terminal stop state has been published.
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            s->drained.wait_for(lock, std::chrono::milliseconds(20),
+                                [&] { return s->stopComplete; });
+            if (s->stopComplete)
+                return;
+        }
     }
 
     static void stopOnGuiThread(const std::shared_ptr<State> &s) noexcept
