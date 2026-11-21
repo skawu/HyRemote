@@ -39,6 +39,10 @@ HYR_TEST(identified_completion_is_exactly_once_and_never_steals_another_credit)
     RunningSession running;
     SessionConfig config;
     config.capture.maxInFlight = 2;
+    // One rejected post-admission attempt must settle before the exact
+    // inFlight assertions. Its long, interruptible retry delay freezes
+    // scheduler admission until stop(), without sleeps or production hooks.
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
     running.prepare(config);
     HYR_CHECK(running.session->start());
     HYR_CHECK(waitFor([&] { return running.source->requests().size() >= 2; }));
@@ -65,7 +69,10 @@ HYR_TEST(identified_completion_is_exactly_once_and_never_steals_another_credit)
 
     HYR_CHECK(running.source->deliver(identified(a)));
     HYR_CHECK(waitFor([&] {
-        return running.session->stats().framesAccepted == 1;
+        const auto stats = running.session->stats();
+        // A frees one slot. The next request is rejected and its Core
+        // credit must have been retired BEFORE an exact gauge assertion.
+        return stats.framesAccepted == 1 && stats.captureRequestsRejected >= 1;
     }));
     HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{1});
     // Duplicate A cannot silently retire B or become a second RFB frame.
@@ -94,6 +101,7 @@ HYR_TEST(legacy_unidentified_frame_still_retires_oldest_credit)
     RunningSession running;
     SessionConfig config;
     config.capture.maxInFlight = 1;
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
     running.prepare(config);
     HYR_CHECK(running.session->start());
     HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
@@ -101,7 +109,8 @@ HYR_TEST(legacy_unidentified_frame_still_retires_oldest_credit)
     HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
     HYR_CHECK(waitFor([&] {
         const auto stats = running.session->stats();
-        return stats.framesAccepted == 1 && stats.inFlight == 0;
+        return stats.framesAccepted == 1
+            && stats.captureRequestsRejected >= 1 && stats.inFlight == 0;
     }));
 }
 
@@ -110,6 +119,7 @@ HYR_TEST(legacy_unidentified_unsolicited_frame_preserves_prior_acceptance)
     RunningSession running;
     SessionConfig config;
     config.capture.maxInFlight = 1;
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
     running.prepare(config);
     HYR_CHECK(running.session->start());
     HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
@@ -117,7 +127,8 @@ HYR_TEST(legacy_unidentified_unsolicited_frame_preserves_prior_acceptance)
     HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
     HYR_CHECK(waitFor([&] {
         const auto stats = running.session->stats();
-        return stats.framesAccepted == 1 && stats.inFlight == 0;
+        return stats.framesAccepted == 1
+            && stats.captureRequestsRejected >= 1 && stats.inFlight == 0;
     }));
     // Historical optional-requestId sources can emit an additional frame
     // without a live Core credit. Keep that legacy behavior while blocking
@@ -190,6 +201,10 @@ HYR_TEST(sync_terminal_then_request_rejection_cannot_steal_peer_credit)
 {
     SessionConfig config;
     config.capture.maxInFlight = 2;
+    // After source callback+false the scheduler must finish the precise
+    // rejection debit and enter an interruptible wait, never reissue while
+    // we assert live peer credit.
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
     Session session(config);
     auto capture = std::make_unique<CallbackThenRejectCapture>();
     auto *source = capture.get();
