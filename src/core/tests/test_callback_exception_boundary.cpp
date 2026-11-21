@@ -274,8 +274,6 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 // away entirely, which is how an earlier revision of this case passed without ever allocating.
 HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
 {
-    constexpr std::size_t probeBytes = 64;
-
     RunningSession run;
     run.prepare();
     HYR_CHECK(run.start());
@@ -284,6 +282,9 @@ HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
     std::atomic<bool> workerDone{false};
     std::atomic<bool> workerAllocated{false};
     std::thread worker([&startWorker, &workerDone, &workerAllocated] {
+        // Local constant works under both MSVC and Clang: no implicit or
+        // unused lambda capture, and the allocation remains real.
+        constexpr std::size_t probeBytes = 64;
         while (!startWorker.load(std::memory_order_acquire))
             std::this_thread::yield();
         try {
