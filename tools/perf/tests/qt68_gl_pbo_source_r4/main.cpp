@@ -30,6 +30,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -296,7 +297,16 @@ int main(int argc, char **argv)
             }
         });
         const int result = app.exec();
-        dyingSource->stop(); // must be inert even after aboutToQuit
+        if (quitActiveScenario) {
+            // A Core scheduler/transport worker can destroy the source
+            // after app.exec() has returned and no Qt GUI event loop is
+            // servicing BlockingQueuedConnection. The earlier aboutToQuit
+            // hook must make stop() strictly idempotent and non-blocking.
+            std::thread postLoopStop([&] { dyingSource->stop(); });
+            postLoopStop.join();
+        } else {
+            dyingSource->stop();
+        }
         if (quitActiveScenario) {
             const bool pass = result == 0 && delivered == 1
                 && unexpected == 0 && quitHookComplete;
