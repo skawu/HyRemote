@@ -141,6 +141,7 @@ int main(int argc, char **argv)
     bool resizeScenario = false;
     bool destroyWindowScenario = false;
     bool quitActiveScenario = false;
+    bool quitConcurrentScenario = false;
 #if defined(HYREMOTE_R4_D3D11)
     bool dispatchRejectionScenario = false;
 #else
@@ -153,6 +154,8 @@ int main(int argc, char **argv)
             destroyWindowScenario = true;
         else if (std::string(argv[i]) == "--quit-active")
             quitActiveScenario = true;
+        else if (std::string(argv[i]) == "--quit-concurrent")
+            quitConcurrentScenario = true;
 #if defined(HYREMOTE_R4_D3D11)
         else if (std::string(argv[i]) == "--dispatch-rejection")
             dispatchRejectionScenario = true;
@@ -187,7 +190,7 @@ int main(int argc, char **argv)
     QQuickWindow::setSceneGraphBackend(QSGRendererInterface::OpenGL);
 #endif
 #endif
-    if (destroyWindowScenario || quitActiveScenario) {
+    if (destroyWindowScenario || quitActiveScenario || quitConcurrentScenario) {
         // Real QQuickWindow/renderer, not a source-only state mock. Deleting
         // a live target or quitting the active Qt event loop must quiesce the
         // source BEFORE the Qt GUI/platform integration becomes unavailable.
@@ -217,6 +220,9 @@ int main(int argc, char **argv)
         bool lateRequestRejected = false;
         bool quitHookComplete = false;
         bool resourcesQuiescentOnDelete = true;
+        std::thread concurrentStop;
+        std::atomic<bool> stopEntered{false};
+        std::atomic<bool> stopReturned{false};
         const bool started = dyingSource->start(
             [&](hyremote::RemoteFrame frame) {
                 if (closing || !frame.storage || frame.requestId != 991
@@ -248,8 +254,19 @@ int main(int argc, char **argv)
                         lateRequestRejected = !dyingSource->requestFrame(late);
                         dyingSource->stop(); // idempotence after target loss
                     } else {
-                        // aboutToQuit() is the last guaranteed GUI-thread
-                        // signal while Qt platform resources are usable.
+                        // Compete a Core worker stop against the final GUI
+                        // aboutToQuit emission. A Qt BlockingQueued invoke
+                        // could remain forever queued as the eventloop exits;
+                        // the State CV must instead observe the direct hook.
+                        if (quitConcurrentScenario) {
+                            concurrentStop = std::thread([&] {
+                                stopEntered.store(true, std::memory_order_release);
+                                dyingSource->stop();
+                                stopReturned.store(true, std::memory_order_release);
+                            });
+                            while (!stopEntered.load(std::memory_order_acquire))
+                                std::this_thread::yield();
+                        }
                         app.quit();
                     }
                     if (destroyWindowScenario) {
@@ -271,7 +288,7 @@ int main(int argc, char **argv)
             std::cerr << "R4_LIFECYCLE=FAIL_START\n";
             return 43;
         }
-        if (quitActiveScenario) {
+        if (quitActiveScenario || quitConcurrentScenario) {
             QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [&] {
                 hyremote::CaptureRequest late;
                 late.id = 993;
@@ -297,21 +314,30 @@ int main(int argc, char **argv)
             }
         });
         const int result = app.exec();
-        if (quitActiveScenario) {
-            // A Core scheduler/transport worker can destroy the source
-            // after app.exec() has returned and no Qt GUI event loop is
-            // servicing BlockingQueuedConnection. The earlier aboutToQuit
-            // hook must make stop() strictly idempotent and non-blocking.
+        if (quitConcurrentScenario) {
+            if (concurrentStop.joinable())
+                concurrentStop.join();
+        } else if (quitActiveScenario) {
+            // Even with no GUI event loop left, a Core worker's repeated
+            // stop() MUST return instead of posting a blocking Qt event.
             std::thread postLoopStop([&] { dyingSource->stop(); });
             postLoopStop.join();
         } else {
             dyingSource->stop();
         }
-        if (quitActiveScenario) {
+        if (quitActiveScenario || quitConcurrentScenario) {
             const bool pass = result == 0 && delivered == 1
-                && unexpected == 0 && quitHookComplete;
+                && unexpected == 0 && quitHookComplete
+                && (!quitConcurrentScenario
+                    || (stopEntered.load(std::memory_order_acquire)
+                        && stopReturned.load(std::memory_order_acquire)));
             std::cout << "R4_LIFECYCLE="
-                      << (pass ? "PASS_QUIT_ACTIVE" : "FAIL_QUIT_ACTIVE") << '\n';
+                      << (pass
+                          ? (quitConcurrentScenario
+                              ? "PASS_QUIT_CONCURRENT" : "PASS_QUIT_ACTIVE")
+                          : (quitConcurrentScenario
+                              ? "FAIL_QUIT_CONCURRENT" : "FAIL_QUIT_ACTIVE"))
+                      << '\n';
             return pass ? 0 : 46;
         }
         return result;
