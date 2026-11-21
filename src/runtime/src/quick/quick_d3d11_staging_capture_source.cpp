@@ -1006,10 +1006,73 @@ private:
             });
     }
 
+public:
+    // GPU-free but compiled in the actual D3D11 provider translation unit.
+    // Exercise a Qt-post rejection AFTER the provider accepted a batch:
+    // each ID must retire once without pixels, with stop/old generation inert.
+    static bool dispatchRejectionRegression()
+    {
+        auto s = std::make_shared<State>();
+        s->active = true;
+        s->generation = 1;
+        s->dispatcher = nullptr; // deterministic rejected queued invoke
+        std::vector<hyremote::CaptureRequestId> terminalIds;
+        std::vector<bool> terminalWasEmpty;
+        s->onFrame = std::make_shared<const hyremote::FrameReadyHandler>(
+            [&](hyremote::RemoteFrame frame) {
+                if (!frame.requestId)
+                    return;
+                terminalIds.push_back(*frame.requestId);
+                terminalWasEmpty.push_back(!frame.storage && frame.timing.requestTime
+                    && frame.timing.completionTime
+                    && *frame.timing.completionTime >= *frame.timing.requestTime);
+            });
+        const auto issued = hyremote::Clock::now();
+        deliver(s, 1, {{701, issued}, {702, issued}}, {},
+                0, 0, 1.f, {}, "forced Qt dispatch rejection");
+        const bool firstBatch = terminalIds
+                == std::vector<hyremote::CaptureRequestId>{701, 702}
+            && terminalWasEmpty == std::vector<bool>{true, true}
+            && s->callbacksInFlight == 0;
+
+        // Stop invalidates callbacks and revokes the generation. A late
+        // completion cannot resurrect the old IDs or debit Core again.
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            s->active = false;
+            ++s->generation;
+        }
+        deliver(s, 1, {{701, issued}}, {},
+                0, 0, 1.f, {}, "old-generation post rejection");
+        const bool oldGenerationInert = terminalIds.size() == 2
+            && s->callbacksInFlight == 0;
+
+        // A separate run is allowed to reuse a request ID, but it must
+        // never use handlers or pending credits from the revoked run.
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            s->active = true;
+            ++s->generation;
+        }
+        deliver(s, 3, {{703, issued}}, {},
+                0, 0, 1.f, {}, "new-generation post rejection");
+        return firstBatch && oldGenerationInert
+            && terminalIds
+                == std::vector<hyremote::CaptureRequestId>{701, 702, 703}
+            && terminalWasEmpty == std::vector<bool>{true, true, true}
+            && s->callbacksInFlight == 0;
+    }
+
+private:
     std::shared_ptr<State> m_state;
 };
 
 } // namespace
+
+bool runQuickD3d11DispatchRejectionRegression()
+{
+    return D3d11StagingCaptureSource::dispatchRejectionRegression();
+}
 
 std::unique_ptr<hyremote::CaptureSource>
 createExperimentalQuickD3d11StagingCaptureSource(QQuickWindow *window)
