@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstddef>
@@ -52,6 +53,9 @@ using Microsoft::WRL::ComPtr;
 constexpr int kNormalOpportunityMs = QuickReadbackTiming::normalFrameOpportunityMs;
 constexpr int kMaxExtraRenders = QuickReadbackTiming::maxExtraRenders;
 constexpr int kRequestDeadlineMs = 750;
+std::atomic<unsigned> g_d3dStopPostRejectBudget{0};
+std::atomic<unsigned> g_d3dStopPostsFailed{0};
+std::atomic<unsigned> g_d3dStopPostsAccepted{0};
 
 bool isBgra(DXGI_FORMAT format) noexcept
 {
@@ -239,15 +243,38 @@ public:
             // A BlockingQueuedConnection would then leave this Core worker
             // blocked forever despite the aboutToQuit hook quiescing D3D.
             // Wait on the real source completion state instead.
-            try {
-                (void)QMetaObject::invokeMethod(
-                    app, [s] { stopOnGuiThread(s); }, Qt::QueuedConnection);
-            } catch (...) {
-                // aboutToQuit/targetDestroyed can still synchronously drain.
+            for (;;) {
+                // A thrown or rejected Qt queue post while the application
+                // stays alive must not strand Core's stop() permanently.
+                // Retry a transient allocation failure, and wait only after
+                // the dispatcher really accepted the shutdown event.
+                bool posted = false;
+                if (!consumeNativeStopPostTestRejection(
+                        g_d3dStopPostRejectBudget)) {
+                    try {
+                        posted = QMetaObject::invokeMethod(
+                            app, [s] { stopOnGuiThread(s); },
+                            Qt::QueuedConnection);
+                    } catch (...) {
+                        // noexcept boundary: another attempt can succeed.
+                    }
+                }
+                if (posted)
+                    ++g_d3dStopPostsAccepted;
+                else
+                    ++g_d3dStopPostsFailed;
+                std::unique_lock<std::mutex> lock(s->mutex);
+                if (s->stopComplete)
+                    return;
+                if (posted) {
+                    s->drained.wait(lock, [&] { return s->stopComplete; });
+                    return;
+                }
+                s->drained.wait_for(lock, std::chrono::milliseconds(20),
+                                    [&] { return s->stopComplete; });
+                if (s->stopComplete)
+                    return;
             }
-            std::unique_lock<std::mutex> lock(s->mutex);
-            s->drained.wait(lock, [&] { return s->stopComplete; });
-            return;
         }
         stopOnGuiThread(s);
     }
@@ -1182,6 +1209,17 @@ private:
 bool runQuickD3d11DispatchRejectionRegression()
 {
     return D3d11StagingCaptureSource::dispatchRejectionRegression();
+}
+
+void quickD3d11RejectNextStopPostForTest(unsigned count) noexcept
+{
+    g_d3dStopPostRejectBudget.store(count, std::memory_order_release);
+}
+
+QuickNativeStopPostEvidence quickD3d11StopPostEvidence() noexcept
+{
+    return {g_d3dStopPostsFailed.load(std::memory_order_acquire),
+            g_d3dStopPostsAccepted.load(std::memory_order_acquire)};
 }
 
 std::unique_ptr<hyremote::CaptureSource>
