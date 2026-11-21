@@ -98,7 +98,7 @@ jobs:
             throw "Core MSVC checkout source SHA mismatch"
           }
           Write-Host "CORE_LEDGER_SOURCE_SHA=$head"
-          $root = (Get-Location).Path.Replace('\\','/')
+          $root = (Get-Location).Path.Replace([char]92, '/')
           $wrapper = Join-Path $env:RUNNER_TEMP 'core-credit-msvc-src'
           $build = Join-Path $env:RUNNER_TEMP 'core-credit-msvc-build'
           New-Item -ItemType Directory -Force -Path $wrapper | Out-Null
