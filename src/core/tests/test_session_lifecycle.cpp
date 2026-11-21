@@ -105,6 +105,30 @@ HYR_TEST(legacy_unidentified_frame_still_retires_oldest_credit)
     }));
 }
 
+HYR_TEST(legacy_unidentified_unsolicited_frame_preserves_prior_acceptance)
+{
+    RunningSession running;
+    SessionConfig config;
+    config.capture.maxInFlight = 1;
+    running.prepare(config);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+    running.source->setRejectRequests(true); // no new accepted requests
+    HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.framesAccepted == 1 && stats.inFlight == 0;
+    }));
+    // Historical optional-requestId sources can emit an additional frame
+    // without a live Core credit. Keep that legacy behavior while blocking
+    // *identified* duplicate and foreign terminals from stealing credit.
+    HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.framesAccepted == 2 && stats.inFlight == 0;
+    }));
+}
+
 HYR_TEST(repeated_start_stop_is_deterministic)
 {
     RunningSession running;
