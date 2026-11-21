@@ -86,7 +86,10 @@ struct RfbSecurityConfig
 // The private source-tree declaration is exported only so repository tests can link against the
 // shared RemoteAccess DLL on Windows; it is not installed as part of the public SDK surface.
 // Private repository test: queued-notification rejection and exception must
-// release the single-flight token; not installed as product API.\nHYREMOTE_REMOTEACCESS_EXPORT bool runRfbNotificationPostFailureRegression();\n\nHYREMOTE_REMOTEACCESS_EXPORT std::unique_ptr<hyremote::Transport> createRfbTransport(
+// release the single-flight token; not installed as product API.
+HYREMOTE_REMOTEACCESS_EXPORT bool runRfbNotificationPostFailureRegression();
+
+HYREMOTE_REMOTEACCESS_EXPORT std::unique_ptr<hyremote::Transport> createRfbTransport(
     const QHostAddress &listenAddress,
     quint16 port,
     const RfbSecurityConfig &security);
