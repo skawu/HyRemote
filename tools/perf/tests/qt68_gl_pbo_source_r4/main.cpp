@@ -138,13 +138,18 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     bool resizeScenario = false;
-#if !defined(HYREMOTE_R4_D3D11)
+#if defined(HYREMOTE_R4_D3D11)
+    bool dispatchRejectionScenario = false;
+#else
     bool rebuildScenario = false;
 #endif
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--resize")
             resizeScenario = true;
-#if !defined(HYREMOTE_R4_D3D11)
+#if defined(HYREMOTE_R4_D3D11)
+        else if (std::string(argv[i]) == "--dispatch-rejection")
+            dispatchRejectionScenario = true;
+#else
         else if (std::string(argv[i]) == "--rebuild-scene-graph")
             rebuildScenario = true;
 #endif
@@ -159,6 +164,11 @@ int main(int argc, char **argv)
         return 10;
     }
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
+    if (dispatchRejectionScenario) {
+        const bool ok = HyRemote::detail::runQuickD3d11DispatchRejectionRegression();
+        std::cout << "R4_D3D11_DISPATCH_REJECTION=" << (ok ? "PASS" : "FAIL") << '\n';
+        return ok ? 0 : 34;
+    }
 #else
     if (qEnvironmentVariable("QSG_RHI_BACKEND") != QStringLiteral("opengl")) {
         std::cerr << "R4=BLOCKED_NOT_OPENGL_RHI\n";
