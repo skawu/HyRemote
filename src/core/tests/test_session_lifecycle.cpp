@@ -34,6 +34,77 @@ HYR_TEST(the_session_follows_the_documented_state_sequence)
     HYR_CHECK(running.session->state() == SessionState::Stopped);
 }
 
+HYR_TEST(identified_completion_is_exactly_once_and_never_steals_another_credit)
+{
+    RunningSession running;
+    SessionConfig config;
+    config.capture.maxInFlight = 2;
+    running.prepare(config);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK(waitFor([&] { return running.source->requests().size() >= 2; }));
+    const auto requests = running.source->requests();
+    HYR_CHECK(requests.size() >= 2);
+    if (requests.size() < 2)
+        return;
+    const CaptureRequestId a = requests[0].id;
+    const CaptureRequestId b = requests[1].id;
+    running.source->setRejectRequests(true); // no new accepted credit
+
+    auto identified = [](CaptureRequestId id) {
+        auto frame = makeFrame(16, 8);
+        frame.requestId = id;
+        return frame;
+    };
+    // An unknown valid frame is not a license to retire A or B.
+    HYR_CHECK(running.source->deliver(identified(b + 10000)));
+    HYR_CHECK(waitFor([&] {
+        return running.session->stats().framesRejectedInvalid >= 1;
+    }));
+    HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{2});
+    HYR_CHECK_EQ(running.session->stats().framesAccepted, std::uint64_t{0});
+
+    HYR_CHECK(running.source->deliver(identified(a)));
+    HYR_CHECK(waitFor([&] {
+        return running.session->stats().framesAccepted == 1;
+    }));
+    HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{1});
+    // Duplicate A cannot silently retire B or become a second RFB frame.
+    HYR_CHECK(running.source->deliver(identified(a)));
+    HYR_CHECK(waitFor([&] {
+        return running.session->stats().framesRejectedInvalid >= 2;
+    }));
+    HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{1});
+    HYR_CHECK_EQ(running.session->stats().framesAccepted, std::uint64_t{1});
+
+    // A rejected EMPTY terminal still retires its own B credit, not A's.
+    RemoteFrame failedB;
+    failedB.requestId = b;
+    failedB.timing.requestTime = requests[1].requestTime;
+    failedB.timing.completionTime = Clock::now();
+    HYR_CHECK(running.source->deliver(std::move(failedB)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.inFlight == 0 && stats.framesRejectedInvalid >= 3;
+    }));
+    HYR_CHECK_EQ(running.session->stats().framesAccepted, std::uint64_t{1});
+}
+
+HYR_TEST(legacy_unidentified_frame_still_retires_oldest_credit)
+{
+    RunningSession running;
+    SessionConfig config;
+    config.capture.maxInFlight = 1;
+    running.prepare(config);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+    running.source->setRejectRequests(true);
+    HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.framesAccepted == 1 && stats.inFlight == 0;
+    }));
+}
+
 HYR_TEST(repeated_start_stop_is_deterministic)
 {
     RunningSession running;
