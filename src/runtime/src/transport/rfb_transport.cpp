@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -413,6 +414,23 @@ struct SharedFrameState
     std::optional<hyremote::RemoteFrame> latest;
     bool notificationPending = false;
 };
+
+// The producer has already set notificationPending=true. Returning false
+// from the Qt queued invoke without rolling it back leaves all subsequent
+// frames unnotified, because only frameAvailable() normally clears the flag.
+// On either rejection or allocation exception, release the one-shot token
+// and let the caller escalate through Core's transport failure boundary.
+template<typename Post>
+bool postFrameNotification(SharedFrameState &frames, Post &&post) noexcept
+{
+    try {
+        if (std::forward<Post>(post)())
+            return true;
+    } catch (...) {}
+    std::lock_guard<std::mutex> lock(frames.mutex);
+    frames.notificationPending = false;
+    return false;
+}
 
 enum class ClientPhase {
     AwaitVersion,
@@ -2228,7 +2246,16 @@ public:
         }
         if (notify) {
             RfbWorker *worker = m_worker;
-            QMetaObject::invokeMethod(worker, [worker] { worker->frameAvailable(); }, Qt::QueuedConnection);
+            if (!postFrameNotification(*m_frames, [worker] {
+                    return QMetaObject::invokeMethod(
+                        worker, [worker] { worker->frameAvailable(); },
+                        Qt::QueuedConnection);
+                })) {
+                // Core::runDispatcher catches transport enqueue exceptions,
+                // records a visible ComponentFailure and stops scheduling.
+                // Never pretend that an unqueued frame was served.
+                throw std::runtime_error("failed to queue RFB frame notification");
+            }
         }
     }
 
@@ -2243,6 +2270,22 @@ private:
 };
 
 }  // namespace
+
+bool runRfbNotificationPostFailureRegression()
+{
+    SharedFrameState frames;
+    frames.notificationPending = true;
+    const bool rejectsFalse = !postFrameNotification(frames, [] { return false; })
+        && !frames.notificationPending;
+    frames.notificationPending = true;
+    const bool rejectsThrow = !postFrameNotification(frames, []() -> bool {
+        throw std::bad_alloc{};
+    }) && !frames.notificationPending;
+    frames.notificationPending = true;
+    const bool postsOnce = postFrameNotification(frames, [] { return true; })
+        && frames.notificationPending;
+    return rejectsFalse && rejectsThrow && postsOnce;
+}
 
 std::unique_ptr<hyremote::Transport> createRfbTransport(const QHostAddress &listenAddress,
                                                         quint16 port,
