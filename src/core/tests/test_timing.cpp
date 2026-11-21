@@ -163,16 +163,25 @@ HYR_TEST(frame_id_follows_acceptance_order_not_request_order)
     RunningSession running;
     HYR_CHECK(running.start());
 
-    // Two completions arrive in the opposite order of the requests that produced them.
+    // Use actually issued Core RequestIds, not arbitrary 7/3 values.
+    // The identity-credit contract rejects those formerly fake positives.
+    HYR_CHECK(waitFor([&] { return running.source->requests().size() >= 2; }));
+    const auto issued = running.source->requests();
+    HYR_CHECK(issued.size() >= 2);
+    const CaptureRequestId earlier = issued[0].id;
+    const CaptureRequestId later = issued[1].id;
+    HYR_CHECK(later > earlier);
+    running.source->setRejectRequests(true);
+    // Two completions arrive in reverse order of the issued requests.
     RemoteFrame firstAccepted = makeFrame(8, 8);
-    firstAccepted.requestId = 7;
+    firstAccepted.requestId = later;
     firstAccepted.timing.requestTime = Clock::now();
     firstAccepted.timing.completionTime = Clock::now();
     HYR_CHECK(running.source->deliver(firstAccepted));
     HYR_CHECK(running.transport->waitForAccepted(1));
 
     RemoteFrame secondAccepted = makeFrame(8, 8);
-    secondAccepted.requestId = 3;
+    secondAccepted.requestId = earlier;
     secondAccepted.timing.requestTime = Clock::now();
     secondAccepted.timing.completionTime = Clock::now();
     HYR_CHECK(running.source->deliver(secondAccepted));
@@ -185,8 +194,8 @@ HYR_TEST(frame_id_follows_acceptance_order_not_request_order)
     HYR_CHECK_EQ(frames[0].id, FrameId{1});
     HYR_CHECK_EQ(frames[1].id, FrameId{2});
     HYR_CHECK(frames[1].id > frames[0].id);
-    HYR_CHECK_EQ(frames[0].requestId.value(), CaptureRequestId{7});
-    HYR_CHECK_EQ(frames[1].requestId.value(), CaptureRequestId{3});
+    HYR_CHECK_EQ(frames[0].requestId.value(), later);
+    HYR_CHECK_EQ(frames[1].requestId.value(), earlier);
     HYR_CHECK_EQ(running.session->stats().lastFrameId, FrameId{2});
 }
 

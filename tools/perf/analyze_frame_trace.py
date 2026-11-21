@@ -86,17 +86,50 @@ def analyze(records):
             requests[pid, request_id][step].append(entry)
 
     out = collections.defaultdict(list)
-    ambiguous = 0
+    request_collisions = 0
+    encode_collisions = 0
+    socket_collisions = 0
+    missing_wire_identity = 0
     impossible = 0
     for (pid, _req), steps in requests.items():
+        # Identity anomalies are properties of the raw request group, not
+        # of successfully paired latency endpoints. Count even partial traces.
+        encode_keys = collections.Counter()
+        socket_keys = collections.Counter()
+        for step_name, keys in (("rfb_encoded", encode_keys),
+                                ("rfb_socket_queued", socket_keys)):
+            for event in steps[step_name]:
+                key = (int(event.get("viewer_id", 0)),
+                       int(event.get("update_id", 0)))
+                if key[0] <= 0 or key[1] <= 0:
+                    missing_wire_identity += 1
+                else:
+                    keys[key] += 1
+        duplicate_encode_keys = {key for key, count in encode_keys.items()
+                                 if count > 1}
+        duplicate_socket_keys = {key for key, count in socket_keys.items()
+                                 if count > 1}
+        encode_collisions += len(duplicate_encode_keys)
+        socket_collisions += len(duplicate_socket_keys)
+
         # One request identity cannot be reused by simultaneous sessions.
-        # Flag duplicates rather than silently attributing new frames to old.
+        # Exclude its latency samples, but retain independently observed
+        # wire anomalies in the counters above.
         if len(steps["capture_request"]) != 1:
-            ambiguous += 1
+            request_collisions += 1
             continue
+        # A duplicated socket identity is ambiguous for *every* metric whose
+        # endpoint is socket queued, not just encode-to-socket latency.
+        valid_socket_events = [
+            queued for queued in steps["rfb_socket_queued"]
+            if int(queued.get("viewer_id", 0)) > 0
+            and int(queued.get("update_id", 0)) > 0
+            and (int(queued["viewer_id"]), int(queued["update_id"]))
+                not in duplicate_socket_keys
+        ]
         for metric, earlier, later in PAIRS:
             starts = steps[earlier]
-            ends = steps[later]
+            ends = valid_socket_events if later == "rfb_socket_queued" else steps[later]
             if not starts or not ends:
                 if (metric == "grab_ready_to_source" and ends
                         and steps["quick_grab_returned"] and not starts):
@@ -121,17 +154,27 @@ def analyze(records):
                         (last - start_times[index]) / 1_000_000.0)
                 continue
             first = min(int(x["at_ns"]) for x in starts)
-            per_viewer = {
-                (int(x.get("viewer_id", 0)), int(x.get("update_id", 0))):
-                    int(x["at_ns"]) for x in starts
-            } if earlier == "rfb_encoded" else {}
+            # A viewer/update identity must identify one encode event. A
+            # duplicate is ambiguous even if its timestamp happens to match:
+            # never silently overwrite it and report a fabricated latency.
+            per_viewer = {}
+            if earlier == "rfb_encoded":
+                for encoded in starts:
+                    key = (int(encoded.get("viewer_id", 0)),
+                           int(encoded.get("update_id", 0)))
+                    if key[0] <= 0 or key[1] <= 0 or key in duplicate_encode_keys:
+                        continue
+                    per_viewer[key] = int(encoded["at_ns"])
             for event in ends:
                 # One frame may be encoded independently for 2+ viewers.
                 # Do not combine one viewer's encode with another's write.
                 if earlier == "rfb_encoded":
                     key = (int(event.get("viewer_id", 0)),
                            int(event.get("update_id", 0)))
-                    if key not in per_viewer:
+                    if (key[0] <= 0 or key[1] <= 0
+                            or key in duplicate_encode_keys
+                            or key in duplicate_socket_keys
+                            or key not in per_viewer):
                         continue
                     earlier_ns = per_viewer[key]
                 else:
@@ -153,7 +196,7 @@ def analyze(records):
             completed = int(event["at_ns"])
             if completed >= pts:
                 out["render_pts_to_source"].append((completed - pts) / 1_000_000)
-            for sent in steps["rfb_socket_queued"]:
+            for sent in valid_socket_events:
                 at = int(sent["at_ns"])
                 if at >= pts:
                     out["render_pts_to_socket_queue"].append((at - pts) / 1_000_000)
@@ -170,7 +213,7 @@ def analyze(records):
             if issue <= initial:
                 out["core_issue_to_runtime_admit"].append(
                     (initial - issue) / 1_000_000.0)
-                for sent in steps["rfb_socket_queued"]:
+                for sent in valid_socket_events:
                     queued = int(sent["at_ns"])
                     if queued >= issue:
                         out["core_issue_to_socket_queue"].append(
@@ -202,7 +245,10 @@ def analyze(records):
                         "qt_activity_ignored_no_viewer",
                         "qt_activity_ignored_stopped")
         },
-        "request_identity_collisions_skipped": ambiguous,
+        "request_identity_collisions_skipped": request_collisions,
+        "encode_identity_collisions_skipped": encode_collisions,
+        "socket_identity_collisions_skipped": socket_collisions,
+        "missing_wire_identity_events_skipped": missing_wire_identity,
         "negative_or_out_of_order_pairs_skipped": impossible,
         "trace_events_dropped": overflow,
         "steps": dict(sorted(totals.items())),
@@ -269,6 +315,85 @@ def self_test():
     assert result["intervals"]["render_pts_to_source"]["p50_ms"] == 1.0
     assert result["intervals"]["render_pts_to_socket_queue"]["p50_ms"] == 7.5
     assert result["content_change_to_present"] == "NOT_MEASURED"
+    # Duplicate encode identity must not silently overwrite the first
+    # timestamp or report a misleading encode-to-socket interval.
+    duplicated = analyze([
+        point("capture_request", 1_000_000, request=5),
+        point("rfb_encoded", 2_000_000, request=5, viewer=1, update=9),
+        point("rfb_encoded", 4_000_000, request=5, viewer=1, update=9),
+        point("rfb_socket_queued", 7_000_000, request=5, viewer=1, update=9),
+        point("rfb_encoded", 3_000_000, request=5, viewer=2, update=9),
+        point("rfb_socket_queued", 8_000_000, request=5, viewer=2, update=9),
+    ])
+    assert duplicated["request_identity_collisions_skipped"] == 0
+    assert duplicated["encode_identity_collisions_skipped"] == 1
+    assert duplicated["intervals"]["rfb_encode_to_socket_queue"]["n"] == 1
+    assert duplicated["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+    # Duplicate socket events and missing identities cannot create a latency sample.
+    invalid_wire = analyze([
+        point("capture_request", 1_000_000, request=7),
+        point("rfb_encoded", 2_000_000, request=7, viewer=1, update=1),
+        point("rfb_socket_queued", 4_000_000, request=7, viewer=1, update=1),
+        point("rfb_socket_queued", 5_000_000, request=7, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=7, viewer=0, update=0),
+        point("rfb_socket_queued", 6_000_000, request=7, viewer=0, update=0),
+    ])
+    assert invalid_wire["socket_identity_collisions_skipped"] == 1
+    assert invalid_wire["missing_wire_identity_events_skipped"] == 2
+    assert invalid_wire["intervals"]["rfb_encode_to_socket_queue"]["n"] == 0
+    assert invalid_wire["intervals"]["capture_request_to_socket_queue"]["n"] == 0
+    assert invalid_wire["intervals"]["core_issue_to_socket_queue"]["n"] == 0
+    assert invalid_wire["intervals"]["render_pts_to_socket_queue"]["n"] == 0
+    # Partial traces must report identity anomalies even without a valid
+    # capture request or the opposite wire endpoint.
+    socket_only = analyze([
+        point("capture_request", 1_000_000, request=10),
+        point("rfb_socket_queued", 4_000_000, request=10, viewer=1, update=1),
+        point("rfb_socket_queued", 5_000_000, request=10, viewer=1, update=1),
+    ])
+    assert socket_only["socket_identity_collisions_skipped"] == 1
+    assert socket_only["intervals"]["capture_request_to_socket_queue"]["n"] == 0
+    encode_only = analyze([
+        point("capture_request", 1_000_000, request=11),
+        point("rfb_encoded", 2_000_000, request=11, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=11, viewer=1, update=1),
+    ])
+    assert encode_only["encode_identity_collisions_skipped"] == 1
+    missing_only = analyze([
+        point("capture_request", 1_000_000, request=12),
+        point("rfb_socket_queued", 4_000_000, request=12),
+    ])
+    assert missing_only["missing_wire_identity_events_skipped"] == 1
+    no_capture = analyze([
+        point("rfb_encoded", 2_000_000, request=13, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=13, viewer=1, update=1),
+        point("rfb_socket_queued", 4_000_000, request=13),
+    ])
+    assert no_capture["request_identity_collisions_skipped"] == 1
+    assert no_capture["encode_identity_collisions_skipped"] == 1
+    assert no_capture["missing_wire_identity_events_skipped"] == 1
+    # A valid viewer remains measurable when another viewer's wire key
+    # collides, and repeated events count as one ambiguous identity.
+    mixed = analyze([
+        point("capture_request", 1_000_000, request=14),
+        point("rfb_encoded", 2_000_000, request=14, viewer=1, update=1),
+        point("rfb_socket_queued", 4_000_000, request=14, viewer=1, update=1),
+        point("rfb_socket_queued", 5_000_000, request=14, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=14, viewer=2, update=1),
+        point("rfb_socket_queued", 8_000_000, request=14, viewer=2, update=1),
+    ])
+    assert mixed["socket_identity_collisions_skipped"] == 1
+    assert mixed["intervals"]["capture_request_to_socket_queue"]["n"] == 1
+    assert mixed["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+
+    # Reversed JSONL order cannot alter the unique viewer pairing.
+    reversed_order = analyze([
+        point("rfb_socket_queued", 8_000_000, request=6, viewer=2, update=9),
+        point("rfb_encoded", 3_000_000, request=6, viewer=2, update=9),
+        point("capture_request", 1_000_000, request=6),
+    ])
+    assert reversed_order["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+
     # Negative: without quick_grab_ready the returned->ready interval must be
     # absent rather than inferred from a later stage.
     without_ready = analyze([

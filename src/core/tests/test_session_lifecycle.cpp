@@ -34,6 +34,202 @@ HYR_TEST(the_session_follows_the_documented_state_sequence)
     HYR_CHECK(running.session->state() == SessionState::Stopped);
 }
 
+HYR_TEST(identified_completion_is_exactly_once_and_never_steals_another_credit)
+{
+    RunningSession running;
+    SessionConfig config;
+    config.capture.maxInFlight = 2;
+    // One rejected post-admission attempt must settle before the exact
+    // inFlight assertions. Its long, interruptible retry delay freezes
+    // scheduler admission until stop(), without sleeps or production hooks.
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
+    running.prepare(config);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK(waitFor([&] { return running.source->requests().size() >= 2; }));
+    const auto requests = running.source->requests();
+    HYR_CHECK(requests.size() >= 2);
+    if (requests.size() < 2)
+        return;
+    const CaptureRequestId a = requests[0].id;
+    const CaptureRequestId b = requests[1].id;
+    running.source->setRejectRequests(true); // no new accepted credit
+
+    auto identified = [](CaptureRequestId id) {
+        auto frame = makeFrame(16, 8);
+        frame.requestId = id;
+        return frame;
+    };
+    // An unknown valid frame is not a license to retire A or B.
+    HYR_CHECK(running.source->deliver(identified(b + 10000)));
+    HYR_CHECK(waitFor([&] {
+        return running.session->stats().framesRejectedInvalid >= 1;
+    }));
+    HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{2});
+    HYR_CHECK_EQ(running.session->stats().framesAccepted, std::uint64_t{0});
+
+    HYR_CHECK(running.source->deliver(identified(a)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        // A frees one slot. The next request is rejected and its Core
+        // credit must have been retired BEFORE an exact gauge assertion.
+        return stats.framesAccepted == 1 && stats.captureRequestsRejected >= 1;
+    }));
+    HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{1});
+    // Duplicate A cannot silently retire B or become a second RFB frame.
+    HYR_CHECK(running.source->deliver(identified(a)));
+    HYR_CHECK(waitFor([&] {
+        return running.session->stats().framesRejectedInvalid >= 2;
+    }));
+    HYR_CHECK_EQ(running.session->stats().inFlight, std::size_t{1});
+    HYR_CHECK_EQ(running.session->stats().framesAccepted, std::uint64_t{1});
+
+    // A rejected EMPTY terminal still retires its own B credit, not A's.
+    RemoteFrame failedB;
+    failedB.requestId = b;
+    failedB.timing.requestTime = requests[1].requestTime;
+    failedB.timing.completionTime = Clock::now();
+    HYR_CHECK(running.source->deliver(std::move(failedB)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.inFlight == 0 && stats.framesRejectedInvalid >= 3;
+    }));
+    HYR_CHECK_EQ(running.session->stats().framesAccepted, std::uint64_t{1});
+}
+
+HYR_TEST(legacy_unidentified_frame_still_retires_oldest_credit)
+{
+    RunningSession running;
+    SessionConfig config;
+    config.capture.maxInFlight = 1;
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
+    running.prepare(config);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+    running.source->setRejectRequests(true);
+    HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.framesAccepted == 1
+            && stats.captureRequestsRejected >= 1 && stats.inFlight == 0;
+    }));
+}
+
+HYR_TEST(legacy_unidentified_unsolicited_frame_preserves_prior_acceptance)
+{
+    RunningSession running;
+    SessionConfig config;
+    config.capture.maxInFlight = 1;
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
+    running.prepare(config);
+    HYR_CHECK(running.session->start());
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
+    running.source->setRejectRequests(true); // no new accepted requests
+    HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.framesAccepted == 1
+            && stats.captureRequestsRejected >= 1 && stats.inFlight == 0;
+    }));
+    // Historical optional-requestId sources can emit an additional frame
+    // without a live Core credit. Keep that legacy behavior while blocking
+    // *identified* duplicate and foreign terminals from stealing credit.
+    HYR_CHECK(running.source->deliver(makeFrame(16, 8)));
+    HYR_CHECK(waitFor([&] {
+        const auto stats = running.session->stats();
+        return stats.framesAccepted == 2 && stats.inFlight == 0;
+    }));
+}
+
+// The source contract forbids completing a request it returns false for,
+// but a faulty adapter can still call back synchronously before it returns.
+// The completion and subsequent false result must never debit the other
+// still-outstanding request. This is a cross-thread scheduler negative.
+class CallbackThenRejectCapture final : public CaptureSource
+{
+public:
+    CaptureCapabilities capabilities() const override
+    {
+        CaptureCapabilities c;
+        c.asynchronous = true;
+        c.cpuReadable = true;
+        c.cpuFormats = {PixelFormat::Bgra8888};
+        return c;
+    }
+    bool start(FrameReadyHandler frame, CaptureEventHandler) override
+    {
+        m_frame = std::move(frame);
+        m_running.store(true, std::memory_order_release);
+        return true;
+    }
+    void stop() noexcept override
+    {
+        m_running.store(false, std::memory_order_release);
+    }
+    bool requestFrame(const CaptureRequest &request) override
+    {
+        if (!m_running.load(std::memory_order_acquire))
+            return false;
+        const int call = m_calls.fetch_add(1, std::memory_order_acq_rel) + 1;
+        if (call == 1) {
+            m_first.store(request.id, std::memory_order_release);
+            return true;
+        }
+        if (call == 2) {
+            RemoteFrame empty;
+            empty.requestId = request.id;
+            empty.timing.requestTime = request.requestTime;
+            empty.timing.completionTime = Clock::now();
+            m_frame(std::move(empty)); // reentrant Core callback
+        }
+        return false; // source incorrectly rejects an already-completed ID
+    }
+    int calls() const { return m_calls.load(std::memory_order_acquire); }
+    void completeFirst()
+    {
+        RemoteFrame frame = makeFrame(16, 8);
+        frame.requestId = m_first.load(std::memory_order_acquire);
+        m_frame(std::move(frame));
+    }
+private:
+    FrameReadyHandler m_frame;
+    std::atomic<bool> m_running{false};
+    std::atomic<int> m_calls{0};
+    std::atomic<CaptureRequestId> m_first{0};
+};
+
+HYR_TEST(sync_terminal_then_request_rejection_cannot_steal_peer_credit)
+{
+    SessionConfig config;
+    config.capture.maxInFlight = 2;
+    // After source callback+false the scheduler must finish the precise
+    // rejection debit and enter an interruptible wait, never reissue while
+    // we assert live peer credit.
+    config.capture.rejectedRequestRetryDelay = std::chrono::hours(1);
+    Session session(config);
+    auto capture = std::make_unique<CallbackThenRejectCapture>();
+    auto *source = capture.get();
+    auto transport = std::make_unique<FakeTransport>();
+    auto *sink = transport.get();
+    HYR_CHECK(session.setCaptureSource(std::move(capture)));
+    HYR_CHECK(session.setTransport(std::move(transport)));
+    HYR_CHECK(session.start());
+    HYR_CHECK(waitFor([&] {
+        return source->calls() >= 2
+            && session.stats().captureRequestsRejected >= 1;
+    }));
+    const auto afterRejected = session.stats();
+    HYR_CHECK_EQ(afterRejected.inFlight, std::size_t{1});
+    HYR_CHECK_EQ(afterRejected.framesAccepted, std::uint64_t{0});
+    HYR_CHECK(afterRejected.framesRejectedInvalid >= 1);
+
+    source->completeFirst(); // the first accepted ID still owns its credit
+    HYR_CHECK(sink->waitForAccepted(1));
+    const auto afterFirst = session.stats();
+    HYR_CHECK_EQ(afterFirst.inFlight, std::size_t{0});
+    HYR_CHECK_EQ(afterFirst.framesAccepted, std::uint64_t{1});
+    session.stop();
+}
+
 HYR_TEST(repeated_start_stop_is_deterministic)
 {
     RunningSession running;
