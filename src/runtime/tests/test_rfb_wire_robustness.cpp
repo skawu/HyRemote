@@ -5156,6 +5156,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    CHECK(HyRemote::detail::runRfbNotificationPostFailureRegression());
     testTrleRawAndIncrementalDelivery();
     testRfbConsumerPressureAndFullRequestWake();
     testDamageAndEncodedFrameShareSnapshot();
