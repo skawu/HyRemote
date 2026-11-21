@@ -1,0 +1,77 @@
+name: Core RequestId credit and lifetime regression (Qt-free)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'src/core/**'
+      - '.github/workflows/core-request-id-ledger.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-credit:
+    name: Linux native Core unit executables / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source identity
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "CORE_LEDGER_SOURCE_SHA=$actual"
+
+      - name: Build Core ONCE and run all native unit executables
+        shell: bash
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/core-credit-${{ matrix.compiler }}"
+          mkdir -p "$out/obj" "$out/tests"
+          includes=(-Isrc/core/include -Isrc/core/src -Isrc/core/tests/support)
+          flags=(-std=c++17 -O2 -g -pthread -Wall -Wextra -Werror)
+          mapfile -t sources < <(find src/core/src -type f -name '*.cpp' | sort)
+          test "${#sources[@]}" -ge 7
+          objects=()
+          for source in "${sources[@]}"; do
+            obj="$out/obj/$(basename "${source%.cpp}").o"
+            "$CXX" "${flags[@]}" "${includes[@]}" -c "$source" -o "$obj"
+            objects+=("$obj")
+          done
+          ar rcs "$out/libhyremote-core.a" "${objects[@]}"
+          shopt -s nullglob
+          tests=(src/core/tests/test_*.cpp)
+          test "${#tests[@]}" -ge 11
+          for source in "${tests[@]}"; do
+            name="$(basename "${source%.cpp}")"
+            "$CXX" "${flags[@]}" "${includes[@]}" "$source"               "$out/libhyremote-core.a" -o "$out/tests/$name"
+            echo "CORE_TEST_EXECUTE=$name"
+            "$out/tests/$name" | tee "$out/tests/$name.log"
+          done
+          # Prevent a renamed/skipped Core test from making a green lane.
+          grep -Fq "[ PASS ] identified_completion_is_exactly_once_and_never_steals_another_credit"             "$out/tests/test_session_lifecycle.log"
+          grep -Fq "[ PASS ] legacy_unidentified_frame_still_retires_oldest_credit"             "$out/tests/test_session_lifecycle.log"
+          echo "CORE_TEST_PROGRAMS_EXECUTED=${#tests[@]}"
+          echo "CORE_LEDGER_RESULT=PASS"
+
+      - name: Enforce Qt-free Core architecture boundary and guard self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DCORE_DIR="$PWD/src/core" -P src/core/tests/check_dependencies.cmake
+          echo "CORE_DEPENDENCY_BOUNDARY=PASS"
