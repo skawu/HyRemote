@@ -525,6 +525,13 @@ public:
         }
     };
 
+    struct DeliveryBatch {
+        std::vector<hyremote::CaptureRequest> requests;
+        std::atomic<bool> claimed{false};
+        explicit DeliveryBatch(std::vector<hyremote::CaptureRequest> &&items) noexcept
+            : requests(std::move(items)) {}
+    };
+
     struct CallbackDrain {
         std::shared_ptr<State> state;
         bool admitted = false;
@@ -1005,8 +1012,8 @@ private:
                                   std::vector<hyremote::CaptureRequest> requests,
                                   const char *reason)
     {
-        std::shared_ptr<std::vector<hyremote::CaptureRequest>> batch;
-        try { batch = std::make_shared<std::vector<hyremote::CaptureRequest>>(std::move(requests)); }
+        std::shared_ptr<DeliveryBatch> batch;
+        try { batch = std::make_shared<DeliveryBatch>(std::move(requests)); }
         catch (...) {
             finishUndispatched(s, generation, requests);
             return;
@@ -1020,6 +1027,8 @@ private:
                 if (!s->active || s->generation != generation) return;
                 callback = s->onFrame;
                 eventCallback = s->onEvent;
+                if (batch->claimed.exchange(true, std::memory_order_acq_rel))
+                    return;
                 ++s->callbacksInFlight;
                 drain.admitted = true;
             }
@@ -1033,7 +1042,7 @@ private:
                 } catch (...) {}
             }
             if (callback && *callback) {
-                for (const auto &req : *batch) {
+                for (const auto &req : batch->requests) {
                     try {
                         hyremote::RemoteFrame empty;
                         empty.requestId = req.id;
@@ -1045,7 +1054,8 @@ private:
                 }
             }
         })) {
-            finishUndispatched(s, generation, *batch);
+            if (!batch->claimed.exchange(true, std::memory_order_acq_rel))
+                finishUndispatched(s, generation, batch->requests);
         }
     }
 
@@ -1057,8 +1067,8 @@ private:
                             int width, int height, float dpr,
                             hyremote::TimePoint renderTime)
     {
-        std::shared_ptr<std::vector<hyremote::CaptureRequest>> batch;
-        try { batch = std::make_shared<std::vector<hyremote::CaptureRequest>>(std::move(requests)); }
+        std::shared_ptr<DeliveryBatch> batch;
+        try { batch = std::make_shared<DeliveryBatch>(std::move(requests)); }
         catch (...) {
             finishUndispatched(s, generation, requests);
             return;
@@ -1082,6 +1092,8 @@ private:
                             && float(actualDpr) == dpr;
                     }
                     callback = s->onFrame;
+                    if (batch->claimed.exchange(true, std::memory_order_acq_rel))
+                        return;
                     ++s->callbacksInFlight;
                     drain.admitted = true;
                 }
@@ -1102,7 +1114,7 @@ private:
                     prototype.timing.pts = renderTime;
                     prototype.timing.ptsSource = hyremote::PtsSource::Render;
                     prototype.timing.completionTime = hyremote::Clock::now();
-                    for (const auto &req : *batch) {
+                    for (const auto &req : batch->requests) {
                         try {
                             auto frame = prototype;
                             frame.requestId = req.id;
@@ -1113,7 +1125,7 @@ private:
                 } catch (...) {
                     // Prototype allocation failed before the first delivery.
                     // A later callback is not retried: Core owns its boundary.
-                    for (const auto &req : *batch) {
+                    for (const auto &req : batch->requests) {
                         try {
                             hyremote::RemoteFrame empty;
                             empty.requestId = req.id;
@@ -1125,7 +1137,8 @@ private:
                     }
                 }
             })) {
-            finishUndispatched(s, generation, *batch);
+            if (!batch->claimed.exchange(true, std::memory_order_acq_rel))
+                finishUndispatched(s, generation, batch->requests);
         }
     }
 
