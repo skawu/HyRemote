@@ -162,6 +162,9 @@ HYR_TEST(coreInvalidTerminalValidationFailureRetiresCaptureCredit)
     HYR_CHECK_EQ(run.session->stats().inFlight, std::size_t{1});
 
     RemoteFrame emptyTerminal;
+    // Test the *identified* path as well as the separate legacy no-ID
+    // completion test: an allocation exception still retires this ID.
+    emptyTerminal.requestId = run.source->requests().front().id;
     bool escaped = false;
     bool delivered = false;
     t_remainingAllocations = 0;
