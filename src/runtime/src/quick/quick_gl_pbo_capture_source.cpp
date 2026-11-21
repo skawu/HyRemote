@@ -735,7 +735,8 @@ public:
             std::lock_guard<std::mutex> guard(s->mutex);
             if (!s->active || s->window.isNull())
                 return false;
-            s->queued.push_back(req);
+            try { s->queued.push_back(req); }
+            catch (...) { return false; } // no accepted identity on allocation failure
             // A valid Core request must have exactly one terminal outcome.
             // No render/frame-fence progress is possible for a hidden or
             // continuously idle QQuickWindow, so NEVER allow an admitted
@@ -743,6 +744,7 @@ public:
             // on the GUI thread without doing GL work; any later GPU
             // completion observes that its request was already revoked.
             const std::uint64_t requestGeneration = s->generation;
+            try {
             QTimer::singleShot(750, s->dispatcher, [s, requestGeneration, id = req.id] {
                 std::vector<hyremote::CaptureRequest> expired;
                 {
@@ -764,6 +766,12 @@ public:
                     reportUnavailable(s, requestGeneration, std::move(expired),
                                       "GL PBO capture request did not complete within 750ms");
             });
+            } catch (...) {
+                // The request was never accepted by Core; a failed timer
+                // arm must not leave a future unsolicited completion.
+                s->queued.pop_back();
+                return false;
+            }
             if (s->kickPosted)
                 return true;
             s->kickPosted = true;
@@ -818,11 +826,13 @@ public:
                 std::lock_guard<std::mutex> guard(s->mutex);
                 if (s->generation == generation && s->active) {
                     s->kickPosted = false;
-                    for (const auto &pending : s->queued) {
-                        if (pending.id != req.id)
-                            acceptedButUnscheduled.push_back(pending);
-                    }
-                    s->queued.clear();
+                    // No allocation while recovering a failed Qt post.
+                    // Other threads may already have accepted their IDs.
+                    acceptedButUnscheduled.swap(s->queued);
+                    acceptedButUnscheduled.erase(std::remove_if(
+                        acceptedButUnscheduled.begin(), acceptedButUnscheduled.end(),
+                        [id = req.id](const auto &r) { return r.id == id; }),
+                        acceptedButUnscheduled.end());
                 }
             }
             if (!acceptedButUnscheduled.empty())
