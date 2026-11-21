@@ -25,6 +25,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <condition_variable>
 #include <cstddef>
@@ -394,6 +395,13 @@ private:
         }
     }
 
+    struct DeliveryBatch {
+        std::vector<hyremote::CaptureRequest> requests;
+        std::atomic<bool> claimed{false};
+        explicit DeliveryBatch(std::vector<hyremote::CaptureRequest> &&items) noexcept
+            : requests(std::move(items)) {}
+    };
+
     struct CallbackDrain {
         std::shared_ptr<State> state;
         bool admitted = false;
@@ -447,8 +455,8 @@ private:
     {
         if (requests.empty())
             return;
-        std::shared_ptr<std::vector<hyremote::CaptureRequest>> batch;
-        try { batch = std::make_shared<std::vector<hyremote::CaptureRequest>>(std::move(requests)); }
+        std::shared_ptr<DeliveryBatch> batch;
+        try { batch = std::make_shared<DeliveryBatch>(std::move(requests)); }
         catch (...) {
             finishUndispatched(s, generation, requests);
             return;
@@ -465,6 +473,8 @@ private:
                         return;
                     frameCallback = s->onFrame;
                     eventCallback = s->onEvent;
+                    if (batch->claimed.exchange(true, std::memory_order_acq_rel))
+                        return;
                     ++s->callbacksInFlight;
                     drain.admitted = true;
                 }
@@ -478,7 +488,7 @@ private:
                     } catch (...) {}
                 }
                 if (frameCallback && *frameCallback) {
-                    for (const auto &request : *batch) {
+                    for (const auto &request : batch->requests) {
                         try {
                             hyremote::RemoteFrame frame;
                             frame.requestId = request.id;
@@ -503,7 +513,8 @@ private:
                     }
                 }
             })) {
-            finishUndispatched(s, generation, *batch);
+            if (!batch->claimed.exchange(true, std::memory_order_acq_rel))
+                finishUndispatched(s, generation, batch->requests);
         }
     }
 
