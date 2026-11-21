@@ -86,6 +86,8 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         QThreadPool workers;
         std::uint64_t generation = 0;
         bool active = false;
+        bool stopComplete = true;
+        bool stopInProgress = false;
         bool connected = false;
         bool guiKickPosted = false;
         bool fallbackTimerArmed = false;
@@ -191,6 +193,7 @@ public:
         std::lock_guard<std::mutex> lock(s->mutex);
         if (s->active || !s->target || s->target->thread() != app->thread())
             return false;
+        s->stopComplete = false;
         s->dispatcher = new QObject;
         s->workers.setMaxThreadCount(1);
         ++s->generation;
@@ -219,6 +222,15 @@ public:
     void stop() noexcept override
     {
         auto s = m_state;
+        {
+            std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete)
+                return;
+            if (s->stopInProgress) {
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+        }
         auto *app = QCoreApplication::instance();
         if (!app)
             return;
@@ -235,6 +247,9 @@ public:
         QObject *dispatcher = nullptr;
         {
             std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete || s->stopInProgress)
+                return;
+            s->stopInProgress = true;
             s->active = false;
             ++s->generation;
             QObject::disconnect(s->passConnection);
@@ -270,6 +285,12 @@ public:
         }
         s->workers.waitForDone(); // includes runnable destruction, not just its callback
         delete dispatcher;
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            s->stopComplete = true;
+            s->stopInProgress = false;
+        }
+        s->drained.notify_all();
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
