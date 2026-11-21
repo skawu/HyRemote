@@ -118,6 +118,12 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
             HYR_CHECK(error->recoverable);
         }
 
+        // New exact-ID accounting correctly requires an outstanding Core
+        // request even for a legacy unidentified frame. The old test sent a
+        // second frame immediately without synchronizing on a new admission,
+        // so it could accidentally assert success for unsolicited frames.
+        HYR_CHECK(waitFor([&] { return run.source->outstanding() > 0; }));
+
         // Frame delivery keeps working after a contained callback failure.
         RemoteFrame next = makeFrame();
         const bool delivered = run.source->deliver(std::move(next));
@@ -253,7 +259,7 @@ HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
     std::atomic<bool> startWorker{false};
     std::atomic<bool> workerDone{false};
     std::atomic<bool> workerAllocated{false};
-    std::thread worker([&startWorker, &workerDone, &workerAllocated, probeBytes] {
+    std::thread worker([&startWorker, &workerDone, &workerAllocated] {
         while (!startWorker.load(std::memory_order_acquire))
             std::this_thread::yield();
         try {
