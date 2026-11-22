@@ -1,6 +1,7 @@
 #include "framebuffer_view.h"
 #include "rfb_client.h"
 #include "language_preference.hpp"
+#include "connection_profile_store.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -9,6 +10,15 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDir>
+#include <QFormLayout>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QSignalBlocker>
+#include <QStandardPaths>
 #include <QMetaObject>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -72,12 +82,17 @@ class ClientWindow final : public QWidget
 {
 public:
     explicit ClientWindow(Language language, ToolLanguagePreference preference,
-                          bool cliOverride, QSettings &settings, QWidget *parent = nullptr)
+                          bool cliOverride, QSettings &settings,
+                          QString profilePath = {}, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_client(new RfbClient(this))
         , m_view(new FramebufferView(this))
         , m_language(language)
         , m_languageSettings(settings)
+        , m_profileStore(profilePath.isEmpty()
+            ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))
+                  .filePath(QStringLiteral("connections.json"))
+            : std::move(profilePath))
     {
         auto *root = new QVBoxLayout(this);
         root->setContentsMargins(10, 10, 10, 10);
@@ -126,6 +141,35 @@ public:
         connectionRow->addWidget(m_languageBox);
         root->addLayout(connectionRow);
 
+        // Local non-secret bookmarks. Selection only fills host/port; a
+        // network attempt requires a separate explicit Connect action.
+        auto *profilesRow = new QHBoxLayout;
+        m_profilesLabel = new QLabel(this);
+        m_profilesBox = new QComboBox(this);
+        m_profilesBox->setObjectName(QStringLiteral("tool-saved-connections"));
+        m_profilesBox->setMinimumContentsLength(18);
+        m_profilesBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        m_profileSave = new QPushButton(this);
+        m_profileEdit = new QPushButton(this);
+        m_profileDelete = new QPushButton(this);
+        m_profileConnect = new QPushButton(this);
+        m_profileRecover = new QPushButton(this);
+        m_profileRecover->hide();
+        profilesRow->addWidget(m_profilesLabel);
+        profilesRow->addWidget(m_profilesBox, 1);
+        profilesRow->addWidget(m_profileSave);
+        profilesRow->addWidget(m_profileEdit);
+        profilesRow->addWidget(m_profileDelete);
+        profilesRow->addWidget(m_profileConnect);
+        profilesRow->addWidget(m_profileRecover);
+        root->addLayout(profilesRow);
+
+        m_profileWarning = new QLabel(this);
+        m_profileWarning->setWordWrap(true);
+        m_profileWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_profileWarning->hide();
+        root->addWidget(m_profileWarning);
+
         // Persisted settings may fail (read-only profile, disk/permission
         // errors). Warn in the GUI instead of claiming the selection survived
         // a restart. The language still applies to this running process.
@@ -168,6 +212,22 @@ public:
         };
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        connect(m_profilesBox, &QComboBox::activated, this, [this](int index) {
+#else
+        connect(m_profilesBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) {
+#endif
+            selectProfile(index);
+        });
+        connect(m_profileSave, &QPushButton::clicked, this, [this] { promptSaveProfile(); });
+        connect(m_profileEdit, &QPushButton::clicked, this, [this] { promptEditProfile(); });
+        connect(m_profileDelete, &QPushButton::clicked, this, [this] { promptDeleteProfile(); });
+        connect(m_profileConnect, &QPushButton::clicked, this, [this] {
+            connectSavedProfile();
+        });
+        connect(m_profileRecover, &QPushButton::clicked, this, [this] {
+            promptRecoverProfiles();
+        });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         connect(m_languageBox, &QComboBox::activated, this, [this](int index) {
 #else
@@ -238,6 +298,12 @@ public:
 
         m_view->setInputEnabled(false);
         m_client->setRemoteControlEnabled(false);
+        QString profileError;
+        const auto profileState = m_profileStore.load(&profileError);
+        m_profilesCorrupt = profileState == ToolConnectionProfileStore::LoadState::Corrupt;
+        if (m_profilesCorrupt || profileState == ToolConnectionProfileStore::LoadState::IoError)
+            m_profileError = profileError;
+        rebuildProfiles();
         applyState(RfbClient::State::Disconnected);
         resize(1000, 700);
     }
@@ -246,6 +312,7 @@ public:
     {
         m_host->setText(host);
         m_port->setValue(port);
+        m_pendingProfileId.clear();
         m_client->connectToHost(host, port);
     }
 
@@ -402,8 +469,10 @@ private:
             m_view->setPlaceholder(placeholderText());
     }
 
-    void toggleConnection()
+    void toggleConnection(bool fromProfile = false)
     {
+        if (!fromProfile)
+            m_pendingProfileId.clear();
         const auto state = m_client->state();
         if (state == RfbClient::State::Connected || state == RfbClient::State::Connecting
             || state == RfbClient::State::Handshaking) {
@@ -430,6 +499,19 @@ private:
         const bool busy = state == RfbClient::State::Connecting
                           || state == RfbClient::State::Handshaking;
         const bool connected = state == RfbClient::State::Connected;
+        if (connected && !m_pendingProfileId.isEmpty()) {
+            QString error;
+            const auto selectedId = m_pendingProfileId;
+            m_pendingProfileId.clear();
+            if (m_profileStore.markUsed(selectedId,
+                    QDateTime::currentDateTimeUtc().toMSecsSinceEpoch(), &error))
+                rebuildProfiles(selectedId);
+            else
+                m_profileError = error;
+        } else if (state == RfbClient::State::Disconnected
+                   || state == RfbClient::State::Failed) {
+            m_pendingProfileId.clear();
+        }
         m_host->setEnabled(!busy && !connected);
         m_port->setEnabled(!busy && !connected);
         m_connect->setEnabled(true);
@@ -451,6 +533,10 @@ private:
     FramebufferView *m_view = nullptr;
     Language m_language = Language::Chinese;
     QSettings &m_languageSettings;
+    ToolConnectionProfileStore m_profileStore;
+    QString m_profileError;
+    QString m_pendingProfileId;
+    bool m_profilesCorrupt = false;
     bool m_languageSaveFailed = false;
     RfbClient::State m_state = RfbClient::State::Disconnected;
     RfbClient::Stats m_lastStats;
@@ -467,6 +553,14 @@ private:
     QLabel *m_status = nullptr;
     QComboBox *m_languageBox = nullptr;
     QLabel *m_languageWarning = nullptr;
+    QLabel *m_profilesLabel = nullptr;
+    QComboBox *m_profilesBox = nullptr;
+    QPushButton *m_profileSave = nullptr;
+    QPushButton *m_profileEdit = nullptr;
+    QPushButton *m_profileDelete = nullptr;
+    QPushButton *m_profileConnect = nullptr;
+    QPushButton *m_profileRecover = nullptr;
+    QLabel *m_profileWarning = nullptr;
     QLabel *m_error = nullptr;
     QLabel *m_fps = nullptr;
     QLabel *m_mbps = nullptr;
