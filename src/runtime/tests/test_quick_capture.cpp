@@ -51,6 +51,7 @@
 #include "quick/quick_d3d11_target_admission.hpp"
 #include "quick/quick_gl_pbo_capture_source.hpp"
 #include "quick/quick_readback_batch.hpp"
+#include "quick/quick_readback_timing.hpp"
 #include "quick/quick_adaptive_capture_source.hpp"
 #include "quick/quick_image_frame_storage.hpp"
 #include "quick/quick_capture_single_flight.hpp"
@@ -2406,6 +2407,77 @@ void testQuickGlPboIdleSubmissionRejectionKeepsEdge()
 }
 #endif // HYREMOTE_TEST_QUICK_GL_PBO
 
+// #1016 R2: the real D3D11 Map-wait render callback can run dozens of
+// times while one staging texture is outstanding. One GPU batch must arm
+// one 4ms/16ms retirement timer at a time; no extra paint on a stale epoch.
+// GPU-free policy test complements the real Qt6 D3D11 R4 pixel/lifecycle
+// lane, it is NOT proof of a Viewer-visible CPU/P95 improvement.
+void testD3d11RetirementGateSingleFlightAcrossEpochs()
+{
+    using HyRemote::detail::QuickReadbackTiming;
+    using HyRemote::detail::QuickRetirementRenderGate;
+    QuickRetirementRenderGate gate;
+    CHECK(!gate.arm(false).has_value()); // idle/0 demand is inert
+    const auto first = gate.arm(true);
+    CHECK(first.has_value());
+    if (!first)
+        return;
+    CHECK(first->delayMs == QuickReadbackTiming::firstRetirementRenderMs);
+    for (int frame = 0; frame < 120; ++frame)
+        CHECK(!gate.arm(true).has_value()); // at most ONE pending Qt timer
+    CHECK(gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.fire(*first, true));
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 1);
+
+    const auto second = gate.arm(true);
+    CHECK(second.has_value());
+    if (!second)
+        return;
+    CHECK(second->delayMs == QuickReadbackTiming::secondRetirementRenderMs);
+    CHECK(!gate.fire(*first, true)); // old ticket can't consume new arm
+    CHECK(gate.timerArmed());
+    CHECK(!gate.arm(true).has_value());
+    CHECK(gate.fire(*second, true));
+    CHECK(gate.forcedRenders() == QuickReadbackTiming::maxExtraRenders);
+    CHECK(!gate.arm(true).has_value()); // bounded render budget
+
+    gate.reset(); // staging was replaced/released
+    const auto oldBatch = gate.arm(true);
+    CHECK(oldBatch.has_value());
+    if (!oldBatch)
+        return;
+    gate.reset(); // stop/restart/resize before timeout
+    const auto newBatch = gate.arm(true);
+    CHECK(newBatch.has_value());
+    if (!newBatch)
+        return;
+    CHECK(!gate.fire(*oldBatch, true));
+    gate.abandon(*oldBatch); // stale failure can't disarm a new ticket
+    CHECK(gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.fire(*newBatch, true));
+
+    gate.reset();
+    const auto failedPost = gate.arm(true);
+    CHECK(failedPost.has_value());
+    if (!failedPost)
+        return;
+    gate.abandon(*failedPost); // Qt timer allocation/dispatch failed
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    const auto retry = gate.arm(true);
+    CHECK(retry.has_value());
+    if (!retry)
+        return;
+    CHECK(!gate.fire(*failedPost, true)); // same epoch, different sequence
+    CHECK(gate.fire(*retry, false) == false); // GPU work already retired
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.arm(true).has_value()); // fallback remains possible
+}
+
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
@@ -2446,6 +2518,7 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
+    testD3d11RetirementGateSingleFlightAcrossEpochs();
     testUpstreamQtGrabTargetDprVersionContract();
     testAdaptiveQuickSceneGraphInvalidationFailClosed();
     testNativeReadbackBatchTimeoutIsOneFailure();
