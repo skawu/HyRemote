@@ -128,7 +128,7 @@ class D3d11StagingCaptureSource final : public hyremote::CaptureSource
         hyremote::TimePoint submittedPts{};
         int pixelWidth = 0, pixelHeight = 0;
         float dpr = 1.0f;
-        int forcedRenders = 0;
+        QuickRetirementRenderGate retirementGate;
         // #790: a zero-viewer release arrived while a submitted readback still
         // used the staging texture. Consumed at the next fully-idle point.
         QuickIdleRelease idleRelease;
@@ -652,29 +652,37 @@ private:
     {
         if (!window)
             return;
-        int delayMs = QuickReadbackTiming::firstRetirementRenderMs;
         std::lock_guard<std::mutex> guard(s->mutex);
-        if (!s->active || s->generation != generation
-            || !s->staging || s->forcedRenders >= kMaxExtraRenders)
+        if (!s->active || s->generation != generation || !s->dispatcher)
             return;
-        if (s->forcedRenders > 0)
-            delayMs = QuickReadbackTiming::secondRetirementRenderMs;
-        QTimer::singleShot(delayMs, s->dispatcher,
-            [s, window, generation] {
-                bool shouldRender = false;
-                {
-                    std::lock_guard<std::mutex> lock(s->mutex);
-                    if (s->active && s->generation == generation && s->staging
-                        && s->forcedRenders < kMaxExtraRenders) {
-                        ++s->forcedRenders;
-                        shouldRender = true;
+        // A pending staging texture may be observed by MANY natural Qt
+        // frames. Arm exactly one bounded timer per GPU readback epoch.
+        // The helper counts only actual fired retirement render requests,
+        // and reset() invalidates delayed events from prior staging batches.
+        auto ticket = s->retirementGate.arm(s->staging.Get() != nullptr);
+        if (!ticket)
+            return;
+        try {
+            QTimer::singleShot(ticket->delayMs, s->dispatcher,
+                [s, window, generation, ticket = *ticket] {
+                    bool shouldRender = false;
+                    {
+                        std::lock_guard<std::mutex> lock(s->mutex);
+                        if (s->active && s->generation == generation)
+                            shouldRender = s->retirementGate.fire(
+                                ticket, s->staging.Get() != nullptr);
                     }
-                }
-                if (shouldRender && window && window->isVisible()) {
-                    HYREMOTE_P1_COUNT(QuickGlRetirementRender);
-                    window->update();
-                }
-            });
+                    if (shouldRender && window && window->isVisible()) {
+                        HYREMOTE_P1_COUNT(QuickGlRetirementRender);
+                        window->update();
+                    }
+                });
+        } catch (...) {
+            // Qt timer creation may allocate; a rejected timer must not
+            // permanently latch the single-flight gate or escape a render
+            // callback. The next natural frame/deadline can recover.
+            s->retirementGate.abandon(*ticket);
+        }
     }
 
     static void releaseActiveReadback(State &state)
@@ -683,7 +691,7 @@ private:
         state.staging.Reset();
         state.stagingDevice.Reset();
         state.stagingDesc = {};
-        state.forcedRenders = 0;
+        state.retirementGate.reset();
         state.pixelWidth = state.pixelHeight = 0;
     }
 
@@ -934,7 +942,7 @@ private:
                     const HRESULT hr = context->Map(s->staging.Get(), 0,
                         D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
                     if (hr == DXGI_ERROR_WAS_STILL_DRAWING) {
-                        if (s->forcedRenders < kMaxExtraRenders) pump = true;
+                        if (s->retirementGate.forcedRenders() < kMaxExtraRenders) pump = true;
                         else {
                             failed.swap(s->submitted);
                             failure = "D3D11 staging Map not ready after bounded renders";
@@ -1036,7 +1044,7 @@ private:
                     s->submittedPts = s->capturedPts;
                     s->submitted.swap(s->queued);
                     s->capturedTarget.Reset();
-                    s->forcedRenders = 0;
+                    s->retirementGate.reset();
                     context->CopyResource(s->staging.Get(), rendered.Get());
                     #if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
 
