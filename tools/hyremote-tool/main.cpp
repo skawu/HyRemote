@@ -301,6 +301,9 @@ public:
         QString profileError;
         const auto profileState = m_profileStore.load(&profileError);
         m_profilesCorrupt = profileState == ToolConnectionProfileStore::LoadState::Corrupt;
+        m_profilesLoaded = profileState == ToolConnectionProfileStore::LoadState::Missing
+                           || profileState == ToolConnectionProfileStore::LoadState::Loaded
+                           || profileState == ToolConnectionProfileStore::LoadState::MigratedV0;
         if (m_profilesCorrupt || profileState == ToolConnectionProfileStore::LoadState::IoError)
             m_profileError = profileError;
         rebuildProfiles();
@@ -341,12 +344,17 @@ public:
         return ok;
     }
 
+    bool verifyProfileUi();
+
     bool verifyUi() const
     {
         const bool ok = m_brand && !QGuiApplication::windowIcon().isNull()
                         && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_languageBox && m_languageWarning;
+                        && m_resolution && m_error && m_languageBox && m_languageWarning
+                        && m_profilesLabel && m_profilesBox && m_profileSave
+                        && m_profileEdit && m_profileDelete && m_profileConnect
+                        && m_profileRecover && m_profileWarning;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
@@ -450,6 +458,14 @@ private:
                                          "The remote application has remote input disabled."));
         m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
         m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
+        m_profilesLabel->setText(text("已保存", "Saved"));
+        m_profileSave->setText(text("保存", "Save"));
+        m_profileEdit->setText(text("编辑", "Edit"));
+        m_profileDelete->setText(text("删除", "Delete"));
+        m_profileConnect->setText(text("连接档案", "Connect saved"));
+        m_profileRecover->setText(text("恢复", "Recover"));
+        m_profilesBox->setItemText(0, text("选择已保存的连接", "Select saved connection"));
+        updateProfileButtons();
         m_languageBox->setToolTip(text("界面语言；选择时尝试保存到本机。命令行仅覆盖本次启动。",
                                        "UI language; selections are saved locally when writable. CLI applies to this launch only."));
         m_languageWarning->setText(
@@ -537,6 +553,7 @@ private:
     QString m_profileError;
     QString m_pendingProfileId;
     bool m_profilesCorrupt = false;
+    bool m_profilesLoaded = false;
     bool m_languageSaveFailed = false;
     RfbClient::State m_state = RfbClient::State::Disconnected;
     RfbClient::Stats m_lastStats;
