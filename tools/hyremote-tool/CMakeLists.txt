@@ -213,7 +213,7 @@ if(HYREMOTE_BUILD_TESTS)
     set_tests_properties(hyremote-tool-client-ui-diagnostics-compact PROPERTIES
         TIMEOUT 20
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE=compact"
-        PASS_REGULAR_EXPRESSION "TOOL_DIAGNOSTICS_UI_PASS viewport=800x600 lang=zh"
+        PASS_REGULAR_EXPRESSION "TOOL_DIAGNOSTICS_UI_PASS viewport=800x600 actual-geometry=1 reopened-masked=1 lang=zh"
     )
     add_test(
         NAME hyremote-tool-client-ui-diagnostics-wide
@@ -223,7 +223,7 @@ if(HYREMOTE_BUILD_TESTS)
     set_tests_properties(hyremote-tool-client-ui-diagnostics-wide PROPERTIES
         TIMEOUT 20
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE=wide"
-        PASS_REGULAR_EXPRESSION "TOOL_DIAGNOSTICS_UI_PASS viewport=1366x768 lang=en"
+        PASS_REGULAR_EXPRESSION "TOOL_DIAGNOSTICS_UI_PASS viewport=1366x768 actual-geometry=1 reopened-masked=1 lang=en"
     )
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("e2e;tool;fast"
