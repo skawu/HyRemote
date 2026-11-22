@@ -80,6 +80,11 @@ std::atomic<unsigned> g_quickGlPboWorkersCreated{0};
 std::atomic<unsigned> g_quickGlPboWorkersRetired{0};
 std::atomic<unsigned> g_quickGlPboBuffersDeleted{0};
 std::atomic<unsigned> g_quickGlPboInvalidations{0};
+// Test-only deterministic fault injection and proof that a foreign Core
+// thread really posted into the still-active Qt GUI event loop.
+std::atomic<unsigned> g_quickGlStopPostRejectBudget{0};
+std::atomic<unsigned> g_quickGlStopPostsFailed{0};
+std::atomic<unsigned> g_quickGlStopPostsAccepted{0};
 
 // #967: on this route a normal Qt frame is consumed by afterRendering as soon
 // as it happens, so no fixed opportunity wait is needed. Fixed-SHA traces
@@ -453,6 +458,11 @@ public:
         QPointer<QQuickWindow> window;
         std::uint64_t generation = 0;
         bool active = false;
+        // A stopped source may receive stop() from a Core worker AFTER
+        // Qt's event loop has exited. Never queue a BlockingQueuedConnection
+        // in that case; it would deadlock the source destructor.
+        bool stopComplete = true;
+        bool stopInProgress = false;
         bool windowBound = false;
         bool connected = false;
         bool kickPosted = false;
@@ -464,10 +474,15 @@ public:
         unsigned int cpuWorkersInFlight = 0;
         std::vector<hyremote::CaptureRequest> queued;
         std::vector<hyremote::CaptureRequest> inFlight;
-        hyremote::FrameReadyHandler onFrame;
-        hyremote::CaptureEventHandler onEvent;
+        // Immutable start-time handlers; no callback-path std::function copy.
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
+        std::shared_ptr<const hyremote::CaptureEventHandler> onEvent;
         QMetaObject::Connection frameConnection;
         QMetaObject::Connection invalidatedConnection;
+        // Terminate while Qt's GUI resources and event loop are still valid.
+        // QObject::destroyed is synchronous even without Qt event delivery.
+        QMetaObject::Connection targetDestroyedConnection;
+        QMetaObject::Connection appQuitConnection;
         // Session-scoped retire resources: created once per (window, Qt
         // render-context) generation, never per CaptureRequest. The
         // QOffscreenSurface is created/destroyed on the GUI thread; the
@@ -524,12 +539,68 @@ public:
         }
     };
 
+    struct DeliveryBatch {
+        std::vector<hyremote::CaptureRequest> requests;
+        std::atomic<bool> claimed{false};
+        explicit DeliveryBatch(std::vector<hyremote::CaptureRequest> &&items) noexcept
+            : requests(std::move(items)) {}
+    };
+
+    struct CallbackDrain {
+        std::shared_ptr<State> state;
+        bool admitted = false;
+        ~CallbackDrain() noexcept
+        {
+            if (!admitted) return;
+            std::lock_guard<std::mutex> lock(state->mutex);
+            --state->callbacksInFlight;
+            state->drained.notify_all();
+        }
+    };
+
     template<typename Callback>
-    static bool postToDispatcher(const std::shared_ptr<State> &s, Callback callback)
+    static bool postToDispatcher(const std::shared_ptr<State> &s,
+                                 Callback &&callback) noexcept
     {
-        std::lock_guard<std::mutex> lock(s->mutex);
-        return s->active && s->dispatcher
-            && QMetaObject::invokeMethod(s->dispatcher, std::move(callback), Qt::QueuedConnection);
+        try {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            return s->active && s->dispatcher
+                && QMetaObject::invokeMethod(s->dispatcher,
+                    std::forward<Callback>(callback), Qt::QueuedConnection);
+        } catch (...) {
+            return false; // Qt event allocation/dispatch failed
+        }
+    }
+
+    // Core permits a terminal frameReady on a backend-defined thread. If
+    // Qt cannot enqueue the GUI-only pixel publication, retire each accepted
+    // ID as an EMPTY frame. Never access QQuickWindow or a GL object here.
+    static void finishUndispatched(const std::shared_ptr<State> &s,
+                                   std::uint64_t generation,
+                                   const std::vector<hyremote::CaptureRequest> &requests) noexcept
+    {
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
+        CallbackDrain drain{s};
+        {
+            std::lock_guard<std::mutex> lock(s->mutex);
+            if (!s->active || s->generation != generation)
+                return; // stop has already revoked the run
+            callback = s->onFrame;
+            if (!callback || !*callback)
+                return;
+            ++s->callbacksInFlight;
+            drain.admitted = true;
+        }
+        for (const auto &request : requests) {
+            try {
+                hyremote::RemoteFrame empty;
+                empty.requestId = request.id;
+                empty.timing.requestTime = request.requestTime;
+                empty.timing.completionTime = hyremote::Clock::now();
+                empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                (*callback)(std::move(empty));
+            } catch (...) {} // external callback boundary
+        }
     }
 
 public:
@@ -555,6 +626,12 @@ public:
                hyremote::CaptureEventHandler event) override
     {
         auto s = m_state;
+        // Callback owners allocate only during start(), before a request can
+        // be accepted; shared_ptr snapshots are noexcept at delivery.
+        auto frameHandler = std::make_shared<const hyremote::FrameReadyHandler>(
+            std::move(frame));
+        auto eventHandler = std::make_shared<const hyremote::CaptureEventHandler>(
+            std::move(event));
         std::lock_guard<std::mutex> guard(s->mutex);
         if (s->active || s->window.isNull() || !QCoreApplication::instance())
             return false;
@@ -565,6 +642,7 @@ public:
         // calling thread, not just the window's affinity.
         if (QThread::currentThread() != QCoreApplication::instance()->thread())
             return false;
+        s->stopComplete = false; // includes partially-started GUI objects
         ++s->generation;
         s->queued.clear();
         s->inFlight.clear();
@@ -591,28 +669,93 @@ public:
         s->workerStopRequested = false;
         s->workerFailed = false;
         s->idleRelease.clear();
-        s->onFrame = std::move(frame);
-        s->onEvent = std::move(event);
+        s->onFrame = std::move(frameHandler);
+        s->onEvent = std::move(eventHandler);
         s->windowBound = true;
         s->active = true;
+        // The owner must not rely on Session::~Session() running after
+        // QQuickWindow / QGuiApplication destruction: Qt can no longer
+        // safely destroy QOffscreenSurface or render thread resources then.
+        // Signal handlers run on the GUI thread and synchronously quiesce
+        // the worker before the target or application is torn down.
+        s->targetDestroyedConnection = QObject::connect(
+            s->window.data(), &QObject::destroyed, s->window.data(),
+            [s] { stopOnGuiThread(s); }, Qt::DirectConnection);
+        s->appQuitConnection = QObject::connect(
+            QCoreApplication::instance(), &QCoreApplication::aboutToQuit,
+            QCoreApplication::instance(), [s] { stopOnGuiThread(s); },
+            Qt::DirectConnection);
         return true;
     }
 
     void stop() noexcept override
     {
         auto s = m_state;
-        if (!QCoreApplication::instance())
-            return;
-        if (QThread::currentThread() != QCoreApplication::instance()->thread()) {
-            // P1 (#962 review): QOffscreenSurface and the session state are
-            // GUI-thread owned. A worker/transport caller blocks here while
-            // the GUI thread performs the synchronous stop; the GUI thread never
-            // blocks on itself.
-            QMetaObject::invokeMethod(QCoreApplication::instance(),
-                [s] { stopOnGuiThread(s); }, Qt::BlockingQueuedConnection);
+        bool onGuiThread = false;
+        {
+            std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete)
+                return;
+            if (s->stopInProgress) {
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            auto *app = QCoreApplication::instance();
+            if (!app)
+                return; // Qt must outlive an active native CaptureSource
+            onGuiThread = QThread::currentThread() == app->thread();
+        }
+        if (onGuiThread) {
+            stopOnGuiThread(s);
             return;
         }
-        stopOnGuiThread(s);
+
+        for (;;) {
+            std::unique_lock<std::mutex> lock(s->mutex);
+            if (s->stopComplete)
+                return;
+            if (s->stopInProgress) {
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            // Hold State::mutex from reading the Qt receiver to the END of
+            // the QUEUED invoke. aboutToQuit() must first acquire this same
+            // lock inside stopOnGuiThread(); thus it cannot complete teardown
+            // and destroy QCoreApplication between our check and Qt post.
+            // Do not cache the QObject* across retry sleeps. Qt::QueuedConnection
+            // posts asynchronously, so the GUI lambda cannot reenter this
+            // mutex while invokeMethod itself is running.
+            auto *app = QCoreApplication::instance();
+            if (!app)
+                return; // abnormal owner-first destruction cannot use Qt
+
+            bool posted = false;
+            if (!consumeNativeStopPostTestRejection(g_quickGlStopPostRejectBudget)) {
+                try {
+                    posted = QMetaObject::invokeMethod(
+                        app, [s] { stopOnGuiThread(s); },
+                        Qt::QueuedConnection);
+                } catch (...) {
+                    // The Qt post allocation can fail; stop() is noexcept.
+                    // Retry after a bounded backoff, not a terminal wait.
+                }
+            }
+            if (posted)
+                ++g_quickGlStopPostsAccepted;
+            else
+                ++g_quickGlStopPostsFailed;
+            if (posted) {
+                // An accepted GUI post (or Qt's direct lifecycle hook)
+                // owns the actual worker/GPU quiescence. Do not return before
+                // the source's terminal stop state has been published.
+                s->drained.wait(lock, [&] { return s->stopComplete; });
+                return;
+            }
+            s->drained.wait_for(lock, std::chrono::milliseconds(20),
+                                [&] { return s->stopComplete; });
+            if (s->stopComplete)
+                return;
+        }
     }
 
     static void stopOnGuiThread(const std::shared_ptr<State> &s) noexcept
@@ -622,10 +765,17 @@ public:
         QObject *dispatcher = nullptr;
         {
             std::unique_lock<std::mutex> guard(s->mutex);
+            if (s->stopComplete || s->stopInProgress)
+                return;
+            s->stopInProgress = true;
             s->active = false;
             ++s->generation;
             QObject::disconnect(s->frameConnection);
             QObject::disconnect(s->invalidatedConnection);
+            QObject::disconnect(s->targetDestroyedConnection);
+            QObject::disconnect(s->appQuitConnection);
+            s->targetDestroyedConnection = {};
+            s->appQuitConnection = {};
             QObject::disconnect(s->workerFinished);
             s->frameConnection = {};
             s->invalidatedConnection = {};
@@ -661,6 +811,12 @@ public:
             surface->destroy();
             delete surface;
         }
+        {
+            std::lock_guard<std::mutex> guard(s->mutex);
+            s->stopComplete = true;
+            s->stopInProgress = false;
+        }
+        s->drained.notify_all();
     }
 
     bool requestFrame(const hyremote::CaptureRequest &req) override
@@ -672,7 +828,8 @@ public:
             std::lock_guard<std::mutex> guard(s->mutex);
             if (!s->active || s->window.isNull())
                 return false;
-            s->queued.push_back(req);
+            try { s->queued.push_back(req); }
+            catch (...) { return false; } // no accepted identity on allocation failure
             // A valid Core request must have exactly one terminal outcome.
             // No render/frame-fence progress is possible for a hidden or
             // continuously idle QQuickWindow, so NEVER allow an admitted
@@ -680,6 +837,7 @@ public:
             // on the GUI thread without doing GL work; any later GPU
             // completion observes that its request was already revoked.
             const std::uint64_t requestGeneration = s->generation;
+            try {
             QTimer::singleShot(750, s->dispatcher, [s, requestGeneration, id = req.id] {
                 std::vector<hyremote::CaptureRequest> expired;
                 {
@@ -701,6 +859,12 @@ public:
                     reportUnavailable(s, requestGeneration, std::move(expired),
                                       "GL PBO capture request did not complete within 750ms");
             });
+            } catch (...) {
+                // The request was never accepted by Core; a failed timer
+                // arm must not leave a future unsolicited completion.
+                s->queued.pop_back();
+                return false;
+            }
             if (s->kickPosted)
                 return true;
             s->kickPosted = true;
@@ -755,11 +919,13 @@ public:
                 std::lock_guard<std::mutex> guard(s->mutex);
                 if (s->generation == generation && s->active) {
                     s->kickPosted = false;
-                    for (const auto &pending : s->queued) {
-                        if (pending.id != req.id)
-                            acceptedButUnscheduled.push_back(pending);
-                    }
-                    s->queued.clear();
+                    // No allocation while recovering a failed Qt post.
+                    // Other threads may already have accepted their IDs.
+                    acceptedButUnscheduled.swap(s->queued);
+                    acceptedButUnscheduled.erase(std::remove_if(
+                        acceptedButUnscheduled.begin(), acceptedButUnscheduled.end(),
+                        [id = req.id](const auto &r) { return r.id == id; }),
+                        acceptedButUnscheduled.end());
                 }
             }
             if (!acceptedButUnscheduled.empty())
@@ -949,44 +1115,51 @@ private:
                                   std::vector<hyremote::CaptureRequest> requests,
                                   const char *reason)
     {
-        postToDispatcher(s,
-            [s, generation, requests = std::move(requests), reason] {
-                hyremote::FrameReadyHandler callback;
-                hyremote::CaptureEventHandler eventCallback;
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    if (!s->active || s->generation != generation) return;
-                    callback = s->onFrame;
-                    eventCallback = s->onEvent;
-                    ++s->callbacksInFlight;
-                }
-                if (eventCallback) {
+        std::shared_ptr<DeliveryBatch> batch;
+        try { batch = std::make_shared<DeliveryBatch>(std::move(requests)); }
+        catch (...) {
+            finishUndispatched(s, generation, requests);
+            return;
+        }
+        if (!postToDispatcher(s, [s, generation, batch, reason] {
+            std::shared_ptr<const hyremote::FrameReadyHandler> callback;
+            std::shared_ptr<const hyremote::CaptureEventHandler> eventCallback;
+            CallbackDrain drain{s};
+            {
+                std::lock_guard<std::mutex> guard(s->mutex);
+                if (!s->active || s->generation != generation) return;
+                callback = s->onFrame;
+                eventCallback = s->onEvent;
+                if (batch->claimed.exchange(true, std::memory_order_acq_rel))
+                    return;
+                ++s->callbacksInFlight;
+                drain.admitted = true;
+            }
+            if (eventCallback && *eventCallback) {
+                try {
+                    hyremote::CaptureEvent e;
+                    e.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+                    e.recoverable = true;
+                    e.message = reason;
+                    (*eventCallback)(e);
+                } catch (...) {}
+            }
+            if (callback && *callback) {
+                for (const auto &req : batch->requests) {
                     try {
-                        hyremote::CaptureEvent e;
-                        e.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
-                        e.recoverable = true;
-                        e.message = reason;
-                        eventCallback(e);
+                        hyremote::RemoteFrame empty;
+                        empty.requestId = req.id;
+                        empty.timing.requestTime = req.requestTime;
+                        empty.timing.completionTime = hyremote::Clock::now();
+                        empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                        (*callback)(std::move(empty));
                     } catch (...) {}
                 }
-                if (callback) {
-                    for (const auto &req : requests) {
-                        try {
-                            hyremote::RemoteFrame empty;
-                            empty.requestId = req.id;
-                            empty.timing.requestTime = req.requestTime;
-                            empty.timing.completionTime = hyremote::Clock::now();
-                            empty.timing.ptsSource = hyremote::PtsSource::Completion;
-                            callback(std::move(empty));
-                        } catch (...) {}
-                    }
-                }
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    --s->callbacksInFlight;
-                    s->drained.notify_all();
-                }
-            });
+            }
+        })) {
+            if (!batch->claimed.exchange(true, std::memory_order_acq_rel))
+                finishUndispatched(s, generation, batch->requests);
+        }
     }
 
     static void reportFrame(const std::shared_ptr<State> &s,
@@ -997,11 +1170,18 @@ private:
                             int width, int height, float dpr,
                             hyremote::TimePoint renderTime)
     {
-        postToDispatcher(s,
-            [s, generation, contextEpoch, requests = std::move(requests),
+        std::shared_ptr<DeliveryBatch> batch;
+        try { batch = std::make_shared<DeliveryBatch>(std::move(requests)); }
+        catch (...) {
+            finishUndispatched(s, generation, requests);
+            return;
+        }
+        if (!postToDispatcher(s,
+            [s, generation, contextEpoch, batch,
              storage = std::move(storage), width, height, dpr, renderTime] {
-                hyremote::FrameReadyHandler callback;
+                std::shared_ptr<const hyremote::FrameReadyHandler> callback;
                 bool current = false;
+                CallbackDrain drain{s};
                 {
                     std::lock_guard<std::mutex> guard(s->mutex);
                     if (!s->active || s->generation != generation) return;
@@ -1015,9 +1195,14 @@ private:
                             && float(actualDpr) == dpr;
                     }
                     callback = s->onFrame;
+                    if (batch->claimed.exchange(true, std::memory_order_acq_rel))
+                        return;
                     ++s->callbacksInFlight;
+                    drain.admitted = true;
                 }
-                if (callback) {
+                if (!callback || !*callback)
+                    return;
+                try {
                     hyremote::RemoteFrame prototype;
                     prototype.geometry.size = {
                         static_cast<std::uint32_t>(width),
@@ -1029,27 +1214,35 @@ private:
                     prototype.damage = hyremote::Damage::fullFrame();
                     if (current)
                         prototype.storage = storage;
-                    // The content was produced during the actual Qt render,
-                    // NOT when the GPU->CPU result arrived. Frame age must
-                    // include fence retirement and worker conversion time.
                     prototype.timing.pts = renderTime;
                     prototype.timing.ptsSource = hyremote::PtsSource::Render;
                     prototype.timing.completionTime = hyremote::Clock::now();
-                    for (const auto &req : requests) {
+                    for (const auto &req : batch->requests) {
                         try {
                             auto frame = prototype;
                             frame.requestId = req.id;
                             frame.timing.requestTime = req.requestTime;
-                            callback(std::move(frame));
+                            (*callback)(std::move(frame));
+                        } catch (...) {}
+                    }
+                } catch (...) {
+                    // Prototype allocation failed before the first delivery.
+                    // A later callback is not retried: Core owns its boundary.
+                    for (const auto &req : batch->requests) {
+                        try {
+                            hyremote::RemoteFrame empty;
+                            empty.requestId = req.id;
+                            empty.timing.requestTime = req.requestTime;
+                            empty.timing.completionTime = hyremote::Clock::now();
+                            empty.timing.ptsSource = hyremote::PtsSource::Completion;
+                            (*callback)(std::move(empty));
                         } catch (...) {}
                     }
                 }
-                {
-                    std::lock_guard<std::mutex> guard(s->mutex);
-                    --s->callbacksInFlight;
-                    s->drained.notify_all();
-                }
-            });
+            })) {
+            if (!batch->claimed.exchange(true, std::memory_order_acq_rel))
+                finishUndispatched(s, generation, batch->requests);
+        }
     }
 
     static void finishCpuConversion(
@@ -1559,13 +1752,14 @@ public:
         s->cpuConversionPending = true;
         s->cpuWorkersInFlight = 1;
         std::vector<std::pair<hyremote::CaptureRequestId, unsigned>> delivered;
-        s->onFrame = [&](hyremote::RemoteFrame frame) {
+        s->onFrame = std::make_shared<const hyremote::FrameReadyHandler>(
+            [&](hyremote::RemoteFrame frame) {
             if (!frame.requestId || !frame.storage)
                 return;
             const auto plane = frame.storage->mapRead(0);
             if (plane)
                 delivered.emplace_back(*frame.requestId, std::to_integer<unsigned>(plane->data[0]));
-        };
+        });
         const auto submitNext = [](const std::shared_ptr<State> &state) {
             std::lock_guard<std::mutex> guard(state->mutex);
             if (!canSubmitQueuedReadback(*state))
@@ -1595,8 +1789,27 @@ public:
             hyremote::CaptureRequestId{101}, 17u);
         submitNext(s);
         complete(29, nullptr);
-        return first && delivered.size() == 2 && delivered[1] == std::make_pair(
+        const bool second = delivered.size() == 2 && delivered[1] == std::make_pair(
             hyremote::CaptureRequestId{102}, 29u);
+
+        // Deterministic queued-invoke rejection: no GUI event loop or GPU is
+        // needed. Both the error and nominal pixel routes MUST retire the
+        // correct accepted ID as an empty completion when no dispatcher exists.
+        auto rejected = std::make_shared<State>();
+        rejected->active = true;
+        rejected->generation = 1;
+        rejected->dispatcher = nullptr;
+        std::vector<hyremote::CaptureRequestId> rejectedIds;
+        rejected->onFrame = std::make_shared<const hyremote::FrameReadyHandler>(
+            [&](hyremote::RemoteFrame frame) {
+                if (frame.requestId && !frame.storage)
+                    rejectedIds.push_back(*frame.requestId);
+            });
+        reportUnavailable(rejected, 1, {{103, now}}, "dispatch refused");
+        reportFrame(rejected, 1, 0, {{104, now}}, {}, 1, 1, 1.0f, now);
+        return first && second
+            && rejectedIds == std::vector<hyremote::CaptureRequestId>{103, 104}
+            && rejected->callbacksInFlight == 0;
     }
 
     static QuickGlPboFallbackPolicyRegression fallbackPolicyRegression()
@@ -1710,6 +1923,17 @@ QuickGlPboResourceCounts quickGlPboResourceCounts()
 {
     return {g_quickGlPboBuffersCreated.load(), g_quickGlPboBuffersDeleted.load(),
             g_quickGlPboWorkersCreated.load(), g_quickGlPboWorkersRetired.load()};
+}
+
+void quickGlPboRejectNextStopPostForTest(unsigned count) noexcept
+{
+    g_quickGlStopPostRejectBudget.store(count, std::memory_order_release);
+}
+
+QuickNativeStopPostEvidence quickGlPboStopPostEvidence() noexcept
+{
+    return {g_quickGlStopPostsFailed.load(std::memory_order_acquire),
+            g_quickGlStopPostsAccepted.load(std::memory_order_acquire)};
 }
 
 bool runQuickGlPboBatchOwnershipRegression()

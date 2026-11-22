@@ -180,6 +180,16 @@ public:
         if (callback)
             callback(std::move(frame));
     }
+    void emitEvent(const hyremote::CaptureEvent &event)
+    {
+        hyremote::CaptureEventHandler callback;
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            callback = onEvent; // only copies the provider's unarmed lambda
+        }
+        if (callback)
+            callback(event);
+    }
 };
 
 void testUpstreamQtGrabTargetDprVersionContract()
@@ -469,6 +479,44 @@ void testAdaptiveQuickStopDrainsForwardedCoreCallback()
     producer.join();
     stopper.join();
     CHECK(stopped.load(std::memory_order_acquire));
+}
+
+// A callback installed by start() may become non-copyable under memory
+// pressure. No terminal or event forwarding may copy that std::function.
+void testAdaptiveQuickPublishedHandlersDoNotCopyAfterStart()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    bool copyThrows = false;
+    int frameCount = 0;
+    int eventCount = 0;
+    int completedId = 0;
+    CHECK(source.start(
+        throwOnCopy([&](hyremote::RemoteFrame frame) {
+            ++frameCount;
+            completedId = frame.requestId ? static_cast<int>(*frame.requestId) : 0;
+        }, &copyThrows),
+        throwOnCopy([&](const hyremote::CaptureEvent &) {
+            ++eventCount;
+        }, &copyThrows)));
+    copyThrows = true; // ARM AFTER installation; copying now throws bad_alloc
+    CHECK(source.requestFrame({9102, hyremote::Clock::now()}));
+    primary->complete(9102, true);
+    CHECK(frameCount == 1);
+    CHECK(completedId == 9102);
+    hyremote::CaptureEvent event;
+    event.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+    event.recoverable = true;
+    event.message = "controlled provider failure";
+    primary->emitEvent(event);
+    CHECK(eventCount == 1);
+    // A late duplicate after pending.erase must never debit Core twice.
+    primary->complete(9102, true);
+    CHECK(frameCount == 1);
+    source.stop();
 }
 
 void testAdaptiveQuickFallbackSurfaceEpochAndFreshness()
@@ -2406,6 +2454,7 @@ int main(int argc, char **argv)
     testQuickIdleReleaseLatchIsDeferredAndOneShot();
     testAdaptiveQuickForwardsZeroViewerRelease();
     testAdaptiveQuickStopDrainsForwardedCoreCallback();
+    testAdaptiveQuickPublishedHandlersDoNotCopyAfterStart();
     testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
     testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();
     testQuickOpaqueRgbxCpuStorageIsZeroCopy();

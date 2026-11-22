@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hyremote/core/capture_source.hpp"
+#include "quick/quick_native_stop_probe.hpp"
 // The generated export header exists in the Runtime build tree, but the
 // standalone GL-RHI fixture compiles this source directly. Only include it
 // when the build actually provides it; without it the hooks are internal.
@@ -116,6 +117,12 @@ struct QuickGlPboResourceCounts {
     unsigned workersRetired;
 };
 HYREMOTE_QUICK_GL_TEST_EXPORT QuickGlPboResourceCounts quickGlPboResourceCounts();
+
+// Inject exactly N rejected Qt queued-stop postings (test only). A failed
+// attempt must retry until a live GUI post is accepted or a lifecycle signal
+// has already completed shutdown; no accepted Core credit may be stranded.
+HYREMOTE_QUICK_GL_TEST_EXPORT void quickGlPboRejectNextStopPostForTest(unsigned count) noexcept;
+HYREMOTE_QUICK_GL_TEST_EXPORT QuickNativeStopPostEvidence quickGlPboStopPostEvidence() noexcept;
 
 // #790: real offscreen GL proof of the zero-viewer idle release. The worker
 // deletes the one full-frame PBO in the context that created it, the source
