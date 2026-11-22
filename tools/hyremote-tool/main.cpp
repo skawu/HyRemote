@@ -1,5 +1,6 @@
 #include "framebuffer_view.h"
 #include "rfb_client.h"
+#include "language_preference.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -12,6 +13,8 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QPixmap>
+#include <QLocale>
+#include <QSettings>
 #include <QSize>
 #include <QSpinBox>
 #include <QTimer>
@@ -22,10 +25,7 @@
 
 namespace {
 
-enum class Language {
-    Chinese,
-    English,
-};
+using Language = ToolLanguage;
 
 QString humanBytes(quint64 bytes)
 {
@@ -67,7 +67,8 @@ QString stateText(RfbClient::State state, Language language)
 class ClientWindow final : public QWidget
 {
 public:
-    explicit ClientWindow(Language language, QWidget *parent = nullptr)
+    explicit ClientWindow(Language language, ToolLanguagePreference preference,
+                          bool cliOverride, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_client(new RfbClient(this))
         , m_view(new FramebufferView(this))
@@ -101,9 +102,16 @@ public:
         m_connect = new QPushButton(this);
         m_status = new QLabel(this);
         m_languageBox = new QComboBox(this);
-        m_languageBox->addItem(QStringLiteral("中文"));
+        m_languageBox->addItem(QString()); // Auto follows the local OS
+        m_languageBox->addItem(QStringLiteral("简体中文"));
         m_languageBox->addItem(QStringLiteral("English"));
-        m_languageBox->setCurrentIndex(isChinese(m_language) ? 0 : 1);
+        // A launch-only CLI override is visible in the selector but MUST
+        // NOT silently rewrite the previously saved Auto/manual choice.
+        m_languageBox->setCurrentIndex(
+            cliOverride ? (isChinese(m_language) ? 1 : 2)
+                        : (preference == ToolLanguagePreference::Auto
+                               ? 0
+                               : preference == ToolLanguagePreference::Chinese ? 1 : 2));
         connectionRow->addWidget(m_remoteLabel);
         connectionRow->addWidget(m_host, 1);
         connectionRow->addWidget(m_portLabel);
@@ -151,7 +159,13 @@ public:
 #else
         connect(m_languageBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
 #endif
-            m_language = index == 1 ? Language::English : Language::Chinese;
+            const auto preference = index == 1 ? ToolLanguagePreference::Chinese
+                                    : index == 2 ? ToolLanguagePreference::English
+                                                 : ToolLanguagePreference::Auto;
+            QSettings settings;
+            if (!saveToolLanguagePreference(settings, preference))
+                std::cerr << "TOOL_LANGUAGE_SAVE_FAIL" << std::endl;
+            m_language = resolveToolLanguage(preference, QLocale::system());
             retranslateUi();
         });
         connect(m_control, &QCheckBox::toggled, this, [this](bool enabled) {
@@ -329,7 +343,9 @@ private:
                                   : text("远程应用未开启远程输入。",
                                          "The remote application has remote input disabled."));
         m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
-        m_languageBox->setToolTip(text("界面语言", "Interface language"));
+        m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
+        m_languageBox->setToolTip(text("界面语言；手动选择将保存到本机。命令行仅覆盖本次启动。",
+                                       "UI language; manual choices are saved locally. CLI applies to this launch only."));
         m_fps->setText(QStringLiteral("FPS %1").arg(m_lastStats.fps, 0, 'f', 1));
         m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(m_lastStats.mbitPerSecond, 0, 'f', 2));
         m_frames->setText(text("帧数 %1", "Frames %1").arg(m_lastStats.frames));
@@ -419,6 +435,7 @@ private:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("HyRemote"));
     QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
@@ -440,20 +457,27 @@ int main(int argc, char **argv)
         QStringLiteral("仅检查界面构造，不连接 / construct the window without connecting."));
     QCommandLineOption languageOption(
         QStringLiteral("language"),
-        QStringLiteral("界面语言：zh 或 en，默认 zh / UI language: zh or en, default zh."),
-        QStringLiteral("lang"),
-        QStringLiteral("zh"));
+        QStringLiteral("界面语言：zh 或 en，仅本次启动 / UI language: zh or en, this launch only."),
+        QStringLiteral("lang"));
     parser.addOption(connectOption);
     parser.addOption(secondsOption);
     parser.addOption(verifyUiOption);
     parser.addOption(languageOption);
     parser.process(app);
 
-    const Language startLanguage =
-        parser.value(languageOption).compare(QStringLiteral("en"), Qt::CaseInsensitive) == 0
-            ? Language::English
-            : Language::Chinese;
-    ClientWindow window(startLanguage);
+    std::optional<Language> cliLanguage;
+    if (parser.isSet(languageOption)) {
+        cliLanguage = parseToolCliLanguage(parser.value(languageOption));
+        if (!cliLanguage) {
+            std::cerr << "invalid --language; expected zh or en" << std::endl;
+            return 64;
+        }
+    }
+    QSettings languageSettings;
+    const auto savedLanguage = loadToolLanguagePreference(languageSettings);
+    const auto startLanguage = resolveToolLanguage(savedLanguage, QLocale::system(),
+                                                   cliLanguage);
+    ClientWindow window(startLanguage, savedLanguage, cliLanguage.has_value());
     window.show();
 
     if (parser.isSet(verifyUiOption)) {
