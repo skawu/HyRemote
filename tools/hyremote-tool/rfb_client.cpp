@@ -126,9 +126,11 @@ void RfbClient::onDisconnected()
 
 void RfbClient::onSocketError(QAbstractSocket::SocketError error)
 {
-    Q_UNUSED(error)
     if (m_state == State::Disconnected || m_state == State::Failed)
         return;
+    // Local Qt socket error codes are stable factual categories. Preserve
+    // existing errorOccurred(String) for CLI/legacy UI consumers unchanged.
+    emit socketErrorObserved(error);
     fail(m_socket.errorString());
 }
 

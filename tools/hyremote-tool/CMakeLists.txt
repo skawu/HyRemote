@@ -15,6 +15,8 @@ add_executable(hyremote-remote-support-showcase
     connection_profile_store.hpp
     basic_diagnostics.cpp
     basic_diagnostics.hpp
+    tool_diagnostic_session.cpp
+    tool_diagnostic_session.hpp
     ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
@@ -70,6 +72,23 @@ if(HYREMOTE_BUILD_TESTS)
     set_tests_properties(hyremote-tool-basic-diagnostics PROPERTIES TIMEOUT 20)
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("unit;tool;fast" hyremote-tool-basic-diagnostics)
+    endif()
+
+    add_executable(hyremote-tool-diagnostic-session-test
+        test_tool_diagnostic_session.cpp
+        tool_diagnostic_session.cpp
+        tool_diagnostic_session.hpp
+        basic_diagnostics.cpp
+        basic_diagnostics.hpp
+    )
+    target_compile_features(hyremote-tool-diagnostic-session-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-diagnostic-session-test
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network)
+    add_test(NAME hyremote-tool-diagnostic-session
+             COMMAND $<TARGET_FILE:hyremote-tool-diagnostic-session-test>)
+    set_tests_properties(hyremote-tool-diagnostic-session PROPERTIES TIMEOUT 20)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("unit;tool;fast" hyremote-tool-diagnostic-session)
     endif()
 
     add_executable(hyremote-tool-connection-profiles-test
