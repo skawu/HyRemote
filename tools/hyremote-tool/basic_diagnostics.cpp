@@ -3,6 +3,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QHostAddress>
 
 #include <cmath>
 #include <utility>
@@ -13,17 +14,72 @@ bool validEndpointHost(const QString &host)
 {
     if (host.isEmpty() || host.size() > 255)
         return false;
-    // Host-only grammar: no URL scheme, credentials, paths, whitespace,
-    // query, fragment or control text may be copied into a support report.
-    for (const auto ch : host) {
-        const ushort c = ch.unicode();
-        const bool allowed = (c >= 'a' && c <= 'z')
-                             || (c >= 'A' && c <= 'Z')
-                             || (c >= '0' && c <= '9')
-                             || c == '.' || c == '-' || c == '_' || c == ':'
-                             || c == '[' || c == ']' || c == '%';
-        if (!allowed)
+
+    // Display/export only: the operator may opt into showing a *host*,
+    // never arbitrary URL, credentials, path or a host:port combination.
+    // Colons and zone IDs are legal only for structurally valid IPv6.
+    const bool bracketed = host.startsWith(QLatin1Char('['));
+    QString literal = host;
+    if (bracketed) {
+        if (!host.endsWith(QLatin1Char(']')) || host.size() < 4)
             return false;
+        literal = host.mid(1, host.size() - 2);
+    }
+
+    if (bracketed || literal.contains(QLatin1Char(':'))) {
+        const int zonePos = literal.indexOf(QLatin1Char('%'));
+        const QString address = zonePos < 0 ? literal : literal.left(zonePos);
+        if (zonePos >= 0) {
+            const QString scope = literal.mid(zonePos + 1);
+            if (scope.isEmpty() || scope.size() > 32)
+                return false;
+            for (const QChar ch : scope) {
+                const ushort c = ch.unicode();
+                if (!((c >= '0' && c <= '9')
+                      || (c >= 'a' && c <= 'z')
+                      || (c >= 'A' && c <= 'Z')
+                      || c == '_' || c == '-' || c == '.'))
+                    return false;
+            }
+        }
+        QHostAddress ip;
+        return ip.setAddress(address)
+               && ip.protocol() == QAbstractSocket::IPv6Protocol;
+    }
+
+    // DNS/local host labels: no ':' '%', '@', slash, whitespace,
+    // query/fragment characters, drive paths or credential syntax.
+    // Limit a single label to 63 ASCII characters (including IDNA form).
+    const auto labels = host.split(QLatin1Char('.'));
+    for (const QString &label : labels) {
+        if (label.isEmpty() || label.size() > 63
+            || label.startsWith(QLatin1Char('-'))
+            || label.endsWith(QLatin1Char('-')))
+            return false;
+        for (const QChar ch : label) {
+            const ushort c = ch.unicode();
+            if (!((c >= '0' && c <= '9')
+                  || (c >= 'a' && c <= 'z')
+                  || (c >= 'A' && c <= 'Z')
+                  || c == '-' || c == '_'))
+                return false;
+        }
+    }
+
+    // Dot-decimal lookalikes must also be valid IPv4 literals; do not
+    // bless a malformed numeric address as a DNS hostname in a report.
+    bool dottedNumeric = host.contains(QLatin1Char('.'));
+    for (const QChar ch : host) {
+        const ushort c = ch.unicode();
+        if (!((c >= '0' && c <= '9') || c == '.')) {
+            dottedNumeric = false;
+            break;
+        }
+    }
+    if (dottedNumeric) {
+        QHostAddress ip;
+        return ip.setAddress(host)
+               && ip.protocol() == QAbstractSocket::IPv4Protocol;
     }
     return true;
 }

@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStringList>
 
 #include <iostream>
 #include <limits>
@@ -108,6 +109,39 @@ void testExplicitEndpointAndInvalidUntrustedInput()
     snapshot.host = QStringLiteral("https://host.local/path?token=secret");
     report.observeSnapshot(snapshot);
     CHECK(!report.reportJson(reveal).contains("secret"));
+
+    // Independent P2 negative: a character whitelist must not mistake
+    // drive-relative paths, credential text or encoded URLs for hostnames.
+    const QStringList unsafeHosts = {
+        QStringLiteral("C:private.txt"),
+        QStringLiteral("alice:secret"),
+        QStringLiteral("https:%2F%2Fhost.local%2Fpath%3Ftoken%3Dsecret"),
+        QStringLiteral("host:5921"),
+        QStringLiteral("[fe80::1"),
+        QStringLiteral("[factory.local]"),
+        QStringLiteral("fe80::1%bad/scope"),
+        QStringLiteral("factory..local"),
+        QStringLiteral("-bad.local"),
+        QStringLiteral("bad-.local"),
+        QStringLiteral("999.999.999.999"),
+        QStringLiteral("user@host")
+    };
+    for (const QString &unsafeHost : unsafeHosts) {
+        snapshot.host = unsafeHost;
+        report.observeSnapshot(snapshot);
+        const auto masked = report.reportJson(reveal);
+        CHECK(!masked.contains(unsafeHost.toUtf8()));
+        const auto maskedJson = parseReport(masked);
+        CHECK(maskedJson.value(QStringLiteral("endpointRedacted")).toBool());
+        CHECK(maskedJson.value(QStringLiteral("endpoint")).toString()
+              == QStringLiteral("[redacted]"));
+    }
+
+    snapshot.host = QStringLiteral("[fe80::1%eth0]");
+    report.observeSnapshot(snapshot);
+    CHECK(parseReport(report.reportJson(reveal))
+          .value(QStringLiteral("endpoint")).toString()
+          == QStringLiteral("[fe80::1%eth0]"));
 
     snapshot.host = QString(256, QLatin1Char('x'));
     report.observeSnapshot(snapshot);

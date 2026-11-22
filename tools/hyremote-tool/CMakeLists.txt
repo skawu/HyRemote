@@ -63,7 +63,8 @@ if(HYREMOTE_BUILD_TESTS)
         basic_diagnostics.hpp
     )
     target_compile_features(hyremote-tool-basic-diagnostics-test PRIVATE cxx_std_17)
-    target_link_libraries(hyremote-tool-basic-diagnostics-test PRIVATE Qt6::Core)
+    target_link_libraries(hyremote-tool-basic-diagnostics-test
+        PRIVATE Qt6::Core Qt6::Network)
     add_test(NAME hyremote-tool-basic-diagnostics
              COMMAND $<TARGET_FILE:hyremote-tool-basic-diagnostics-test>)
     set_tests_properties(hyremote-tool-basic-diagnostics PROPERTIES TIMEOUT 20)
@@ -158,6 +159,22 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast"
             hyremote-tool-client-ui-language-repeat
             hyremote-tool-client-ui-language-save-failure)
+    endif()
+
+    # Real offscreen window exercises local CRUD through the production
+    # selector's activated(int), verifies persistence and no auto-connect.
+    # Uses a fresh temporary profile file, never the runner's profile.
+    add_test(
+        NAME hyremote-tool-client-ui-profiles
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase> --verify-ui
+    )
+    set_tests_properties(hyremote-tool-client-ui-profiles PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_PROFILE_CASE=crud"
+        PASS_REGULAR_EXPRESSION "TOOL_PROFILE_UI_PASS"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-profiles)
     endif()
 
     # Smoke the REAL application command-line precedence, independent of any

@@ -1,6 +1,7 @@
 #include "framebuffer_view.h"
 #include "rfb_client.h"
 #include "language_preference.hpp"
+#include "connection_profile_store.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -9,6 +10,15 @@
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDir>
+#include <QFormLayout>
+#include <QInputDialog>
+#include <QMessageBox>
+#include <QSignalBlocker>
+#include <QStandardPaths>
 #include <QMetaObject>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -26,6 +36,7 @@
 
 #include <iostream>
 #include <memory>
+#include <utility>
 
 namespace {
 
@@ -72,12 +83,17 @@ class ClientWindow final : public QWidget
 {
 public:
     explicit ClientWindow(Language language, ToolLanguagePreference preference,
-                          bool cliOverride, QSettings &settings, QWidget *parent = nullptr)
+                          bool cliOverride, QSettings &settings,
+                          QString profilePath = {}, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_client(new RfbClient(this))
         , m_view(new FramebufferView(this))
         , m_language(language)
         , m_languageSettings(settings)
+        , m_profileStore(profilePath.isEmpty()
+            ? QDir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))
+                  .filePath(QStringLiteral("connections.json"))
+            : std::move(profilePath))
     {
         auto *root = new QVBoxLayout(this);
         root->setContentsMargins(10, 10, 10, 10);
@@ -126,6 +142,35 @@ public:
         connectionRow->addWidget(m_languageBox);
         root->addLayout(connectionRow);
 
+        // Local non-secret bookmarks. Selection only fills host/port; a
+        // network attempt requires a separate explicit Connect action.
+        auto *profilesRow = new QHBoxLayout;
+        m_profilesLabel = new QLabel(this);
+        m_profilesBox = new QComboBox(this);
+        m_profilesBox->setObjectName(QStringLiteral("tool-saved-connections"));
+        m_profilesBox->setMinimumContentsLength(18);
+        m_profilesBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        m_profileSave = new QPushButton(this);
+        m_profileEdit = new QPushButton(this);
+        m_profileDelete = new QPushButton(this);
+        m_profileConnect = new QPushButton(this);
+        m_profileRecover = new QPushButton(this);
+        m_profileRecover->hide();
+        profilesRow->addWidget(m_profilesLabel);
+        profilesRow->addWidget(m_profilesBox, 1);
+        profilesRow->addWidget(m_profileSave);
+        profilesRow->addWidget(m_profileEdit);
+        profilesRow->addWidget(m_profileDelete);
+        profilesRow->addWidget(m_profileConnect);
+        profilesRow->addWidget(m_profileRecover);
+        root->addLayout(profilesRow);
+
+        m_profileWarning = new QLabel(this);
+        m_profileWarning->setWordWrap(true);
+        m_profileWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_profileWarning->hide();
+        root->addWidget(m_profileWarning);
+
         // Persisted settings may fail (read-only profile, disk/permission
         // errors). Warn in the GUI instead of claiming the selection survived
         // a restart. The language still applies to this running process.
@@ -168,6 +213,22 @@ public:
         };
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        connect(m_profilesBox, &QComboBox::activated, this, [this](int index) {
+#else
+        connect(m_profilesBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) {
+#endif
+            selectProfile(index);
+        });
+        connect(m_profileSave, &QPushButton::clicked, this, [this] { promptSaveProfile(); });
+        connect(m_profileEdit, &QPushButton::clicked, this, [this] { promptEditProfile(); });
+        connect(m_profileDelete, &QPushButton::clicked, this, [this] { promptDeleteProfile(); });
+        connect(m_profileConnect, &QPushButton::clicked, this, [this] {
+            connectSavedProfile();
+        });
+        connect(m_profileRecover, &QPushButton::clicked, this, [this] {
+            promptRecoverProfiles();
+        });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         connect(m_languageBox, &QComboBox::activated, this, [this](int index) {
 #else
@@ -238,6 +299,15 @@ public:
 
         m_view->setInputEnabled(false);
         m_client->setRemoteControlEnabled(false);
+        QString profileError;
+        const auto profileState = m_profileStore.load(&profileError);
+        m_profilesCorrupt = profileState == ToolConnectionProfileStore::LoadState::Corrupt;
+        m_profilesLoaded = profileState == ToolConnectionProfileStore::LoadState::Missing
+                           || profileState == ToolConnectionProfileStore::LoadState::Loaded
+                           || profileState == ToolConnectionProfileStore::LoadState::MigratedV0;
+        if (m_profilesCorrupt || profileState == ToolConnectionProfileStore::LoadState::IoError)
+            m_profileError = profileError;
+        rebuildProfiles();
         applyState(RfbClient::State::Disconnected);
         resize(1000, 700);
     }
@@ -246,6 +316,7 @@ public:
     {
         m_host->setText(host);
         m_port->setValue(port);
+        m_pendingProfileId.clear();
         m_client->connectToHost(host, port);
     }
 
@@ -274,12 +345,17 @@ public:
         return ok;
     }
 
+    bool verifyProfileUi();
+
     bool verifyUi() const
     {
         const bool ok = m_brand && !QGuiApplication::windowIcon().isNull()
                         && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_languageBox && m_languageWarning;
+                        && m_resolution && m_error && m_languageBox && m_languageWarning
+                        && m_profilesLabel && m_profilesBox && m_profileSave
+                        && m_profileEdit && m_profileDelete && m_profileConnect
+                        && m_profileRecover && m_profileWarning;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
@@ -300,6 +376,21 @@ protected:
     }
 
 private:
+    QString selectedProfileId() const;
+    const ToolConnectionProfile *selectedProfile() const;
+    void updateProfileButtons();
+    void rebuildProfiles(const QString &preferredId = {});
+    void selectProfile(int index);
+    bool saveProfileRecord(QString name, QString host, quint16 port,
+                           QString *idOut = nullptr);
+    bool editProfileRecord(const QString &id, QString name, QString host, quint16 port);
+    bool removeProfileRecord(const QString &id);
+    bool connectSavedProfile();
+    void promptSaveProfile();
+    void promptEditProfile();
+    void promptDeleteProfile();
+    void promptRecoverProfiles();
+
     QString text(const char *zh, const char *en) const
     {
         return isChinese(m_language) ? QString::fromUtf8(zh) : QString::fromUtf8(en);
@@ -383,6 +474,14 @@ private:
                                          "The remote application has remote input disabled."));
         m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
         m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
+        m_profilesLabel->setText(text("已保存", "Saved"));
+        m_profileSave->setText(text("保存", "Save"));
+        m_profileEdit->setText(text("编辑", "Edit"));
+        m_profileDelete->setText(text("删除", "Delete"));
+        m_profileConnect->setText(text("连接档案", "Connect saved"));
+        m_profileRecover->setText(text("恢复", "Recover"));
+        m_profilesBox->setItemText(0, text("选择已保存的连接", "Select saved connection"));
+        updateProfileButtons();
         m_languageBox->setToolTip(text("界面语言；选择时尝试保存到本机。命令行仅覆盖本次启动。",
                                        "UI language; selections are saved locally when writable. CLI applies to this launch only."));
         m_languageWarning->setText(
@@ -402,8 +501,10 @@ private:
             m_view->setPlaceholder(placeholderText());
     }
 
-    void toggleConnection()
+    void toggleConnection(bool fromProfile = false)
     {
+        if (!fromProfile)
+            m_pendingProfileId.clear();
         const auto state = m_client->state();
         if (state == RfbClient::State::Connected || state == RfbClient::State::Connecting
             || state == RfbClient::State::Handshaking) {
@@ -430,6 +531,23 @@ private:
         const bool busy = state == RfbClient::State::Connecting
                           || state == RfbClient::State::Handshaking;
         const bool connected = state == RfbClient::State::Connected;
+        if (connected && !m_pendingProfileId.isEmpty()) {
+            QString error;
+            const auto selectedId = m_pendingProfileId;
+            m_pendingProfileId.clear();
+            if (m_profileStore.markUsed(selectedId,
+                    QDateTime::currentDateTimeUtc().toMSecsSinceEpoch(), &error))
+                rebuildProfiles(selectedId);
+            else
+                m_profileError = error;
+        } else if (state == RfbClient::State::Failed
+                   || (state == RfbClient::State::Disconnected
+                       && !m_startingProfileConnection)) {
+            // Ignore only the synchronous *internal* Disconnected emitted
+            // by RfbClient::connectToHost on retry; genuine disconnect or
+            // failure must still cancel the pending recent-use update.
+            m_pendingProfileId.clear();
+        }
         m_host->setEnabled(!busy && !connected);
         m_port->setEnabled(!busy && !connected);
         m_connect->setEnabled(true);
@@ -451,6 +569,15 @@ private:
     FramebufferView *m_view = nullptr;
     Language m_language = Language::Chinese;
     QSettings &m_languageSettings;
+    ToolConnectionProfileStore m_profileStore;
+    QString m_profileError;
+    QString m_pendingProfileId;
+    // RfbClient::connectToHost() synchronously emits Disconnected as part
+    // of resetting a previous Failed session. This transient state is not
+    // user-initiated disconnect and must not discard a new profile attempt.
+    bool m_startingProfileConnection = false;
+    bool m_profilesCorrupt = false;
+    bool m_profilesLoaded = false;
     bool m_languageSaveFailed = false;
     RfbClient::State m_state = RfbClient::State::Disconnected;
     RfbClient::Stats m_lastStats;
@@ -467,6 +594,14 @@ private:
     QLabel *m_status = nullptr;
     QComboBox *m_languageBox = nullptr;
     QLabel *m_languageWarning = nullptr;
+    QLabel *m_profilesLabel = nullptr;
+    QComboBox *m_profilesBox = nullptr;
+    QPushButton *m_profileSave = nullptr;
+    QPushButton *m_profileEdit = nullptr;
+    QPushButton *m_profileDelete = nullptr;
+    QPushButton *m_profileConnect = nullptr;
+    QPushButton *m_profileRecover = nullptr;
+    QLabel *m_profileWarning = nullptr;
     QLabel *m_error = nullptr;
     QLabel *m_fps = nullptr;
     QLabel *m_mbps = nullptr;
@@ -475,6 +610,338 @@ private:
     QLabel *m_resolution = nullptr;
     QCheckBox *m_control = nullptr;
 };
+
+
+QString ClientWindow::selectedProfileId() const
+{
+    return m_profilesBox ? m_profilesBox->currentData().toString() : QString();
+}
+
+const ToolConnectionProfile *ClientWindow::selectedProfile() const
+{
+    const auto id = selectedProfileId();
+    if (id.isEmpty())
+        return nullptr;
+    for (const auto &profile : m_profileStore.profiles()) {
+        if (profile.id == id)
+            return &profile;
+    }
+    return nullptr;
+}
+
+void ClientWindow::updateProfileButtons()
+{
+    if (!m_profilesBox)
+        return;
+    const bool busy = m_state == RfbClient::State::Connecting
+                      || m_state == RfbClient::State::Handshaking
+                      || m_state == RfbClient::State::Connected;
+    const bool hasProfile = selectedProfile() != nullptr;
+    m_profilesBox->setEnabled(m_profilesLoaded && !busy && m_profilesBox->count() > 1);
+    m_profileSave->setEnabled(m_profilesLoaded && !busy);
+    m_profileEdit->setEnabled(m_profilesLoaded && !busy && hasProfile);
+    m_profileDelete->setEnabled(m_profilesLoaded && !busy && hasProfile);
+    m_profileConnect->setEnabled(m_profilesLoaded && !busy && hasProfile);
+    m_profileRecover->setVisible(m_profilesCorrupt);
+    m_profileRecover->setEnabled(m_profilesCorrupt && !busy);
+    m_profileWarning->setText(m_profileError.isEmpty()
+        ? QString()
+        : text("本机连接档案未保存或不可用：", "Local bookmarks were not saved/available: ")
+              + m_profileError);
+    m_profileWarning->setVisible(!m_profileError.isEmpty());
+}
+
+void ClientWindow::rebuildProfiles(const QString &preferredId)
+{
+    const QString keepId = preferredId.isEmpty() ? selectedProfileId() : preferredId;
+    {
+        QSignalBlocker blocker(m_profilesBox);
+        m_profilesBox->clear();
+        m_profilesBox->addItem(text("选择已保存的连接", "Select saved connection"), QString());
+        for (const auto &p : m_profileStore.profiles()) {
+            const QString label = QStringLiteral("%1 · %2:%3")
+                                      .arg(p.name, p.host, QString::number(p.port));
+            m_profilesBox->addItem(label, p.id);
+            m_profilesBox->setItemData(m_profilesBox->count() - 1, label, Qt::ToolTipRole);
+        }
+        const int index = m_profilesBox->findData(keepId);
+        m_profilesBox->setCurrentIndex(index > 0 ? index : 0);
+    }
+    updateProfileButtons();
+}
+
+void ClientWindow::selectProfile(int index)
+{
+    if (index < 0 || index >= m_profilesBox->count())
+        return;
+    const auto id = m_profilesBox->itemData(index).toString();
+    const bool busy = m_state == RfbClient::State::Connecting
+                      || m_state == RfbClient::State::Handshaking
+                      || m_state == RfbClient::State::Connected;
+    if (!busy && !id.isEmpty()) {
+        for (const auto &p : m_profileStore.profiles()) {
+            if (p.id == id) {
+                m_host->setText(p.host);
+                m_port->setValue(p.port);
+                break;
+            }
+        }
+    }
+    updateProfileButtons();
+}
+
+bool ClientWindow::saveProfileRecord(QString name, QString host, quint16 port,
+                                     QString *idOut)
+{
+    QString id, error;
+    if (!m_profileStore.add(std::move(name), std::move(host), port, &id, &error)) {
+        m_profileError = error;
+        updateProfileButtons();
+        return false;
+    }
+    m_profileError.clear();
+    rebuildProfiles(id);
+    if (idOut)
+        *idOut = id;
+    return true;
+}
+
+bool ClientWindow::editProfileRecord(const QString &id, QString name,
+                                     QString host, quint16 port)
+{
+    QString error;
+    if (!m_profileStore.edit(id, std::move(name), std::move(host), port, &error)) {
+        m_profileError = error;
+        updateProfileButtons();
+        return false;
+    }
+    m_profileError.clear();
+    rebuildProfiles(id);
+    if (const auto *profile = selectedProfile()) {
+        m_host->setText(profile->host);
+        m_port->setValue(profile->port);
+    }
+    return true;
+}
+
+bool ClientWindow::removeProfileRecord(const QString &id)
+{
+    QString error;
+    if (!m_profileStore.remove(id, &error)) {
+        m_profileError = error;
+        updateProfileButtons();
+        return false;
+    }
+    m_profileError.clear();
+    rebuildProfiles();
+    return true;
+}
+
+bool ClientWindow::connectSavedProfile()
+{
+    if (!m_profilesLoaded || !m_profileConnect->isEnabled())
+        return false;
+    const auto *profile = selectedProfile();
+    if (!profile)
+        return false;
+    const QString id = profile->id;
+    m_host->setText(profile->host);
+    m_port->setValue(profile->port);
+    // A saved bookmark is never a ControlGrant; each new RFB session
+    // explicitly begins view-only, regardless of any previous connection.
+    m_control->setChecked(false);
+    m_view->setInputEnabled(false);
+    m_client->setRemoteControlEnabled(false);
+    m_pendingProfileId = id;
+    m_startingProfileConnection = true;
+    toggleConnection(true);
+    m_startingProfileConnection = false;
+    return true;
+}
+
+void ClientWindow::promptSaveProfile()
+{
+    const QString host = m_host->text().trimmed();
+    if (host.isEmpty()) {
+        m_profileError = text("请先填写远程主机地址。", "Enter a remote host first.");
+        updateProfileButtons();
+        return;
+    }
+    bool accepted = false;
+    const QString name = QInputDialog::getText(
+        this, text("保存连接", "Save connection"),
+        text("本机显示名称", "Local display name"),
+        QLineEdit::Normal, host, &accepted);
+    if (!accepted)
+        return;
+    if (!saveProfileRecord(name, host, static_cast<quint16>(m_port->value())))
+        QMessageBox::warning(this, text("保存失败", "Save failed"), m_profileError);
+}
+
+void ClientWindow::promptEditProfile()
+{
+    const auto *selected = selectedProfile();
+    if (!selected)
+        return;
+    const auto current = *selected;
+    QDialog dialog(this);
+    dialog.setWindowTitle(text("编辑连接档案", "Edit saved connection"));
+    QFormLayout form(&dialog);
+    QLineEdit name(current.name, &dialog);
+    QLineEdit host(current.host, &dialog);
+    QSpinBox port(&dialog);
+    port.setRange(1, 65535);
+    port.setValue(current.port);
+    form.addRow(text("名称", "Name"), &name);
+    form.addRow(text("远程主机", "Remote host"), &host);
+    form.addRow(text("端口", "Port"), &port);
+    QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                             Qt::Horizontal, &dialog);
+    form.addRow(&buttons);
+    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    if (!editProfileRecord(current.id, name.text(), host.text(),
+                           static_cast<quint16>(port.value())))
+        QMessageBox::warning(this, text("修改失败", "Update failed"), m_profileError);
+}
+
+void ClientWindow::promptDeleteProfile()
+{
+    const auto *selected = selectedProfile();
+    if (!selected)
+        return;
+    const auto current = *selected;
+    if (QMessageBox::question(
+            this, text("删除本机档案", "Delete local bookmark"),
+            text("仅删除本机连接档案，不影响远程设备。确认删除“",
+                 "Delete only this local bookmark (not the remote device): ")
+                + current.name + QStringLiteral("?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        return;
+    if (!removeProfileRecord(current.id))
+        QMessageBox::warning(this, text("删除失败", "Delete failed"), m_profileError);
+}
+
+void ClientWindow::promptRecoverProfiles()
+{
+    if (!m_profilesCorrupt)
+        return;
+    if (QMessageBox::question(
+            this, text("恢复本机档案", "Recover local bookmarks"),
+            text("连接档案损坏。先将原文件隔离备份，再建立空列表？",
+                 "Bookmarks are corrupt. Preserve the original as a backup and start an empty list?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        return;
+    QString backup, error;
+    if (!m_profileStore.recoverCorrupt(&backup, &error)) {
+        m_profileError = error;
+        updateProfileButtons();
+        QMessageBox::warning(this, text("恢复失败", "Recovery failed"), error);
+        return;
+    }
+    m_profilesCorrupt = false;
+    m_profilesLoaded = true;
+    m_profileError.clear();
+    rebuildProfiles();
+    QMessageBox::information(
+        this, text("恢复完成", "Recovery complete"),
+        text("原档案已保存到：", "Original bookmarks preserved at: ") + backup);
+}
+
+bool ClientWindow::verifyProfileUi()
+{
+    const bool empty = m_profilesLoaded && !m_profilesCorrupt && m_profilesBox
+                       && m_profilesBox->count() == 1
+                       && selectedProfileId().isEmpty()
+                       && m_client->state() == RfbClient::State::Disconnected
+                       && !m_view->inputEnabled();
+    QString id;
+    const bool saved = saveProfileRecord(QStringLiteral("Factory A"),
+                                         QStringLiteral("192.168.1.6"), 5921, &id);
+    const bool listed = m_profilesBox->count() == 2 && selectedProfileId() == id;
+    m_host->setText(QStringLiteral("unsaved.example"));
+    m_port->setValue(6000);
+    const int index = m_profilesBox->findData(id);
+    const bool activated = index > 0 && QMetaObject::invokeMethod(
+        m_profilesBox, "activated", Qt::DirectConnection, Q_ARG(int, index));
+    const bool selected = m_host->text() == QStringLiteral("192.168.1.6")
+                          && m_port->value() == 5921
+                          && m_client->state() == RfbClient::State::Disconnected;
+    // State-machine regression only (NO real socket): the RFB client
+    // performs a synchronous internal Disconnected during a Failed retry.
+    m_pendingProfileId = id;
+    m_startingProfileConnection = true;
+    applyState(RfbClient::State::Disconnected);
+    const bool retryPreserved = m_pendingProfileId == id;
+    m_startingProfileConnection = false;
+    applyState(RfbClient::State::Connected);
+    const bool recordedSuccess = !m_profileStore.profiles().isEmpty()
+         && m_profileStore.profiles().first().lastUsedUtcMs > 0
+         && m_pendingProfileId.isEmpty();
+    applyState(RfbClient::State::Disconnected);
+    const bool edited = editProfileRecord(id, QStringLiteral("Factory A renamed"),
+                                          QStringLiteral("factory-a.local"), 5931);
+    ToolConnectionProfileStore restarted(m_profileStore.filePath());
+    const bool persisted = restarted.load() == ToolConnectionProfileStore::LoadState::Loaded
+                           && restarted.profiles().size() == 1
+                           && restarted.profiles().at(0).name == QStringLiteral("Factory A renamed")
+                           && restarted.profiles().at(0).host == QStringLiteral("factory-a.local")
+                           && restarted.profiles().at(0).port == 5931;
+    // Multiple bookmarks + a long (but valid) host exercise selector data
+    // ownership and non-network selection without touching the user's files.
+    const QString longHost = QString(220, QLatin1Char('a')) + QStringLiteral(".local");
+    QString secondId, thirdId;
+    const bool many = saveProfileRecord(QStringLiteral("Factory B"), longHost,
+                                        5930, &secondId)
+                      && saveProfileRecord(QStringLiteral("Factory C"),
+                                           QStringLiteral("10.0.0.9"), 5940, &thirdId)
+                      && m_profilesBox->count() == 4;
+    const int longIndex = m_profilesBox->findData(secondId);
+    if (longIndex > 0)
+        m_profilesBox->setCurrentIndex(longIndex);
+    const bool longActivated = longIndex > 0 && QMetaObject::invokeMethod(
+        m_profilesBox, "activated", Qt::DirectConnection, Q_ARG(int, longIndex));
+    const bool longSelected = longActivated
+                              && m_host->text() == longHost
+                              && m_port->value() == 5930
+                              && m_client->state() == RfbClient::State::Disconnected;
+    // A literal percent-digit in a user-supplied display name/IPv6 zone
+    // must never be re-expanded by a second QString::arg call.
+    QString percentId;
+    const bool percentSaved = saveProfileRecord(
+        QStringLiteral("Lab %1"), QStringLiteral("fe80::1%2"), 5921, &percentId);
+    const int percentIndex = m_profilesBox->findData(percentId);
+    const bool percentLabel = percentSaved && percentIndex > 0
+                              && m_profilesBox->itemText(percentIndex)
+                                 == QStringLiteral("Lab %1 · fe80::1%2:5921")
+                              && m_profilesBox->itemData(percentIndex, Qt::ToolTipRole).toString()
+                                 == QStringLiteral("Lab %1 · fe80::1%2:5921");
+    const bool deleted = removeProfileRecord(percentId)
+                         && removeProfileRecord(secondId)
+                         && removeProfileRecord(thirdId)
+                         && removeProfileRecord(id)
+                         && m_profilesBox->count() == 1
+                         && m_profileStore.profiles().isEmpty()
+                         && m_client->state() == RfbClient::State::Disconnected;
+    const bool ok = empty && saved && listed && activated && selected
+                    && retryPreserved && recordedSuccess
+                    && edited && persisted && many && longSelected
+                    && percentLabel && deleted;
+    std::cout << (ok ? "TOOL_PROFILE_UI_PASS" : "TOOL_PROFILE_UI_FAIL")
+              << " empty=" << empty << " saved=" << saved
+              << " listed=" << listed << " activated=" << activated
+              << " selected=" << selected << " retry-preserved=" << retryPreserved
+              << " success-recency=" << recordedSuccess
+              << " edited=" << edited
+              << " persisted=" << persisted
+              << " many=" << many << " long-host=" << longSelected
+              << " percent-label=" << percentLabel << " deleted=" << deleted
+              << " disconnected=" << (m_client->state() == RfbClient::State::Disconnected)
+              << std::endl;
+    return ok;
+}
 
 }  // namespace
 
@@ -567,19 +1034,44 @@ int main(int argc, char **argv)
     } else {
         languageSettings = std::make_unique<QSettings>();
     }
+    // Offscreen profile GUI regression uses a fresh throwaway file, never
+    // the user's actual bookmark store and never an implicit socket connect.
+    const QString profileTestCase = parser.isSet(verifyUiOption)
+        ? qEnvironmentVariable("HYREMOTE_TOOL_TEST_PROFILE_CASE") : QString();
+    if (!profileTestCase.isEmpty()
+        && profileTestCase != QStringLiteral("crud")) {
+        std::cerr << "invalid HYREMOTE_TOOL_TEST_PROFILE_CASE" << std::endl;
+        return 64;
+    }
+    if (!profileTestCase.isEmpty() && !testCase.isEmpty()) {
+        std::cerr << "only one Tool UI regression case may run" << std::endl;
+        return 64;
+    }
+    std::unique_ptr<QTemporaryDir> profileTestRoot;
+    QString profilePath;
+    if (!profileTestCase.isEmpty()) {
+        profileTestRoot = std::make_unique<QTemporaryDir>();
+        if (!profileTestRoot->isValid()) {
+            std::cerr << "TOOL_PROFILE_UI_TEMP_FAIL" << std::endl;
+            return 1;
+        }
+        profilePath = profileTestRoot->filePath(QStringLiteral("connections.json"));
+    }
     const auto savedLanguage = loadToolLanguagePreference(*languageSettings);
     const auto startLanguage = resolveToolLanguage(savedLanguage, QLocale::system(),
                                                    cliLanguage);
     ClientWindow window(startLanguage, savedLanguage, cliLanguage.has_value(),
-                        *languageSettings);
+                        *languageSettings, profilePath);
     window.show();
 
     if (parser.isSet(verifyUiOption)) {
-        QTimer::singleShot(0, &window, [&window, &app, testCase] {
-            const bool ok = testCase.isEmpty()
-                                ? window.verifyUi()
-                                : window.verifyLanguageSelection(
-                                      testCase == QStringLiteral("save-failure"));
+        QTimer::singleShot(0, &window, [&window, &app, testCase, profileTestCase] {
+            const bool ok = !profileTestCase.isEmpty()
+                                ? window.verifyProfileUi()
+                                : testCase.isEmpty()
+                                      ? window.verifyUi()
+                                      : window.verifyLanguageSelection(
+                                            testCase == QStringLiteral("save-failure"));
             app.exit(ok ? 0 : 1);
         });
         return app.exec();
