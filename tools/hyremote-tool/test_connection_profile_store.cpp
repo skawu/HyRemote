@@ -166,8 +166,41 @@ void testCorruptionAndExplicitRecovery()
     ToolConnectionProfileStore huge(path);
     CHECK(huge.load(&error) == ToolConnectionProfileStore::LoadState::Corrupt);
     CHECK(!huge.add(QStringLiteral("Z"), QStringLiteral("hostz"), 5901));
-    CHECK(huge.recoverCorrupt(&backup, &error));
-    CHECK(QFileInfo::exists(backup));
+    CHECK(!huge.recoverCorrupt(&backup, &error));
+    CHECK(QFileInfo::exists(path)); // over-limit: no bounded snapshot to check
+}
+
+void testTwoCorruptionRecoveriesCannotClobberFreshData()
+{
+    QTemporaryDir root;
+    CHECK(root.isValid());
+    if (!root.isValid())
+        return;
+    const auto path = root.filePath(QStringLiteral("profiles.json"));
+    CHECK(writeFile(path, "{bad-json"));
+    ToolConnectionProfileStore first(path), second(path);
+    QString error;
+    CHECK(first.load(&error) == ToolConnectionProfileStore::LoadState::Corrupt);
+    CHECK(second.load(&error) == ToolConnectionProfileStore::LoadState::Corrupt);
+    CHECK(second.recoverCorrupt(nullptr, &error));
+    CHECK(second.add(QStringLiteral("Recovered"),
+                     QStringLiteral("new-hmi.local"), 5901, nullptr, &error));
+    CHECK(!first.recoverCorrupt(nullptr, &error)); // original bad snapshot is stale
+    CHECK(error.contains(QStringLiteral("changed")));
+    ToolConnectionProfileStore restored(path);
+    CHECK(restored.load(&error) == ToolConnectionProfileStore::LoadState::Loaded);
+    CHECK(restored.profiles().size() == 1);
+    CHECK(restored.profiles().at(0).name == QStringLiteral("Recovered"));
+
+    // A file created as empty after a missing-file load is a real concurrent
+    // write, not the same as no file. The stale instance may not erase it.
+    const auto emptyPath = root.filePath(QStringLiteral("empty.json"));
+    ToolConnectionProfileStore missing(emptyPath);
+    CHECK(missing.load(&error) == ToolConnectionProfileStore::LoadState::Missing);
+    CHECK(writeFile(emptyPath, ""));
+    CHECK(!missing.add(QStringLiteral("A"), QStringLiteral("hmi.local"),
+                       5901, nullptr, &error));
+    CHECK(QFileInfo::exists(emptyPath));
 }
 
 void testLegacyMigration()
@@ -201,6 +234,7 @@ int main(int argc, char **argv)
     testSaveEditOrderAndRestart();
     testStaleWriterAndFailedDisk();
     testCorruptionAndExplicitRecovery();
+    testTwoCorruptionRecoveriesCannotClobberFreshData();
     testLegacyMigration();
     if (failures) {
         std::cerr << "TOOL_PROFILES_FAILED=" << failures << '\n';
