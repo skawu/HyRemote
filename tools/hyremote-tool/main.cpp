@@ -748,6 +748,97 @@ bool ClientWindow::connectSavedProfile()
     return true;
 }
 
+void ClientWindow::promptSaveProfile()
+{
+    const QString host = m_host->text().trimmed();
+    if (host.isEmpty()) {
+        m_profileError = text("请先填写远程主机地址。", "Enter a remote host first.");
+        updateProfileButtons();
+        return;
+    }
+    bool accepted = false;
+    const QString name = QInputDialog::getText(
+        this, text("保存连接", "Save connection"),
+        text("本机显示名称", "Local display name"),
+        QLineEdit::Normal, host, &accepted);
+    if (!accepted)
+        return;
+    if (!saveProfileRecord(name, host, static_cast<quint16>(m_port->value())))
+        QMessageBox::warning(this, text("保存失败", "Save failed"), m_profileError);
+}
+
+void ClientWindow::promptEditProfile()
+{
+    const auto *selected = selectedProfile();
+    if (!selected)
+        return;
+    const auto current = *selected;
+    QDialog dialog(this);
+    dialog.setWindowTitle(text("编辑连接档案", "Edit saved connection"));
+    QFormLayout form(&dialog);
+    QLineEdit name(current.name, &dialog);
+    QLineEdit host(current.host, &dialog);
+    QSpinBox port(&dialog);
+    port.setRange(1, 65535);
+    port.setValue(current.port);
+    form.addRow(text("名称", "Name"), &name);
+    form.addRow(text("远程主机", "Remote host"), &host);
+    form.addRow(text("端口", "Port"), &port);
+    QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                             Qt::Horizontal, &dialog);
+    form.addRow(&buttons);
+    connect(&buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(&buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    if (!editProfileRecord(current.id, name.text(), host.text(),
+                           static_cast<quint16>(port.value())))
+        QMessageBox::warning(this, text("修改失败", "Update failed"), m_profileError);
+}
+
+void ClientWindow::promptDeleteProfile()
+{
+    const auto *selected = selectedProfile();
+    if (!selected)
+        return;
+    const auto current = *selected;
+    if (QMessageBox::question(
+            this, text("删除本机档案", "Delete local bookmark"),
+            text("仅删除本机连接档案，不影响远程设备。确认删除“",
+                 "Delete only this local bookmark (not the remote device): ")
+                + current.name + QStringLiteral("?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        return;
+    if (!removeProfileRecord(current.id))
+        QMessageBox::warning(this, text("删除失败", "Delete failed"), m_profileError);
+}
+
+void ClientWindow::promptRecoverProfiles()
+{
+    if (!m_profilesCorrupt)
+        return;
+    if (QMessageBox::question(
+            this, text("恢复本机档案", "Recover local bookmarks"),
+            text("连接档案损坏。先将原文件隔离备份，再建立空列表？",
+                 "Bookmarks are corrupt. Preserve the original as a backup and start an empty list?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+        return;
+    QString backup, error;
+    if (!m_profileStore.recoverCorrupt(&backup, &error)) {
+        m_profileError = error;
+        updateProfileButtons();
+        QMessageBox::warning(this, text("恢复失败", "Recovery failed"), error);
+        return;
+    }
+    m_profilesCorrupt = false;
+    m_profilesLoaded = true;
+    m_profileError.clear();
+    rebuildProfiles();
+    QMessageBox::information(
+        this, text("恢复完成", "Recovery complete"),
+        text("原档案已保存到：", "Original bookmarks preserved at: ") + backup);
+}
+
 bool ClientWindow::verifyProfileUi()
 {
     const bool empty = m_profilesLoaded && !m_profilesCorrupt && m_profilesBox
