@@ -10,9 +10,9 @@ HyRemoteTool 是 HyRemote 的**进程外配套客户端**。它运行在业务�
 
 本功能尚处于 V0.3.6.0 的开发与验收阶段，**不是已发布版本承诺**。新的“已保存”区域可以显式将当前主机/端口保存为本机书签，选择后回填连接地址（不会自动连接）；“连接档案”才会发起一次新会话，并始终从只读开始。支持本机编辑、删除确认、最近成功使用排序与重启后保留。只保存名称、主机、端口和最近使用时间；**不保存密码、凭据、权限或远端设备信任**。损坏档案默认不改写，恢复必须由用户确认，先隔离备份原文件。未知或过大的损坏档案可能需要人工恢复。
 
-## V0.3.6.0 S1 开发中：基础诊断数据模型
+## V0.3.6.0 S1 开发中：基础诊断（会话接线与本机预览）
 
-按 #585 加入**仅本机客户端来源**的报告模型候选，不是已发布诊断面板或 SDK 诊断。只记录本机观察到的连接阶段、错误类别、FPS/字节/帧/尺寸与最多 24 条状态事件；完整 JSON 限 8 KiB，绝不自动上传/复制。默认把设备端点遮盖为 `[redacted]`，操作者显式选择后也仅允许真正的 IPv4、IPv6（含合法作用域）或 DNS/本机主机名；包含路径、凭据、URL、无效地址的一律拒绝导出。远端 CPU、身份、Runtime 版本不可用；当前 Tool 已成功连接的 RFB None 明确标记未加密。后续还需要实际客户端采集接线、界面预览/复制及真实故障分类测试，不能将模型 CTest 当作完整交付。
+按 #585 加入**仅本机客户端来源**的报告模型候选，不是已发布诊断面板或 SDK 诊断。只记录本机观察到的连接阶段、错误类别、FPS/字节/帧/尺寸与最多 24 条状态事件；完整 JSON 限 8 KiB，绝不自动上传/复制。默认把设备端点遮盖为 `[redacted]`，操作者显式选择后也仅允许真正的 IPv4、IPv6（含合法作用域）或 DNS/本机主机名；包含路径、凭据、URL、无效地址的一律拒绝导出。远端 CPU、身份、Runtime 版本不可用；当前 Tool 已成功连接的 RFB None 明确标记未加密。现阶段已将真实 RFB 客户端状态、Qt 结构化 SocketError、连接统计和远程控制请求意图接到本机诊断会话，支持右上角“诊断”打开只读双语面板，用户主动刷新、预览、显式选择显示合法端点、复制本机报告或通过文件对话框保存。开启面板默认重新隐藏设备地址；不同连接尝试清除旧主机、指标和错误；报告不包括远端原始拒绝文本。复制不会操作远端 RFB 剪贴板，保存只在用户明确选择本机文件后执行。当前已有模型单测和离线窗口预览操作测试，仍需要真实假 RFB 拒绝/DNS/超时/畸形/断连、真实 Windows 窗口及完整 #586 现场验收；不能因这些 CTest 合并而称 S1 已发布。
 
 ## V0.3.0.0 范围
 
@@ -28,7 +28,7 @@ HyRemoteTool 是 HyRemote 的**进程外配套客户端**。它运行在业务�
 
 - 管理面操作（远程启动/停止、策略或主机密码修改）；
 - VNC-auth 连接密码；
-- 剪贴板、全屏、多显示器、TLS/VeNCrypt 和文件传输。
+- **远端剪贴板互通**、全屏、多显示器、TLS/VeNCrypt 和文件传输（本机诊断 JSON 的显式复制不属于远端剪贴板功能）。
 
 界面不会为这些功能放置无效占位按钮。它们属于后续 companion-tool 阶段，见 [`docs/internal/hyremote-tool-plan.md`](../../docs/internal/hyremote-tool-plan.md)。
 
@@ -77,7 +77,7 @@ Scope:
 - explicit Connecting / Connected / Disconnected / Failed state and last error;
 - reconnect without restarting the tool.
 
-Not supported: management-plane actions, VNC-auth passwords, clipboard, fullscreen, multi-monitor, TLS/VeNCrypt and file transfer.
+Not supported: management-plane actions, VNC-auth passwords, **remote clipboard synchronization**, fullscreen, multi-monitor, TLS/VeNCrypt and file transfer. The local Diagnostics view can preview a redacted client-only JSON report; copying it is an explicit local clipboard action, never an RFB clipboard transfer.
 
 Run:
 
