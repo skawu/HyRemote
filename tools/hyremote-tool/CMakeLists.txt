@@ -99,6 +99,35 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui)
     endif()
 
+    # Exercise the production QComboBox::activated signal with an already
+    # selected item and a local settings write failure. The verification
+    # command uses throwaway QSettings, never the developer's real profile.
+    add_test(
+        NAME hyremote-tool-client-ui-language-repeat
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-language-repeat PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_LANGUAGE_CASE=repeat"
+        PASS_REGULAR_EXPRESSION "TOOL_LANGUAGE_UI_PASS mode=repeat-select"
+    )
+    add_test(
+        NAME hyremote-tool-client-ui-language-save-failure
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-language-save-failure PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_LANGUAGE_CASE=save-failure"
+        PASS_REGULAR_EXPRESSION "TOOL_LANGUAGE_UI_PASS mode=save-failure"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast"
+            hyremote-tool-client-ui-language-repeat
+            hyremote-tool-client-ui-language-save-failure)
+    endif()
+
     # Smoke the REAL application command-line precedence, independent of any
     # saved UI preference in the runner's home directory.
     add_test(
