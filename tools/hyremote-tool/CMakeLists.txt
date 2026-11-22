@@ -10,6 +10,7 @@ add_executable(hyremote-remote-support-showcase
     framebuffer_view.h
     rfb_client.cpp
     rfb_client.h
+    language_preference.hpp
     ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
@@ -52,6 +53,19 @@ else()
 endif()
 
 if(HYREMOTE_BUILD_TESTS)
+    add_executable(hyremote-tool-language-preference-test
+        test_language_preference.cpp
+        language_preference.hpp
+    )
+    target_compile_features(hyremote-tool-language-preference-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-language-preference-test PRIVATE Qt6::Core)
+    add_test(NAME hyremote-tool-language-preference
+             COMMAND $<TARGET_FILE:hyremote-tool-language-preference-test>)
+    set_tests_properties(hyremote-tool-language-preference PROPERTIES TIMEOUT 20)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("unit;tool;fast" hyremote-tool-language-preference)
+    endif()
+
     add_executable(hyremote-tool-rfb-client-test
         test_rfb_client.cpp
         rfb_client.cpp
