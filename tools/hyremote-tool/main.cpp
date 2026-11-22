@@ -889,19 +889,42 @@ bool ClientWindow::verifyProfileUi()
                            && restarted.profiles().at(0).name == QStringLiteral("Factory A renamed")
                            && restarted.profiles().at(0).host == QStringLiteral("factory-a.local")
                            && restarted.profiles().at(0).port == 5931;
-    const bool deleted = removeProfileRecord(id) && m_profilesBox->count() == 1
+    // Multiple bookmarks + a long (but valid) host exercise selector data
+    // ownership and non-network selection without touching the user's files.
+    const QString longHost = QString(220, QLatin1Char('a')) + QStringLiteral(".local");
+    QString secondId, thirdId;
+    const bool many = saveProfileRecord(QStringLiteral("Factory B"), longHost,
+                                        5930, &secondId)
+                      && saveProfileRecord(QStringLiteral("Factory C"),
+                                           QStringLiteral("10.0.0.9"), 5940, &thirdId)
+                      && m_profilesBox->count() == 4;
+    const int longIndex = m_profilesBox->findData(secondId);
+    if (longIndex > 0)
+        m_profilesBox->setCurrentIndex(longIndex);
+    const bool longActivated = longIndex > 0 && QMetaObject::invokeMethod(
+        m_profilesBox, "activated", Qt::DirectConnection, Q_ARG(int, longIndex));
+    const bool longSelected = longActivated
+                              && m_host->text() == longHost
+                              && m_port->value() == 5930
+                              && m_client->state() == RfbClient::State::Disconnected;
+    const bool deleted = removeProfileRecord(secondId)
+                         && removeProfileRecord(thirdId)
+                         && removeProfileRecord(id)
+                         && m_profilesBox->count() == 1
                          && m_profileStore.profiles().isEmpty()
                          && m_client->state() == RfbClient::State::Disconnected;
     const bool ok = empty && saved && listed && activated && selected
                     && retryPreserved && recordedSuccess
-                    && edited && persisted && deleted;
+                    && edited && persisted && many && longSelected && deleted;
     std::cout << (ok ? "TOOL_PROFILE_UI_PASS" : "TOOL_PROFILE_UI_FAIL")
               << " empty=" << empty << " saved=" << saved
               << " listed=" << listed << " activated=" << activated
               << " selected=" << selected << " retry-preserved=" << retryPreserved
               << " success-recency=" << recordedSuccess
               << " edited=" << edited
-              << " persisted=" << persisted << " deleted=" << deleted
+              << " persisted=" << persisted
+              << " many=" << many << " long-host=" << longSelected
+              << " deleted=" << deleted
               << " disconnected=" << (m_client->state() == RfbClient::State::Disconnected)
               << std::endl;
     return ok;
