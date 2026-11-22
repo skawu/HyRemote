@@ -13,10 +13,12 @@ permissions:
   contents: read
   pull-requests: read
 
-concurrency:
-  group: review-gate-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
+# #1032: This is a REQUIRED status check. Cancelling one of several same-SHA
+# pull_request_review_comment runs leaves a "p1-p2-disposition: cancelled"
+# check in GitHub's protection decision, even after a later run succeeds.
+# Several inline review events are normal for one Codex review. This short
+# policy check must always complete and be observed on every event: no
+# cancel-in-progress group and no stale-success shortcut.
 jobs:
   p1-p2-disposition:
     runs-on: ubuntu-24.04
