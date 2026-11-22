@@ -48,4 +48,5 @@ private:
     bool m_loaded = false;
     bool m_corrupt = false;
     QByteArray m_diskDigest; // optimistic stale-writer detection under QLockFile
+    QByteArray m_corruptDigest; // exact bounded bad-file snapshot for explicit recovery
 };
