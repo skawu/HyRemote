@@ -164,12 +164,13 @@ bool ToolConnectionProfileStore::validSet(const QVector<ToolConnectionProfile> &
         const QString name = item.name.toCaseFolded();
         const QString endpoint = item.host.toCaseFolded()
                                  + QLatin1Char('/') + QString::number(item.port);
-        if (ids.contains(item.id) || names.contains(name)
+        const QString foldedId = item.id.toCaseFolded();
+        if (ids.contains(foldedId) || names.contains(name)
             || endpoints.contains(endpoint)) {
             fail(error, QStringLiteral("duplicate profile identity, name or endpoint"));
             return false;
         }
-        ids.insert(item.id);
+        ids.insert(foldedId);
         names.insert(name);
         endpoints.insert(endpoint);
     }
@@ -190,6 +191,11 @@ ToolConnectionProfileStore::load(QString *error)
     if (!info.exists()) {
         m_loaded = true;
         return LoadState::Missing;
+    }
+    if (info.size() > kMaxFileBytes) {
+        m_corrupt = true;
+        fail(error, QStringLiteral("connection profile file exceeds 128 KiB"));
+        return LoadState::Corrupt; // explicit quarantine recovery is possible
     }
     QByteArray raw;
     if (!safeRead(m_filename, raw, error))
