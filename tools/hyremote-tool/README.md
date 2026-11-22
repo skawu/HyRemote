@@ -4,7 +4,7 @@ HyRemoteTool 是 HyRemote 的**进程外配套客户端**。它运行在业务�
 
 源码目录是 `tools/hyremote-tool`，安装后的可执行文件是 `hyremote-tool`。
 
-界面支持**中文和 English**，默认中文。可在窗口右上角切换，也可用 `--language en` 从英文启动。
+界面支持**简体中文和 English**。首次启动默认 **Auto（跟随运行 HyRemoteTool 的本机系统语言）**：本机系统区域为 `zh-*`（包括 `zh_TW`）时使用现有简体中文界面；其余语言回退至 English。可在窗口语言菜单选择 Auto、简体中文或 English；手动选择保存在**本机 HyRemoteTool 设置**中，重新启动后生效。`--language zh|en` 只覆盖**本次启动**，不会改写已保存的偏好。
 
 ## V0.3.0.0 范围
 
@@ -43,6 +43,7 @@ hyremote-learning-01-widgets --port 5931 --remote-input
 ```text
 hyremote-tool --connect 192.168.1.6:5921
 hyremote-tool --language en
+hyremote-tool --language zh
 hyremote-tool --verify-ui
 ```
 
@@ -56,7 +57,7 @@ V0.3.0.0 客户端只接受未认证的 `SecurityType None` 端点。仅在可�
 
 HyRemoteTool is HyRemote's **out-of-process companion client**. It connects to a remote HyRemote-enabled application by explicit IP and port and provides viewing, input and telemetry. It does not host remote access, share its own window, or link the HyRemote Runtime.
 
-The UI is bilingual (Chinese and English) and starts in Chinese. Switch it in the top-right selector or start with `--language en`.
+The UI supports Simplified Chinese and English. The default is **Auto**, following the local OS language where HyRemoteTool runs (all `zh-*`, including `zh_TW`, use the available Simplified Chinese UI; other locales use English). The top-right selector offers Auto / Simplified Chinese / English. A manual selection persists locally across restarts; `--language zh|en` overrides **this launch only** and does not rewrite the saved preference. Invalid CLI language values fail instead of silently defaulting. No language is read from the remote RFB host.
 
 Scope:
 
