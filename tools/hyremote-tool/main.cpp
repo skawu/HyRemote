@@ -121,6 +121,15 @@ public:
         connectionRow->addWidget(m_languageBox);
         root->addLayout(connectionRow);
 
+        // Persisted settings may fail (read-only profile, disk/permission
+        // errors). Warn in the GUI instead of claiming the selection survived
+        // a restart. The language still applies to this running process.
+        m_languageWarning = new QLabel(this);
+        m_languageWarning->setWordWrap(true);
+        m_languageWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_languageWarning->hide();
+        root->addWidget(m_languageWarning);
+
         root->addWidget(m_view, 1);
 
         auto *telemetryRow = new QHBoxLayout;
@@ -155,15 +164,16 @@ public:
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        connect(m_languageBox, &QComboBox::currentIndexChanged, this, [this](int index) {
+        connect(m_languageBox, &QComboBox::activated, this, [this](int index) {
 #else
-        connect(m_languageBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        connect(m_languageBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) {
 #endif
             const auto preference = index == 1 ? ToolLanguagePreference::Chinese
                                     : index == 2 ? ToolLanguagePreference::English
                                                  : ToolLanguagePreference::Auto;
             QSettings settings;
-            if (!saveToolLanguagePreference(settings, preference))
+            m_languageSaveFailed = !saveToolLanguagePreference(settings, preference);
+            if (m_languageSaveFailed)
                 std::cerr << "TOOL_LANGUAGE_SAVE_FAIL" << std::endl;
             m_language = resolveToolLanguage(preference, QLocale::system());
             retranslateUi();
@@ -240,7 +250,7 @@ public:
         const bool ok = m_brand && !QGuiApplication::windowIcon().isNull()
                         && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_languageBox;
+                        && m_resolution && m_error && m_languageBox && m_languageWarning;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
@@ -344,8 +354,12 @@ private:
                                          "The remote application has remote input disabled."));
         m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
         m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
-        m_languageBox->setToolTip(text("界面语言；手动选择将保存到本机。命令行仅覆盖本次启动。",
-                                       "UI language; manual choices are saved locally. CLI applies to this launch only."));
+        m_languageBox->setToolTip(text("界面语言；选择时尝试保存到本机。命令行仅覆盖本次启动。",
+                                       "UI language; selections are saved locally when writable. CLI applies to this launch only."));
+        m_languageWarning->setText(
+            text("界面语言保存失败；本次选择只对当前运行有效。",
+                 "Could not save the UI language; this choice applies only to this session."));
+        m_languageWarning->setVisible(m_languageSaveFailed);
         m_fps->setText(QStringLiteral("FPS %1").arg(m_lastStats.fps, 0, 'f', 1));
         m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(m_lastStats.mbitPerSecond, 0, 'f', 2));
         m_frames->setText(text("帧数 %1", "Frames %1").arg(m_lastStats.frames));
@@ -407,6 +421,7 @@ private:
     RfbClient *m_client = nullptr;
     FramebufferView *m_view = nullptr;
     Language m_language = Language::Chinese;
+    bool m_languageSaveFailed = false;
     RfbClient::State m_state = RfbClient::State::Disconnected;
     RfbClient::Stats m_lastStats;
     QSize m_frameSize;
@@ -421,6 +436,7 @@ private:
     QPushButton *m_connect = nullptr;
     QLabel *m_status = nullptr;
     QComboBox *m_languageBox = nullptr;
+    QLabel *m_languageWarning = nullptr;
     QLabel *m_error = nullptr;
     QLabel *m_fps = nullptr;
     QLabel *m_mbps = nullptr;
