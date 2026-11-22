@@ -519,16 +519,68 @@ int main(int argc, char **argv)
             return 64;
         }
     }
-    QSettings languageSettings;
-    const auto savedLanguage = loadToolLanguagePreference(languageSettings);
+    // The existing --verify-ui command may run a deterministic interaction
+    // regression using a throwaway INI settings file. This is never active
+    // for normal GUI sessions and cannot modify a real user's preference.
+    const QString testCase = parser.isSet(verifyUiOption)
+        ? qEnvironmentVariable("HYREMOTE_TOOL_TEST_LANGUAGE_CASE") : QString();
+    if (!testCase.isEmpty() && testCase != QStringLiteral("repeat")
+                            && testCase != QStringLiteral("save-failure")) {
+        std::cerr << "invalid HYREMOTE_TOOL_TEST_LANGUAGE_CASE" << std::endl;
+        return 64;
+    }
+    std::unique_ptr<QTemporaryDir> testRoot;
+    std::unique_ptr<QSettings> languageSettings;
+    if (!testCase.isEmpty()) {
+        testRoot = std::make_unique<QTemporaryDir>();
+        if (!testRoot->isValid()) {
+            std::cerr << "TOOL_LANGUAGE_UI_TEMP_FAIL" << std::endl;
+            return 1;
+        }
+        QString settingsPath = testRoot->filePath(QStringLiteral("settings.ini"));
+        if (testCase == QStringLiteral("save-failure")) {
+            // A regular file as the parent of settings.ini is unwriteable
+            // independently of user identity / chmod / runner privileges.
+            QFile blockingParent(testRoot->filePath(QStringLiteral("blocked")));
+            if (!blockingParent.open(QIODevice::WriteOnly)) {
+                std::cerr << "TOOL_LANGUAGE_UI_TEMP_FAIL" << std::endl;
+                return 1;
+            }
+            blockingParent.close();
+            settingsPath = testRoot->filePath(QStringLiteral("blocked/settings.ini"));
+        }
+        languageSettings = std::make_unique<QSettings>(
+            settingsPath, QSettings::IniFormat);
+        if (testCase == QStringLiteral("repeat")
+            && !saveToolLanguagePreference(*languageSettings,
+                                           ToolLanguagePreference::Chinese)) {
+            std::cerr << "TOOL_LANGUAGE_UI_TEMP_FAIL" << std::endl;
+            return 1;
+        }
+        // Both regressions start with an English CLI override. The repeat
+        // case must preserve the saved Chinese preference until the user
+        // explicitly selects the already displayed English item.
+        if (!cliLanguage || *cliLanguage != Language::English) {
+            std::cerr << "TOOL_LANGUAGE_UI_REQUIRES_CLI_EN" << std::endl;
+            return 64;
+        }
+    } else {
+        languageSettings = std::make_unique<QSettings>();
+    }
+    const auto savedLanguage = loadToolLanguagePreference(*languageSettings);
     const auto startLanguage = resolveToolLanguage(savedLanguage, QLocale::system(),
                                                    cliLanguage);
-    ClientWindow window(startLanguage, savedLanguage, cliLanguage.has_value());
+    ClientWindow window(startLanguage, savedLanguage, cliLanguage.has_value(),
+                        *languageSettings);
     window.show();
 
     if (parser.isSet(verifyUiOption)) {
-        QTimer::singleShot(0, &window, [&window, &app] {
-            app.exit(window.verifyUi() ? 0 : 1);
+        QTimer::singleShot(0, &window, [&window, &app, testCase] {
+            const bool ok = testCase.isEmpty()
+                                ? window.verifyUi()
+                                : window.verifyLanguageSelection(
+                                      testCase == QStringLiteral("save-failure"));
+            app.exit(ok ? 0 : 1);
         });
         return app.exec();
     }
