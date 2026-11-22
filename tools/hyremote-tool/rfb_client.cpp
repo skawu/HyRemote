@@ -209,11 +209,11 @@ void RfbClient::process()
                 }
                 if (m_in.size() < 5 + static_cast<qsizetype>(reasonLength))
                     return;
-                const QString reason = QString::fromUtf8(
-                    m_in.mid(5, static_cast<qsizetype>(reasonLength)));
+                // This field is remote-controlled. Never route a peer's
+                // arbitrary UTF-8, control sequences or forged log lines into
+                // the local GUI, CLI stderr or diagnostics report.
                 m_in.remove(0, 5 + static_cast<qsizetype>(reasonLength));
-                fail(reason.isEmpty() ? QStringLiteral("the remote endpoint refused the connection")
-                                      : reason);
+                fail(QStringLiteral("the remote endpoint refused the connection"));
                 return;
             }
             if (m_in.size() < 1 + count)
@@ -247,12 +247,16 @@ void RfbClient::process()
                 if (m_in.size() < 8)
                     return;
                 const quint32 reasonLength = readU32(m_in, 4);
-                if (reasonLength > 4096 || m_in.size() < 8 + static_cast<qsizetype>(reasonLength))
+                // An oversized advertised reason is a protocol failure,
+                // not an incomplete packet that can wait indefinitely.
+                if (reasonLength > 4096) {
+                    fail(QStringLiteral("remote endpoint sent an oversized authentication reason"));
                     return;
-                const QString reason = QString::fromUtf8(
-                    m_in.mid(8, static_cast<qsizetype>(reasonLength)));
+                }
+                if (m_in.size() < 8 + static_cast<qsizetype>(reasonLength))
+                    return;
                 m_in.remove(0, 8 + static_cast<qsizetype>(reasonLength));
-                fail(reason.isEmpty() ? QStringLiteral("remote authentication failed") : reason);
+                fail(QStringLiteral("remote authentication failed"));
                 return;
             }
             m_in.remove(0, 4);

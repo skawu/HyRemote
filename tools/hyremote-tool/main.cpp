@@ -426,6 +426,10 @@ private:
             return QStringLiteral("远程主机关闭了连接。");
         if (raw == QStringLiteral("not an RFB 3.x endpoint"))
             return QStringLiteral("远程端点不是 RFB 3.x 服务。");
+        if (raw == QStringLiteral("the remote endpoint refused the connection"))
+            return QStringLiteral("远程端点拒绝连接。");
+        if (raw == QStringLiteral("remote endpoint sent an oversized authentication reason"))
+            return QStringLiteral("远程端点返回了过长的认证失败说明。");
         if (raw == QStringLiteral("could not write to the remote endpoint"))
             return QStringLiteral("无法向远程端点写入数据。");
         if (raw == QStringLiteral("remote authentication failed"))
