@@ -540,8 +540,12 @@ private:
                 rebuildProfiles(selectedId);
             else
                 m_profileError = error;
-        } else if (state == RfbClient::State::Disconnected
-                   || state == RfbClient::State::Failed) {
+        } else if (state == RfbClient::State::Failed
+                   || (state == RfbClient::State::Disconnected
+                       && !m_startingProfileConnection)) {
+            // Ignore only the synchronous *internal* Disconnected emitted
+            // by RfbClient::connectToHost on retry; genuine disconnect or
+            // failure must still cancel the pending recent-use update.
             m_pendingProfileId.clear();
         }
         m_host->setEnabled(!busy && !connected);
@@ -568,6 +572,10 @@ private:
     ToolConnectionProfileStore m_profileStore;
     QString m_profileError;
     QString m_pendingProfileId;
+    // RfbClient::connectToHost() synchronously emits Disconnected as part
+    // of resetting a previous Failed session. This transient state is not
+    // user-initiated disconnect and must not discard a new profile attempt.
+    bool m_startingProfileConnection = false;
     bool m_profilesCorrupt = false;
     bool m_profilesLoaded = false;
     bool m_languageSaveFailed = false;
@@ -745,7 +753,9 @@ bool ClientWindow::connectSavedProfile()
     m_view->setInputEnabled(false);
     m_client->setRemoteControlEnabled(false);
     m_pendingProfileId = id;
+    m_startingProfileConnection = true;
     toggleConnection(true);
+    m_startingProfileConnection = false;
     return true;
 }
 
@@ -859,6 +869,18 @@ bool ClientWindow::verifyProfileUi()
     const bool selected = m_host->text() == QStringLiteral("192.168.1.6")
                           && m_port->value() == 5921
                           && m_client->state() == RfbClient::State::Disconnected;
+    // State-machine regression only (NO real socket): the RFB client
+    // performs a synchronous internal Disconnected during a Failed retry.
+    m_pendingProfileId = id;
+    m_startingProfileConnection = true;
+    applyState(RfbClient::State::Disconnected);
+    const bool retryPreserved = m_pendingProfileId == id;
+    m_startingProfileConnection = false;
+    applyState(RfbClient::State::Connected);
+    const bool recordedSuccess = !m_profileStore.profiles().isEmpty()
+         && m_profileStore.profiles().first().lastUsedUtcMs > 0
+         && m_pendingProfileId.isEmpty();
+    applyState(RfbClient::State::Disconnected);
     const bool edited = editProfileRecord(id, QStringLiteral("Factory A renamed"),
                                           QStringLiteral("factory-a.local"), 5931);
     ToolConnectionProfileStore restarted(m_profileStore.filePath());
@@ -871,11 +893,14 @@ bool ClientWindow::verifyProfileUi()
                          && m_profileStore.profiles().isEmpty()
                          && m_client->state() == RfbClient::State::Disconnected;
     const bool ok = empty && saved && listed && activated && selected
+                    && retryPreserved && recordedSuccess
                     && edited && persisted && deleted;
     std::cout << (ok ? "TOOL_PROFILE_UI_PASS" : "TOOL_PROFILE_UI_FAIL")
               << " empty=" << empty << " saved=" << saved
               << " listed=" << listed << " activated=" << activated
-              << " selected=" << selected << " edited=" << edited
+              << " selected=" << selected << " retry-preserved=" << retryPreserved
+              << " success-recency=" << recordedSuccess
+              << " edited=" << edited
               << " persisted=" << persisted << " deleted=" << deleted
               << " disconnected=" << (m_client->state() == RfbClient::State::Disconnected)
               << std::endl;
