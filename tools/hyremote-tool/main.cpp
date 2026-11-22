@@ -375,6 +375,21 @@ protected:
     }
 
 private:
+    QString selectedProfileId() const;
+    const ToolConnectionProfile *selectedProfile() const;
+    void updateProfileButtons();
+    void rebuildProfiles(const QString &preferredId = {});
+    void selectProfile(int index);
+    bool saveProfileRecord(QString name, QString host, quint16 port,
+                           QString *idOut = nullptr);
+    bool editProfileRecord(const QString &id, QString name, QString host, quint16 port);
+    bool removeProfileRecord(const QString &id);
+    bool connectSavedProfile();
+    void promptSaveProfile();
+    void promptEditProfile();
+    void promptDeleteProfile();
+    void promptRecoverProfiles();
+
     QString text(const char *zh, const char *en) const
     {
         return isChinese(m_language) ? QString::fromUtf8(zh) : QString::fromUtf8(en);
