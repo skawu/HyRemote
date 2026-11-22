@@ -972,19 +972,44 @@ int main(int argc, char **argv)
     } else {
         languageSettings = std::make_unique<QSettings>();
     }
+    // Offscreen profile GUI regression uses a fresh throwaway file, never
+    // the user's actual bookmark store and never an implicit socket connect.
+    const QString profileTestCase = parser.isSet(verifyUiOption)
+        ? qEnvironmentVariable("HYREMOTE_TOOL_TEST_PROFILE_CASE") : QString();
+    if (!profileTestCase.isEmpty()
+        && profileTestCase != QStringLiteral("crud")) {
+        std::cerr << "invalid HYREMOTE_TOOL_TEST_PROFILE_CASE" << std::endl;
+        return 64;
+    }
+    if (!profileTestCase.isEmpty() && !testCase.isEmpty()) {
+        std::cerr << "only one Tool UI regression case may run" << std::endl;
+        return 64;
+    }
+    std::unique_ptr<QTemporaryDir> profileTestRoot;
+    QString profilePath;
+    if (!profileTestCase.isEmpty()) {
+        profileTestRoot = std::make_unique<QTemporaryDir>();
+        if (!profileTestRoot->isValid()) {
+            std::cerr << "TOOL_PROFILE_UI_TEMP_FAIL" << std::endl;
+            return 1;
+        }
+        profilePath = profileTestRoot->filePath(QStringLiteral("connections.json"));
+    }
     const auto savedLanguage = loadToolLanguagePreference(*languageSettings);
     const auto startLanguage = resolveToolLanguage(savedLanguage, QLocale::system(),
                                                    cliLanguage);
     ClientWindow window(startLanguage, savedLanguage, cliLanguage.has_value(),
-                        *languageSettings);
+                        *languageSettings, profilePath);
     window.show();
 
     if (parser.isSet(verifyUiOption)) {
-        QTimer::singleShot(0, &window, [&window, &app, testCase] {
-            const bool ok = testCase.isEmpty()
-                                ? window.verifyUi()
-                                : window.verifyLanguageSelection(
-                                      testCase == QStringLiteral("save-failure"));
+        QTimer::singleShot(0, &window, [&window, &app, testCase, profileTestCase] {
+            const bool ok = !profileTestCase.isEmpty()
+                                ? window.verifyProfileUi()
+                                : testCase.isEmpty()
+                                      ? window.verifyUi()
+                                      : window.verifyLanguageSelection(
+                                            testCase == QStringLiteral("save-failure"));
             app.exit(ok ? 0 : 1);
         });
         return app.exec();
