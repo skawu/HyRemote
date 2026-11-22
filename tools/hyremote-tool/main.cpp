@@ -660,7 +660,7 @@ void ClientWindow::rebuildProfiles(const QString &preferredId)
         m_profilesBox->addItem(text("选择已保存的连接", "Select saved connection"), QString());
         for (const auto &p : m_profileStore.profiles()) {
             const QString label = QStringLiteral("%1 · %2:%3")
-                                      .arg(p.name, p.host).arg(p.port);
+                                      .arg(p.name, p.host, QString::number(p.port));
             m_profilesBox->addItem(label, p.id);
             m_profilesBox->setItemData(m_profilesBox->count() - 1, label, Qt::ToolTipRole);
         }
@@ -907,7 +907,19 @@ bool ClientWindow::verifyProfileUi()
                               && m_host->text() == longHost
                               && m_port->value() == 5930
                               && m_client->state() == RfbClient::State::Disconnected;
-    const bool deleted = removeProfileRecord(secondId)
+    // A literal percent-digit in a user-supplied display name/IPv6 zone
+    // must never be re-expanded by a second QString::arg call.
+    QString percentId;
+    const bool percentSaved = saveProfileRecord(
+        QStringLiteral("Lab %1"), QStringLiteral("fe80::1%2"), 5921, &percentId);
+    const int percentIndex = m_profilesBox->findData(percentId);
+    const bool percentLabel = percentSaved && percentIndex > 0
+                              && m_profilesBox->itemText(percentIndex)
+                                 == QStringLiteral("Lab %1 · fe80::1%2:5921")
+                              && m_profilesBox->itemData(percentIndex, Qt::ToolTipRole).toString()
+                                 == QStringLiteral("Lab %1 · fe80::1%2:5921");
+    const bool deleted = removeProfileRecord(percentId)
+                         && removeProfileRecord(secondId)
                          && removeProfileRecord(thirdId)
                          && removeProfileRecord(id)
                          && m_profilesBox->count() == 1
@@ -915,7 +927,8 @@ bool ClientWindow::verifyProfileUi()
                          && m_client->state() == RfbClient::State::Disconnected;
     const bool ok = empty && saved && listed && activated && selected
                     && retryPreserved && recordedSuccess
-                    && edited && persisted && many && longSelected && deleted;
+                    && edited && persisted && many && longSelected
+                    && percentLabel && deleted;
     std::cout << (ok ? "TOOL_PROFILE_UI_PASS" : "TOOL_PROFILE_UI_FAIL")
               << " empty=" << empty << " saved=" << saved
               << " listed=" << listed << " activated=" << activated
@@ -924,7 +937,7 @@ bool ClientWindow::verifyProfileUi()
               << " edited=" << edited
               << " persisted=" << persisted
               << " many=" << many << " long-host=" << longSelected
-              << " deleted=" << deleted
+              << " percent-label=" << percentLabel << " deleted=" << deleted
               << " disconnected=" << (m_client->state() == RfbClient::State::Disconnected)
               << std::endl;
     return ok;
