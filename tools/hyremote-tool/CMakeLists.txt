@@ -13,6 +13,8 @@ add_executable(hyremote-remote-support-showcase
     language_preference.hpp
     connection_profile_store.cpp
     connection_profile_store.hpp
+    basic_diagnostics.cpp
+    basic_diagnostics.hpp
     ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
@@ -55,6 +57,20 @@ else()
 endif()
 
 if(HYREMOTE_BUILD_TESTS)
+    add_executable(hyremote-tool-basic-diagnostics-test
+        test_basic_diagnostics.cpp
+        basic_diagnostics.cpp
+        basic_diagnostics.hpp
+    )
+    target_compile_features(hyremote-tool-basic-diagnostics-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-basic-diagnostics-test PRIVATE Qt6::Core)
+    add_test(NAME hyremote-tool-basic-diagnostics
+             COMMAND $<TARGET_FILE:hyremote-tool-basic-diagnostics-test>)
+    set_tests_properties(hyremote-tool-basic-diagnostics PROPERTIES TIMEOUT 20)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("unit;tool;fast" hyremote-tool-basic-diagnostics)
+    endif()
+
     add_executable(hyremote-tool-connection-profiles-test
         test_connection_profile_store.cpp
         connection_profile_store.cpp
