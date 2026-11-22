@@ -61,6 +61,9 @@ void verifyLiveFactsAndPrivacy()
           == QStringLiteral("10.10.12.8"));
     observer.observeState(RfbClient::State::Disconnected);
     CHECK(!snapshot(observer).value(QStringLiteral("remoteControlRequested")).toBool());
+    observer.setControlRequested(true);
+    observer.observeState(RfbClient::State::Failed);
+    CHECK(!snapshot(observer).value(QStringLiteral("remoteControlRequested")).toBool());
 
     observer.beginAttempt(QStringLiteral("C:private.txt"), 5500);
     CHECK(snapshot(observer, true).value(QStringLiteral("endpoint")).toString()
@@ -109,6 +112,11 @@ void verifyFailureFactPrecedence()
     observer.observeState(RfbClient::State::Failed);
     CHECK(snapshot(observer).value(QStringLiteral("lastFailure")).toString()
           == QStringLiteral("security-mismatch"));
+    observer.beginAttempt(QStringLiteral("host.local"), 5900);
+    observer.observeError(QStringLiteral("remote endpoint sent an oversized authentication reason"));
+    observer.observeState(RfbClient::State::Failed);
+    CHECK(snapshot(observer).value(QStringLiteral("lastFailure")).toString()
+          == QStringLiteral("malformed-wire"));
     observer.beginAttempt(QStringLiteral("host.local"), 5900);
     observer.observeError(QStringLiteral("not an RFB 3.x endpoint"));
     observer.observeState(RfbClient::State::Failed);

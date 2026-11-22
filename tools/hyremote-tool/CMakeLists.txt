@@ -124,6 +124,10 @@ if(HYREMOTE_BUILD_TESTS)
         test_rfb_client.cpp
         rfb_client.cpp
         rfb_client.h
+        tool_diagnostic_session.cpp
+        tool_diagnostic_session.hpp
+        basic_diagnostics.cpp
+        basic_diagnostics.hpp
     )
     target_compile_features(hyremote-tool-rfb-client-test PRIVATE cxx_std_17)
     target_link_libraries(hyremote-tool-rfb-client-test

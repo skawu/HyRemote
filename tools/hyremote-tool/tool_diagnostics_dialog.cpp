@@ -112,6 +112,10 @@ QString ToolDiagnosticsDialog::localText(const char *zh, const char *en) const
 
 void ToolDiagnosticsDialog::setChinese(bool chinese)
 {
+    // Re-translation is called on every frame/stat update by the existing
+    // Tool window. Avoid re-serializing report JSON when locale is unchanged.
+    if (m_chinese == chinese)
+        return;
     m_chinese = chinese;
     retranslate();
     refresh();

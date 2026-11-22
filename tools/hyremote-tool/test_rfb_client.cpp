@@ -1,10 +1,13 @@
 #include "rfb_client.h"
+#include "tool_diagnostic_session.hpp"
 
 #include <QColor>
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QHostAddress>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -351,13 +354,23 @@ void verifyUntrustedRefusalReasons()
             continue;
         }
         RfbClient client;
+        ToolDiagnosticSession evidence;
+        evidence.beginAttempt(QStringLiteral("127.0.0.1"), server.port());
         QString reported;
         bool failed = false;
         QEventLoop loop;
         QObject::connect(&client, &RfbClient::errorOccurred, &loop,
-                         [&](const QString &message) { reported = message; });
+                         [&](const QString &message) {
+                             reported = message;
+                             evidence.observeError(message);
+                         });
+        QObject::connect(&client, &RfbClient::socketErrorObserved, &loop,
+                         [&](QAbstractSocket::SocketError error) {
+                             evidence.observeSocketError(error);
+                         });
         QObject::connect(&client, &RfbClient::stateChanged, &loop,
                          [&](RfbClient::State state) {
+                             evidence.observeState(state);
                              if (state == RfbClient::State::Failed) {
                                  failed = true;
                                  loop.quit();
@@ -374,6 +387,23 @@ void verifyUntrustedRefusalReasons()
         CHECK(!reported.contains(QStringLiteral("TOOL_CLIENT_STATE")));
         CHECK(!reported.contains(QLatin1Char('\n')));
         CHECK(!reported.contains(QChar(27)));
+        const QByteArray report = evidence.previewJson();
+        const auto diagnostic = QJsonDocument::fromJson(report).object();
+        CHECK(diagnostic.value(QStringLiteral("state")).toString()
+              == QStringLiteral("failed"));
+        CHECK(diagnostic.value(QStringLiteral("endpoint")).toString()
+              == QStringLiteral("[redacted]"));
+        CHECK(!report.contains("secrets="));
+        CHECK(!report.contains("TOOL_CLIENT_STATE"));
+        if (test.kind == RejectingRfbServer::Kind::OversizedAuthReason) {
+            // True RFB 3.8: None was already chosen successfully. A 4097
+            // length is malformed protocol framing, not security mismatch.
+            CHECK(diagnostic.value(QStringLiteral("lastFailure")).toString()
+                  == QStringLiteral("malformed-wire"));
+        } else if (test.kind == RejectingRfbServer::Kind::SecurityResult) {
+            CHECK(diagnostic.value(QStringLiteral("lastFailure")).toString()
+                  == QStringLiteral("security-mismatch"));
+        }
     }
 }
 

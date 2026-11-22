@@ -45,11 +45,11 @@ ToolDiagFailure ToolDiagnosticSession::classifyClientError(const QString &error)
     // No substring search of untrusted peer text or localized QTcpSocket
     // errorString: failure types below are fixed strings authored by Tool.
     if (error == QStringLiteral("remote authentication failed")
-        || error == QStringLiteral("remote endpoint sent an oversized authentication reason")
         || error.startsWith(QStringLiteral("the remote endpoint requires security type(s) ")))
         return ToolDiagFailure::SecurityMismatch;
 
-    if (error == QStringLiteral("not an RFB 3.x endpoint")
+    if (error == QStringLiteral("remote endpoint sent an oversized authentication reason")
+        || error == QStringLiteral("not an RFB 3.x endpoint")
         || error == QStringLiteral("remote framebuffer update has too many rectangles")
         || error == QStringLiteral("remote raw rectangle is too large")
         || error == QStringLiteral("remote pixel format is not supported by this client")
@@ -93,7 +93,7 @@ void ToolDiagnosticSession::observeState(RfbClient::State state)
     m_snapshot.stage = mapped;
     if (mapped == ToolDiagStage::Connected)
         m_snapshot.lastFailure = ToolDiagFailure::None;
-    if (mapped == ToolDiagStage::Disconnected)
+    if (mapped == ToolDiagStage::Disconnected || mapped == ToolDiagStage::Failed)
         m_snapshot.remoteControlRequested = false;
     publish(true);
 }

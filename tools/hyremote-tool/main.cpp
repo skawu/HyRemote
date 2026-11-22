@@ -666,6 +666,11 @@ void ClientWindow::openDiagnostics()
     m_diagDialog->resetEndpointSelection();
     m_diagDialog->refresh();
     m_diagDialog->show();
+    // Keep this local diagnostic window within the operator's workspace
+    // rather than trusting platform-default top-level dialog placement.
+    m_diagDialog->move(mapToGlobal(QPoint(
+        qMax(0, (width() - m_diagDialog->width()) / 2),
+        qMax(0, (height() - m_diagDialog->height()) / 2))));
     m_diagDialog->raise();
     m_diagDialog->activateWindow();
 }
@@ -685,6 +690,7 @@ bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
     if (clipboard)
         clipboard->setText(QStringLiteral("TOOL_DIAG_NO_AUTO_COPY"));
     m_diagnosticsAction->click(); // production navigation, not direct construction
+    QApplication::processEvents(); // settle real Qt layouts and window geometry
 
     auto *preview = m_diagDialog
         ? m_diagDialog->findChild<QPlainTextEdit*>(QStringLiteral("tool-diagnostics-preview"))
@@ -707,6 +713,30 @@ bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
                             && !m_diagDialog->windowTitle().isEmpty();
     const bool untouched = clipboard
         && clipboard->text() == QStringLiteral("TOOL_DIAG_NO_AUTO_COPY");
+    const QSize expectedViewport = compact ? QSize(800, 600) : QSize(1366, 768);
+    const bool exactViewport = size() == expectedViewport;
+    const auto fullyInside = [](const QWidget *widget, const QWidget *owner) {
+        if (!widget || !owner || !widget->isVisibleTo(owner)
+            || widget->width() <= 0 || widget->height() <= 0)
+            return false;
+        const QRect actual(widget->mapTo(const_cast<QWidget*>(owner), QPoint(0, 0)),
+                           widget->size());
+        return owner->rect().contains(actual);
+    };
+    const QRect actualDialog(m_diagDialog
+                                 ? mapFromGlobal(m_diagDialog->mapToGlobal(QPoint(0, 0)))
+                                 : QPoint(), m_diagDialog ? m_diagDialog->size() : QSize());
+    const bool geometries = exactViewport
+                            && fullyInside(m_diagnosticsAction, this)
+                            && m_diagDialog && m_diagDialog->isVisible()
+                            && rect().contains(actualDialog)
+                            && fullyInside(preview, m_diagDialog)
+                            && fullyInside(reveal, m_diagDialog)
+                            && fullyInside(copy, m_diagDialog)
+                            && fullyInside(save, m_diagDialog)
+                            && fullyInside(m_diagDialog->findChild<QPushButton*>(
+                                  QStringLiteral("tool-diagnostics-refresh")), m_diagDialog);
+
     if (!accessible) {
         std::cout << "TOOL_DIAGNOSTICS_UI_FAIL accessible=0" << std::endl;
         return false;
@@ -729,7 +759,10 @@ bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
     reveal->setChecked(true);
     const bool revealed = parsed().value(QStringLiteral("endpoint")).toString()
                           == QStringLiteral("10.10.12.8");
-    reveal->setChecked(false);
+    m_diagnosticsAction->click(); // genuine reopen; consent must not persist
+    const bool reopenMasked = !reveal->isChecked()
+                              && parsed().value(QStringLiteral("endpoint")).toString()
+                                     == QStringLiteral("[redacted]");
     copy->click(); // only this explicit action may write the clipboard
     const bool safeCopy = clipboard && clipboard->text() == preview->toPlainText()
                           && !clipboard->text().contains(QStringLiteral("10.10.12.8"))
@@ -742,12 +775,15 @@ bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
                                    && parsed().value(QStringLiteral("endpointRedacted")).toBool();
     m_diagDialog->close();
 
-    const bool ok = offline && accessible && untouched && masked && revealed
+    const bool ok = offline && accessible && untouched && geometries
+                    && masked && revealed && reopenMasked
                     && safeCopy && unsafeStillMasked
                     && m_client->state() == RfbClient::State::Disconnected
                     && !m_view->inputEnabled();
     std::cout << (ok ? "TOOL_DIAGNOSTICS_UI_PASS" : "TOOL_DIAGNOSTICS_UI_FAIL")
-              << " viewport=" << (compact ? "800x600" : "1366x768")
+              << " viewport=" << width() << 'x' << height()
+              << " actual-geometry=" << geometries
+              << " reopened-masked=" << reopenMasked
               << " lang=" << (isChinese(m_language) ? "zh" : "en")
               << " offline=" << offline
               << " default-masked=" << masked
