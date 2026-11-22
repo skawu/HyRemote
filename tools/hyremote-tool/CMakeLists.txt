@@ -10,6 +10,7 @@ add_executable(hyremote-remote-support-showcase
     framebuffer_view.h
     rfb_client.cpp
     rfb_client.h
+    language_preference.hpp
     ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
@@ -52,6 +53,19 @@ else()
 endif()
 
 if(HYREMOTE_BUILD_TESTS)
+    add_executable(hyremote-tool-language-preference-test
+        test_language_preference.cpp
+        language_preference.hpp
+    )
+    target_compile_features(hyremote-tool-language-preference-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-language-preference-test PRIVATE Qt6::Core)
+    add_test(NAME hyremote-tool-language-preference
+             COMMAND $<TARGET_FILE:hyremote-tool-language-preference-test>)
+    set_tests_properties(hyremote-tool-language-preference PROPERTIES TIMEOUT 20)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("unit;tool;fast" hyremote-tool-language-preference)
+    endif()
+
     add_executable(hyremote-tool-rfb-client-test
         test_rfb_client.cpp
         rfb_client.cpp
@@ -83,5 +97,50 @@ if(HYREMOTE_BUILD_TESTS)
     )
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui)
+    endif()
+
+    # Exercise the production QComboBox::activated signal with an already
+    # selected item and a local settings write failure. The verification
+    # command uses throwaway QSettings, never the developer's real profile.
+    add_test(
+        NAME hyremote-tool-client-ui-language-repeat
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-language-repeat PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_LANGUAGE_CASE=repeat"
+        PASS_REGULAR_EXPRESSION "TOOL_LANGUAGE_UI_PASS mode=repeat-select"
+    )
+    add_test(
+        NAME hyremote-tool-client-ui-language-save-failure
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-language-save-failure PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_LANGUAGE_CASE=save-failure"
+        PASS_REGULAR_EXPRESSION "TOOL_LANGUAGE_UI_PASS mode=save-failure"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast"
+            hyremote-tool-client-ui-language-repeat
+            hyremote-tool-client-ui-language-save-failure)
+    endif()
+
+    # Smoke the REAL application command-line precedence, independent of any
+    # saved UI preference in the runner's home directory.
+    add_test(
+        NAME hyremote-tool-client-ui-cli-en
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-cli-en PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        PASS_REGULAR_EXPRESSION "TOOL_CLIENT_UI_PASS.*lang=en"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-cli-en)
     endif()
 endif()

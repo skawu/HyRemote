@@ -1,5 +1,6 @@
 #include "framebuffer_view.h"
 #include "rfb_client.h"
+#include "language_preference.hpp"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -7,25 +8,28 @@
 #include <QComboBox>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QFile>
+#include <QMetaObject>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QPixmap>
+#include <QLocale>
+#include <QSettings>
 #include <QSize>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include <iostream>
+#include <memory>
 
 namespace {
 
-enum class Language {
-    Chinese,
-    English,
-};
+using Language = ToolLanguage;
 
 QString humanBytes(quint64 bytes)
 {
@@ -67,11 +71,13 @@ QString stateText(RfbClient::State state, Language language)
 class ClientWindow final : public QWidget
 {
 public:
-    explicit ClientWindow(Language language, QWidget *parent = nullptr)
+    explicit ClientWindow(Language language, ToolLanguagePreference preference,
+                          bool cliOverride, QSettings &settings, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_client(new RfbClient(this))
         , m_view(new FramebufferView(this))
         , m_language(language)
+        , m_languageSettings(settings)
     {
         auto *root = new QVBoxLayout(this);
         root->setContentsMargins(10, 10, 10, 10);
@@ -101,9 +107,16 @@ public:
         m_connect = new QPushButton(this);
         m_status = new QLabel(this);
         m_languageBox = new QComboBox(this);
-        m_languageBox->addItem(QStringLiteral("中文"));
+        m_languageBox->addItem(QString()); // Auto follows the local OS
+        m_languageBox->addItem(QStringLiteral("简体中文"));
         m_languageBox->addItem(QStringLiteral("English"));
-        m_languageBox->setCurrentIndex(isChinese(m_language) ? 0 : 1);
+        // A launch-only CLI override is visible in the selector but MUST
+        // NOT silently rewrite the previously saved Auto/manual choice.
+        m_languageBox->setCurrentIndex(
+            cliOverride ? (isChinese(m_language) ? 1 : 2)
+                        : (preference == ToolLanguagePreference::Auto
+                               ? 0
+                               : preference == ToolLanguagePreference::Chinese ? 1 : 2));
         connectionRow->addWidget(m_remoteLabel);
         connectionRow->addWidget(m_host, 1);
         connectionRow->addWidget(m_portLabel);
@@ -112,6 +125,15 @@ public:
         connectionRow->addWidget(m_status);
         connectionRow->addWidget(m_languageBox);
         root->addLayout(connectionRow);
+
+        // Persisted settings may fail (read-only profile, disk/permission
+        // errors). Warn in the GUI instead of claiming the selection survived
+        // a restart. The language still applies to this running process.
+        m_languageWarning = new QLabel(this);
+        m_languageWarning->setWordWrap(true);
+        m_languageWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_languageWarning->hide();
+        root->addWidget(m_languageWarning);
 
         root->addWidget(m_view, 1);
 
@@ -147,11 +169,17 @@ public:
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        connect(m_languageBox, &QComboBox::currentIndexChanged, this, [this](int index) {
+        connect(m_languageBox, &QComboBox::activated, this, [this](int index) {
 #else
-        connect(m_languageBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        connect(m_languageBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) {
 #endif
-            m_language = index == 1 ? Language::English : Language::Chinese;
+            const auto preference = index == 1 ? ToolLanguagePreference::Chinese
+                                    : index == 2 ? ToolLanguagePreference::English
+                                                 : ToolLanguagePreference::Auto;
+            m_languageSaveFailed = !saveToolLanguagePreference(m_languageSettings, preference);
+            if (m_languageSaveFailed)
+                std::cerr << "TOOL_LANGUAGE_SAVE_FAIL" << std::endl;
+            m_language = resolveToolLanguage(preference, QLocale::system());
             retranslateUi();
         });
         connect(m_control, &QCheckBox::toggled, this, [this](bool enabled) {
@@ -221,12 +249,37 @@ public:
         m_client->connectToHost(host, port);
     }
 
+    // Deterministic GUI test of the *real* QComboBox::activated(int)
+    // callback, including explicit re-selection of an already selected CLI
+    // language. A synthetic signal is sufficient to reach the production
+    // connection without opening a dropdown on offscreen QPA.
+    bool verifyLanguageSelection(bool expectSaveFailure)
+    {
+        const bool initial = m_languageBox && m_languageBox->currentIndex() == 2
+                             && m_language == Language::English;
+        const bool signal = initial && QMetaObject::invokeMethod(
+            m_languageBox, "activated", Qt::DirectConnection, Q_ARG(int, 2));
+        const bool saved = !expectSaveFailure
+                               && loadToolLanguagePreference(m_languageSettings)
+                                      == ToolLanguagePreference::English;
+        const bool failed = expectSaveFailure && m_languageSaveFailed
+                             && m_languageWarning->isVisible()
+                             && m_languageSettings.status() != QSettings::NoError;
+        const bool ok = initial && signal && m_language == Language::English
+                        && (expectSaveFailure ? failed : saved && !m_languageSaveFailed);
+        std::cout << (ok ? "TOOL_LANGUAGE_UI_PASS" : "TOOL_LANGUAGE_UI_FAIL")
+                  << " mode=" << (expectSaveFailure ? "save-failure" : "repeat-select")
+                  << " lang=en"
+                  << std::endl;
+        return ok;
+    }
+
     bool verifyUi() const
     {
         const bool ok = m_brand && !QGuiApplication::windowIcon().isNull()
                         && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_languageBox;
+                        && m_resolution && m_error && m_languageBox && m_languageWarning;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
@@ -329,7 +382,13 @@ private:
                                   : text("远程应用未开启远程输入。",
                                          "The remote application has remote input disabled."));
         m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
-        m_languageBox->setToolTip(text("界面语言", "Interface language"));
+        m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
+        m_languageBox->setToolTip(text("界面语言；选择时尝试保存到本机。命令行仅覆盖本次启动。",
+                                       "UI language; selections are saved locally when writable. CLI applies to this launch only."));
+        m_languageWarning->setText(
+            text("界面语言保存失败；本次选择只对当前运行有效。",
+                 "Could not save the UI language; this choice applies only to this session."));
+        m_languageWarning->setVisible(m_languageSaveFailed);
         m_fps->setText(QStringLiteral("FPS %1").arg(m_lastStats.fps, 0, 'f', 1));
         m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(m_lastStats.mbitPerSecond, 0, 'f', 2));
         m_frames->setText(text("帧数 %1", "Frames %1").arg(m_lastStats.frames));
@@ -391,6 +450,8 @@ private:
     RfbClient *m_client = nullptr;
     FramebufferView *m_view = nullptr;
     Language m_language = Language::Chinese;
+    QSettings &m_languageSettings;
+    bool m_languageSaveFailed = false;
     RfbClient::State m_state = RfbClient::State::Disconnected;
     RfbClient::Stats m_lastStats;
     QSize m_frameSize;
@@ -405,6 +466,7 @@ private:
     QPushButton *m_connect = nullptr;
     QLabel *m_status = nullptr;
     QComboBox *m_languageBox = nullptr;
+    QLabel *m_languageWarning = nullptr;
     QLabel *m_error = nullptr;
     QLabel *m_fps = nullptr;
     QLabel *m_mbps = nullptr;
@@ -419,6 +481,7 @@ private:
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("HyRemote"));
     QCoreApplication::setApplicationName(QStringLiteral("HyRemoteTool"));
 
     QCommandLineParser parser;
@@ -440,25 +503,84 @@ int main(int argc, char **argv)
         QStringLiteral("仅检查界面构造，不连接 / construct the window without connecting."));
     QCommandLineOption languageOption(
         QStringLiteral("language"),
-        QStringLiteral("界面语言：zh 或 en，默认 zh / UI language: zh or en, default zh."),
-        QStringLiteral("lang"),
-        QStringLiteral("zh"));
+        QStringLiteral("界面语言：zh 或 en，仅本次启动 / UI language: zh or en, this launch only."),
+        QStringLiteral("lang"));
     parser.addOption(connectOption);
     parser.addOption(secondsOption);
     parser.addOption(verifyUiOption);
     parser.addOption(languageOption);
     parser.process(app);
 
-    const Language startLanguage =
-        parser.value(languageOption).compare(QStringLiteral("en"), Qt::CaseInsensitive) == 0
-            ? Language::English
-            : Language::Chinese;
-    ClientWindow window(startLanguage);
+    std::optional<Language> cliLanguage;
+    if (parser.isSet(languageOption)) {
+        cliLanguage = parseToolCliLanguage(parser.value(languageOption));
+        if (!cliLanguage) {
+            std::cerr << "invalid --language; expected zh or en" << std::endl;
+            return 64;
+        }
+    }
+    // The existing --verify-ui command may run a deterministic interaction
+    // regression using a throwaway INI settings file. This is never active
+    // for normal GUI sessions and cannot modify a real user's preference.
+    const QString testCase = parser.isSet(verifyUiOption)
+        ? qEnvironmentVariable("HYREMOTE_TOOL_TEST_LANGUAGE_CASE") : QString();
+    if (!testCase.isEmpty() && testCase != QStringLiteral("repeat")
+                            && testCase != QStringLiteral("save-failure")) {
+        std::cerr << "invalid HYREMOTE_TOOL_TEST_LANGUAGE_CASE" << std::endl;
+        return 64;
+    }
+    std::unique_ptr<QTemporaryDir> testRoot;
+    std::unique_ptr<QSettings> languageSettings;
+    if (!testCase.isEmpty()) {
+        testRoot = std::make_unique<QTemporaryDir>();
+        if (!testRoot->isValid()) {
+            std::cerr << "TOOL_LANGUAGE_UI_TEMP_FAIL" << std::endl;
+            return 1;
+        }
+        QString settingsPath = testRoot->filePath(QStringLiteral("settings.ini"));
+        if (testCase == QStringLiteral("save-failure")) {
+            // A regular file as the parent of settings.ini is unwriteable
+            // independently of user identity / chmod / runner privileges.
+            QFile blockingParent(testRoot->filePath(QStringLiteral("blocked")));
+            if (!blockingParent.open(QIODevice::WriteOnly)) {
+                std::cerr << "TOOL_LANGUAGE_UI_TEMP_FAIL" << std::endl;
+                return 1;
+            }
+            blockingParent.close();
+            settingsPath = testRoot->filePath(QStringLiteral("blocked/settings.ini"));
+        }
+        languageSettings = std::make_unique<QSettings>(
+            settingsPath, QSettings::IniFormat);
+        if (testCase == QStringLiteral("repeat")
+            && !saveToolLanguagePreference(*languageSettings,
+                                           ToolLanguagePreference::Chinese)) {
+            std::cerr << "TOOL_LANGUAGE_UI_TEMP_FAIL" << std::endl;
+            return 1;
+        }
+        // Both regressions start with an English CLI override. The repeat
+        // case must preserve the saved Chinese preference until the user
+        // explicitly selects the already displayed English item.
+        if (!cliLanguage || *cliLanguage != Language::English) {
+            std::cerr << "TOOL_LANGUAGE_UI_REQUIRES_CLI_EN" << std::endl;
+            return 64;
+        }
+    } else {
+        languageSettings = std::make_unique<QSettings>();
+    }
+    const auto savedLanguage = loadToolLanguagePreference(*languageSettings);
+    const auto startLanguage = resolveToolLanguage(savedLanguage, QLocale::system(),
+                                                   cliLanguage);
+    ClientWindow window(startLanguage, savedLanguage, cliLanguage.has_value(),
+                        *languageSettings);
     window.show();
 
     if (parser.isSet(verifyUiOption)) {
-        QTimer::singleShot(0, &window, [&window, &app] {
-            app.exit(window.verifyUi() ? 0 : 1);
+        QTimer::singleShot(0, &window, [&window, &app, testCase] {
+            const bool ok = testCase.isEmpty()
+                                ? window.verifyUi()
+                                : window.verifyLanguageSelection(
+                                      testCase == QStringLiteral("save-failure"));
+            app.exit(ok ? 0 : 1);
         });
         return app.exec();
     }
