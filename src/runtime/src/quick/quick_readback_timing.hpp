@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <optional>
+
 // Qt5.15+ / Qt6 native Quick readback scheduling policy, independent of
 // operating system, graphics API or chipset. All values are EXPERIMENTAL
 // candidates: they are not product latency guarantees.
@@ -27,16 +30,13 @@ struct QuickReadbackTiming final {
     static constexpr int secondRetirementRenderMs = 16;
     static constexpr int maxExtraRenders = 2;
 };
+
 // A Qt natural render may arrive repeatedly while ONE D3D11 staging Map is
 // outstanding. Its retirement attempt has one bounded GUI timer per batch
 // epoch; the timer is never a general paint/poll loop. Plain C++ state is
 // intentionally reusable across Qt5/Qt6 and graphics APIs. The current GL
 // implementation retires its fences on a dedicated worker and does not need
 // this Qt render-pumping gate.
-#include <cstdint>
-#include <optional>
-
-namespace HyRemote::detail {
 class QuickRetirementRenderGate final {
 public:
     struct Ticket {
