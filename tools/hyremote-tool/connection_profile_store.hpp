@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QString>
 #include <QVector>
 
@@ -46,4 +47,5 @@ private:
     QVector<ToolConnectionProfile> m_profiles;
     bool m_loaded = false;
     bool m_corrupt = false;
+    QByteArray m_diskDigest; // optimistic stale-writer detection under QLockFile
 };
