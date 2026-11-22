@@ -15,6 +15,10 @@ add_executable(hyremote-remote-support-showcase
     connection_profile_store.hpp
     basic_diagnostics.cpp
     basic_diagnostics.hpp
+    tool_diagnostic_session.cpp
+    tool_diagnostic_session.hpp
+    tool_diagnostics_dialog.cpp
+    tool_diagnostics_dialog.hpp
     ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
@@ -72,6 +76,23 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("unit;tool;fast" hyremote-tool-basic-diagnostics)
     endif()
 
+    add_executable(hyremote-tool-diagnostic-session-test
+        test_tool_diagnostic_session.cpp
+        tool_diagnostic_session.cpp
+        tool_diagnostic_session.hpp
+        basic_diagnostics.cpp
+        basic_diagnostics.hpp
+    )
+    target_compile_features(hyremote-tool-diagnostic-session-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-diagnostic-session-test
+        PRIVATE Qt6::Core Qt6::Gui Qt6::Network)
+    add_test(NAME hyremote-tool-diagnostic-session
+             COMMAND $<TARGET_FILE:hyremote-tool-diagnostic-session-test>)
+    set_tests_properties(hyremote-tool-diagnostic-session PROPERTIES TIMEOUT 20)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("unit;tool;fast" hyremote-tool-diagnostic-session)
+    endif()
+
     add_executable(hyremote-tool-connection-profiles-test
         test_connection_profile_store.cpp
         connection_profile_store.cpp
@@ -103,6 +124,10 @@ if(HYREMOTE_BUILD_TESTS)
         test_rfb_client.cpp
         rfb_client.cpp
         rfb_client.h
+        tool_diagnostic_session.cpp
+        tool_diagnostic_session.hpp
+        basic_diagnostics.cpp
+        basic_diagnostics.hpp
     )
     target_compile_features(hyremote-tool-rfb-client-test PRIVATE cxx_std_17)
     target_link_libraries(hyremote-tool-rfb-client-test
@@ -175,6 +200,35 @@ if(HYREMOTE_BUILD_TESTS)
     )
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-profiles)
+    endif()
+
+    # Production diagnostics navigation and manual privacy actions at two
+    # window sizes and both supported languages, no remote socket or real
+    # operator profile. Clipboard is touched only by explicit test click.
+    add_test(
+        NAME hyremote-tool-client-ui-diagnostics-compact
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language zh
+    )
+    set_tests_properties(hyremote-tool-client-ui-diagnostics-compact PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE=compact"
+        PASS_REGULAR_EXPRESSION "TOOL_DIAGNOSTICS_UI_PASS viewport=800x600 actual-geometry=1 reopened-masked=1 lang=zh"
+    )
+    add_test(
+        NAME hyremote-tool-client-ui-diagnostics-wide
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-diagnostics-wide PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE=wide"
+        PASS_REGULAR_EXPRESSION "TOOL_DIAGNOSTICS_UI_PASS viewport=1366x768 actual-geometry=1 reopened-masked=1 lang=en"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast"
+            hyremote-tool-client-ui-diagnostics-compact
+            hyremote-tool-client-ui-diagnostics-wide)
     endif()
 
     # Smoke the REAL application command-line precedence, independent of any

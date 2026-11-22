@@ -2,8 +2,14 @@
 #include "rfb_client.h"
 #include "language_preference.hpp"
 #include "connection_profile_store.hpp"
+#include "tool_diagnostic_session.hpp"
+#include "tool_diagnostics_dialog.hpp"
 
 #include <QApplication>
+#include <QClipboard>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QPlainTextEdit>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -109,6 +115,9 @@ public:
         auto *brandName = new QLabel(QStringLiteral("HyRemoteTool"), this);
         brandRow->addWidget(brandName);
         brandRow->addStretch(1);
+        m_diagnosticsAction = new QPushButton(this);
+        m_diagnosticsAction->setObjectName(QStringLiteral("tool-open-diagnostics"));
+        brandRow->addWidget(m_diagnosticsAction);
         root->addLayout(brandRow);
 
         auto *connectionRow = new QHBoxLayout;
@@ -213,6 +222,9 @@ public:
         };
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
+        connect(m_diagnosticsAction, &QPushButton::clicked, this, [this] {
+            openDiagnostics();
+        });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
         connect(m_profilesBox, &QComboBox::activated, this, [this](int index) {
 #else
@@ -244,6 +256,7 @@ public:
             retranslateUi();
         });
         connect(m_control, &QCheckBox::toggled, this, [this](bool enabled) {
+            m_diagnostics.setControlRequested(enabled);
             if (enabled) {
                 m_client->setRemoteControlEnabled(true);
                 m_view->setInputEnabled(true);
@@ -255,11 +268,19 @@ public:
             }
         });
         connect(m_client, &RfbClient::stateChanged, this, [this](RfbClient::State state) {
+            m_diagnostics.observeState(state);
             applyState(state);
+            if (m_diagDialog && m_diagDialog->isVisible())
+                m_diagDialog->refresh();
         });
+        connect(m_client, &RfbClient::socketErrorObserved, this,
+                [this](QAbstractSocket::SocketError error) {
+                    m_diagnostics.observeSocketError(error);
+                });
         connect(m_client, &RfbClient::frameUpdated, this, [this](const QImage &frame) {
             m_view->setFrame(frame);
             m_frameSize = frame.size();
+            m_diagnostics.observeFrame(frame.size());
             retranslateUi();
             std::cout << "TOOL_CLIENT_FRAME " << frame.width() << 'x' << frame.height() << std::endl;
         });
@@ -285,6 +306,7 @@ public:
         });
         connect(m_client, &RfbClient::statsUpdated, this, [this](const RfbClient::Stats &stats) {
             m_lastStats = stats;
+            m_diagnostics.observeStats(stats);
             retranslateUi();
             std::cout << "TOOL_CLIENT_STATS fps=" << stats.fps
                       << " mbit=" << stats.mbitPerSecond
@@ -293,6 +315,9 @@ public:
         });
         connect(m_client, &RfbClient::errorOccurred, this, [this](const QString &message) {
             m_lastErrorRaw = message;
+            m_diagnostics.observeError(message);
+            if (m_diagDialog && m_diagDialog->isVisible())
+                m_diagDialog->refresh();
             retranslateUi();
             std::cerr << "TOOL_CLIENT_ERROR " << message.toStdString() << std::endl;
         });
@@ -317,6 +342,9 @@ public:
         m_host->setText(host);
         m_port->setValue(port);
         m_pendingProfileId.clear();
+        m_diagnostics.beginAttempt(host, port);
+        if (m_diagDialog)
+            m_diagDialog->resetEndpointSelection();
         m_client->connectToHost(host, port);
     }
 
@@ -346,6 +374,7 @@ public:
     }
 
     bool verifyProfileUi();
+    bool verifyDiagnosticsUi(const QString &testCase);
 
     bool verifyUi() const
     {
@@ -355,7 +384,8 @@ public:
                         && m_resolution && m_error && m_languageBox && m_languageWarning
                         && m_profilesLabel && m_profilesBox && m_profileSave
                         && m_profileEdit && m_profileDelete && m_profileConnect
-                        && m_profileRecover && m_profileWarning;
+                        && m_profileRecover && m_profileWarning
+                        && m_diagnosticsAction;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
@@ -390,6 +420,7 @@ private:
     void promptEditProfile();
     void promptDeleteProfile();
     void promptRecoverProfiles();
+    void openDiagnostics();
 
     QString text(const char *zh, const char *en) const
     {
@@ -478,6 +509,9 @@ private:
                                          "The remote application has remote input disabled."));
         m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
         m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
+        m_diagnosticsAction->setText(text("诊断", "Diagnostics"));
+        if (m_diagDialog)
+            m_diagDialog->setChinese(isChinese(m_language));
         m_profilesLabel->setText(text("已保存", "Saved"));
         m_profileSave->setText(text("保存", "Save"));
         m_profileEdit->setText(text("编辑", "Edit"));
@@ -523,6 +557,9 @@ private:
             return;
         }
         m_lastErrorRaw.clear();
+        m_diagnostics.beginAttempt(host, static_cast<quint16>(m_port->value()));
+        if (m_diagDialog)
+            m_diagDialog->resetEndpointSelection();
         retranslateUi();
         m_client->connectToHost(host, static_cast<quint16>(m_port->value()));
     }
@@ -570,6 +607,9 @@ private:
     }
 
     RfbClient *m_client = nullptr;
+    ToolDiagnosticSession m_diagnostics;
+    ToolDiagnosticsDialog *m_diagDialog = nullptr;
+    QPushButton *m_diagnosticsAction = nullptr;
     FramebufferView *m_view = nullptr;
     Language m_language = Language::Chinese;
     QSettings &m_languageSettings;
@@ -615,6 +655,144 @@ private:
     QCheckBox *m_control = nullptr;
 };
 
+
+
+void ClientWindow::openDiagnostics()
+{
+    if (!m_diagDialog)
+        m_diagDialog = new ToolDiagnosticsDialog(
+            m_diagnostics, isChinese(m_language), this);
+    // A prior opt-in is never inherited on a new preview/open action.
+    m_diagDialog->resetEndpointSelection();
+    m_diagDialog->refresh();
+    m_diagDialog->show();
+    // Keep this local diagnostic window within the operator's workspace
+    // rather than trusting platform-default top-level dialog placement.
+    m_diagDialog->move(mapToGlobal(QPoint(
+        qMax(0, (width() - m_diagDialog->width()) / 2),
+        qMax(0, (height() - m_diagDialog->height()) / 2))));
+    m_diagDialog->raise();
+    m_diagDialog->activateWindow();
+}
+
+bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
+{
+    const bool compact = testCase == QStringLiteral("compact");
+    resize(compact ? QSize(800, 600) : QSize(1366, 768));
+    const bool offline = m_client->state() == RfbClient::State::Disconnected
+                         && !m_view->inputEnabled();
+    m_diagnostics.beginAttempt(QStringLiteral("10.10.12.8"), 5921);
+    m_diagnostics.observeState(RfbClient::State::Handshaking);
+    m_diagnostics.observeError(QStringLiteral("not an RFB 3.x endpoint"));
+    m_diagnostics.observeState(RfbClient::State::Failed);
+
+    auto *clipboard = QApplication::clipboard();
+    if (clipboard)
+        clipboard->setText(QStringLiteral("TOOL_DIAG_NO_AUTO_COPY"));
+    m_diagnosticsAction->click(); // production navigation, not direct construction
+    QApplication::processEvents(); // settle real Qt layouts and window geometry
+
+    auto *preview = m_diagDialog
+        ? m_diagDialog->findChild<QPlainTextEdit*>(QStringLiteral("tool-diagnostics-preview"))
+        : nullptr;
+    auto *reveal = m_diagDialog
+        ? m_diagDialog->findChild<QCheckBox*>(QStringLiteral("tool-diagnostics-reveal-endpoint"))
+        : nullptr;
+    auto *copy = m_diagDialog
+        ? m_diagDialog->findChild<QPushButton*>(QStringLiteral("tool-diagnostics-copy"))
+        : nullptr;
+    auto *save = m_diagDialog
+        ? m_diagDialog->findChild<QPushButton*>(QStringLiteral("tool-diagnostics-save"))
+        : nullptr;
+
+    const bool accessible = m_diagnosticsAction->isVisibleTo(this)
+                            && m_diagDialog && m_diagDialog->isVisible()
+                            && preview && reveal && copy && save
+                            && !reveal->isChecked()
+                            && preview->isReadOnly()
+                            && !m_diagDialog->windowTitle().isEmpty();
+    const bool untouched = clipboard
+        && clipboard->text() == QStringLiteral("TOOL_DIAG_NO_AUTO_COPY");
+    const QSize expectedViewport = compact ? QSize(800, 600) : QSize(1366, 768);
+    const bool exactViewport = size() == expectedViewport;
+    const auto fullyInside = [](const QWidget *widget, const QWidget *owner) {
+        if (!widget || !owner || !widget->isVisibleTo(owner)
+            || widget->width() <= 0 || widget->height() <= 0)
+            return false;
+        const QRect actual(widget->mapTo(const_cast<QWidget*>(owner), QPoint(0, 0)),
+                           widget->size());
+        return owner->rect().contains(actual);
+    };
+    const QRect actualDialog(m_diagDialog
+                                 ? mapFromGlobal(m_diagDialog->mapToGlobal(QPoint(0, 0)))
+                                 : QPoint(), m_diagDialog ? m_diagDialog->size() : QSize());
+    const bool geometries = exactViewport
+                            && fullyInside(m_diagnosticsAction, this)
+                            && m_diagDialog && m_diagDialog->isVisible()
+                            && rect().contains(actualDialog)
+                            && fullyInside(preview, m_diagDialog)
+                            && fullyInside(reveal, m_diagDialog)
+                            && fullyInside(copy, m_diagDialog)
+                            && fullyInside(save, m_diagDialog)
+                            && fullyInside(m_diagDialog->findChild<QPushButton*>(
+                                  QStringLiteral("tool-diagnostics-refresh")), m_diagDialog);
+
+    if (!accessible) {
+        std::cout << "TOOL_DIAGNOSTICS_UI_FAIL accessible=0" << std::endl;
+        return false;
+    }
+
+    const auto parsed = [&preview] {
+        return QJsonDocument::fromJson(preview->toPlainText().toUtf8()).object();
+    };
+    auto report = parsed();
+    const bool masked = report.value(QStringLiteral("endpointRedacted")).toBool()
+                        && report.value(QStringLiteral("endpoint")).toString()
+                               == QStringLiteral("[redacted]")
+                        && report.value(QStringLiteral("state")).toString()
+                               == QStringLiteral("failed")
+                        && report.value(QStringLiteral("lastFailure")).toString()
+                               == QStringLiteral("malformed-wire")
+                        && report.value(QStringLiteral("nextStep")).toString()
+                               == QStringLiteral("verify-endpoint-protocol");
+
+    reveal->setChecked(true);
+    const bool revealed = parsed().value(QStringLiteral("endpoint")).toString()
+                          == QStringLiteral("10.10.12.8");
+    m_diagnosticsAction->click(); // genuine reopen; consent must not persist
+    const bool reopenMasked = !reveal->isChecked()
+                              && parsed().value(QStringLiteral("endpoint")).toString()
+                                     == QStringLiteral("[redacted]");
+    copy->click(); // only this explicit action may write the clipboard
+    const bool safeCopy = clipboard && clipboard->text() == preview->toPlainText()
+                          && !clipboard->text().contains(QStringLiteral("10.10.12.8"))
+                          && !clipboard->text().contains(QStringLiteral("not an RFB"));
+    m_diagnostics.beginAttempt(QStringLiteral("C:private.txt"), 5921);
+    m_diagDialog->resetEndpointSelection();
+    reveal->setChecked(true);
+    const bool unsafeStillMasked = parsed().value(QStringLiteral("endpoint")).toString()
+                                   == QStringLiteral("[redacted]")
+                                   && parsed().value(QStringLiteral("endpointRedacted")).toBool();
+    m_diagDialog->close();
+
+    const bool ok = offline && accessible && untouched && geometries
+                    && masked && revealed && reopenMasked
+                    && safeCopy && unsafeStillMasked
+                    && m_client->state() == RfbClient::State::Disconnected
+                    && !m_view->inputEnabled();
+    std::cout << (ok ? "TOOL_DIAGNOSTICS_UI_PASS" : "TOOL_DIAGNOSTICS_UI_FAIL")
+              << " viewport=" << width() << 'x' << height()
+              << " actual-geometry=" << geometries
+              << " reopened-masked=" << reopenMasked
+              << " lang=" << (isChinese(m_language) ? "zh" : "en")
+              << " offline=" << offline
+              << " default-masked=" << masked
+              << " explicit-reveal=" << revealed
+              << " copy-after-click=" << safeCopy
+              << " unsafe-masked=" << unsafeStillMasked
+              << std::endl;
+    return ok;
+}
 
 QString ClientWindow::selectedProfileId() const
 {
@@ -1047,13 +1225,22 @@ int main(int argc, char **argv)
         std::cerr << "invalid HYREMOTE_TOOL_TEST_PROFILE_CASE" << std::endl;
         return 64;
     }
-    if (!profileTestCase.isEmpty() && !testCase.isEmpty()) {
+    const QString diagnosticTestCase = parser.isSet(verifyUiOption)
+        ? qEnvironmentVariable("HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE") : QString();
+    if (!diagnosticTestCase.isEmpty()
+        && diagnosticTestCase != QStringLiteral("compact")
+        && diagnosticTestCase != QStringLiteral("wide")) {
+        std::cerr << "invalid HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE" << std::endl;
+        return 64;
+    }
+    if (int(!testCase.isEmpty()) + int(!profileTestCase.isEmpty())
+        + int(!diagnosticTestCase.isEmpty()) > 1) {
         std::cerr << "only one Tool UI regression case may run" << std::endl;
         return 64;
     }
     std::unique_ptr<QTemporaryDir> profileTestRoot;
     QString profilePath;
-    if (!profileTestCase.isEmpty()) {
+    if (!profileTestCase.isEmpty() || !diagnosticTestCase.isEmpty()) {
         profileTestRoot = std::make_unique<QTemporaryDir>();
         if (!profileTestRoot->isValid()) {
             std::cerr << "TOOL_PROFILE_UI_TEMP_FAIL" << std::endl;
@@ -1069,13 +1256,16 @@ int main(int argc, char **argv)
     window.show();
 
     if (parser.isSet(verifyUiOption)) {
-        QTimer::singleShot(0, &window, [&window, &app, testCase, profileTestCase] {
-            const bool ok = !profileTestCase.isEmpty()
-                                ? window.verifyProfileUi()
-                                : testCase.isEmpty()
-                                      ? window.verifyUi()
-                                      : window.verifyLanguageSelection(
-                                            testCase == QStringLiteral("save-failure"));
+        QTimer::singleShot(0, &window, [&window, &app, testCase, profileTestCase,
+                                         diagnosticTestCase] {
+            const bool ok = !diagnosticTestCase.isEmpty()
+                                ? window.verifyDiagnosticsUi(diagnosticTestCase)
+                                : !profileTestCase.isEmpty()
+                                      ? window.verifyProfileUi()
+                                      : testCase.isEmpty()
+                                            ? window.verifyUi()
+                                            : window.verifyLanguageSelection(
+                                                  testCase == QStringLiteral("save-failure"));
             app.exit(ok ? 0 : 1);
         });
         return app.exec();
