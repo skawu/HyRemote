@@ -122,7 +122,7 @@
 **特别冲突和下一步：**
 
 1. 本文件旧 V1.1.0.0 行中 `Edge Connector` 易被误读为工厂另装软件；已按 **#827 获批的 V15** 修正为“HyRemoteView 产品内部 Edge”，不改变 `V1.1.0.0 STRATEGIC_CONDITIONAL` / #190 activation 和原 Gateway 技术 Gate。历史 Sidecar 方案只作为 #190 的历史记录。
-2. V15 Human H-T01=A 已明确 Tool/HyRemoteView 产品边界，而早期 #579 的 D+A Tool S1 包含远程会话交互。**历史排程未自动废止**；Human 已指定 View 为统一产品主仓、HyRemote 为其子模块，但如要移动、缩减、调整已排 Tool 功能或给官方 View 指定新版本，仍须先在 #594 作正式产品影响决议，经受审路线图 PR 同步；在此以前只做两产品的实际能力/维护范围区分，不自行生成第二份 Version Plan。
+2. V15 Human H-T01=A 已明确 Tool/HyRemoteView 产品边界，而早期 #579 的 D+A Tool S1 包含远程会话交互。**历史排程未自动废止**；Human 已指定 View 为统一产品主仓、HyRemote 为其子模块，但如要移动、缩减、调整已排 Tool 功能或给官方 View 指定新版本，仍须先在 #594 作正式产品影响决议，经受审路线图 PR 同步；在此以前只区分统一产品内 Tool 与 View 两种客户端的实际能力及维护范围，不自行生成第二份 Version Plan。
 3. 需求追踪统一使用 `V15 §/表6 场景 → V8 §/附录 → D1–D5 模块/合同 → 责任 Issue → 本文件唯一规划版本 → Gate-D/G3/I → 实际 PR/CTest/Viewer/设备记录 → Gate-R`。无证据填 `NOT_RUN`，现发维护不等待尚未获授权的全产品 Gate-I。
 4. V15/V8 正式 Word 二进制及逐原子技术签收的受控审查仍归 #843；本表只引用已审结构索引和获批事实，不把本次 GitHub 校准当作 56/99 全条技术审查完成。
 
