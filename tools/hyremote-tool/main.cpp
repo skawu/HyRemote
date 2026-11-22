@@ -8,6 +8,8 @@
 #include <QComboBox>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include <QFile>
+#include <QMetaObject>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -17,11 +19,13 @@
 #include <QSettings>
 #include <QSize>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include <iostream>
+#include <memory>
 
 namespace {
 
@@ -68,11 +72,12 @@ class ClientWindow final : public QWidget
 {
 public:
     explicit ClientWindow(Language language, ToolLanguagePreference preference,
-                          bool cliOverride, QWidget *parent = nullptr)
+                          bool cliOverride, QSettings &settings, QWidget *parent = nullptr)
         : QWidget(parent)
         , m_client(new RfbClient(this))
         , m_view(new FramebufferView(this))
         , m_language(language)
+        , m_languageSettings(settings)
     {
         auto *root = new QVBoxLayout(this);
         root->setContentsMargins(10, 10, 10, 10);
@@ -171,8 +176,7 @@ public:
             const auto preference = index == 1 ? ToolLanguagePreference::Chinese
                                     : index == 2 ? ToolLanguagePreference::English
                                                  : ToolLanguagePreference::Auto;
-            QSettings settings;
-            m_languageSaveFailed = !saveToolLanguagePreference(settings, preference);
+            m_languageSaveFailed = !saveToolLanguagePreference(m_languageSettings, preference);
             if (m_languageSaveFailed)
                 std::cerr << "TOOL_LANGUAGE_SAVE_FAIL" << std::endl;
             m_language = resolveToolLanguage(preference, QLocale::system());
@@ -243,6 +247,31 @@ public:
         m_host->setText(host);
         m_port->setValue(port);
         m_client->connectToHost(host, port);
+    }
+
+    // Deterministic GUI test of the *real* QComboBox::activated(int)
+    // callback, including explicit re-selection of an already selected CLI
+    // language. A synthetic signal is sufficient to reach the production
+    // connection without opening a dropdown on offscreen QPA.
+    bool verifyLanguageSelection(bool expectSaveFailure)
+    {
+        const bool initial = m_languageBox && m_languageBox->currentIndex() == 2
+                             && m_language == Language::English;
+        const bool signal = initial && QMetaObject::invokeMethod(
+            m_languageBox, "activated", Qt::DirectConnection, Q_ARG(int, 2));
+        const bool saved = !expectSaveFailure
+                               && loadToolLanguagePreference(m_languageSettings)
+                                      == ToolLanguagePreference::English;
+        const bool failed = expectSaveFailure && m_languageSaveFailed
+                             && m_languageWarning->isVisible()
+                             && m_languageSettings.status() != QSettings::NoError;
+        const bool ok = initial && signal && m_language == Language::English
+                        && (expectSaveFailure ? failed : saved && !m_languageSaveFailed);
+        std::cout << (ok ? "TOOL_LANGUAGE_UI_PASS" : "TOOL_LANGUAGE_UI_FAIL")
+                  << " mode=" << (expectSaveFailure ? "save-failure" : "repeat-select")
+                  << " lang=en"
+                  << std::endl;
+        return ok;
     }
 
     bool verifyUi() const
@@ -421,6 +450,7 @@ private:
     RfbClient *m_client = nullptr;
     FramebufferView *m_view = nullptr;
     Language m_language = Language::Chinese;
+    QSettings &m_languageSettings;
     bool m_languageSaveFailed = false;
     RfbClient::State m_state = RfbClient::State::Disconnected;
     RfbClient::Stats m_lastStats;
