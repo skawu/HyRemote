@@ -85,6 +85,8 @@ void RfbClient::connectToHost(const QString &host, quint16 port)
 void RfbClient::disconnectFromHost()
 {
     m_statsPoll.stop();
+    // Never inherit a previous local input opt-in into another session.
+    m_remoteControl = false;
     m_socket.abort();
     m_in.clear();
     m_waitingForFrame = false;
@@ -147,6 +149,7 @@ void RfbClient::fail(const QString &message)
     if (m_state == State::Failed)
         return;
     m_error = message;
+    m_remoteControl = false; // failed handshake/reception revokes local input
     m_statsPoll.stop();
     m_socket.abort();
     m_in.clear();
@@ -160,6 +163,7 @@ void RfbClient::resetSession()
     m_frame = QImage();
     m_size = QSize();
     m_serverName.clear();
+    m_remoteControl = false; // every explicit new attempt starts view-only
     emit cursorUpdated(QImage(), QPoint());
     m_waitingForFrame = false;
     m_frames = 0;
