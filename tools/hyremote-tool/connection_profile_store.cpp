@@ -186,6 +186,7 @@ ToolConnectionProfileStore::load(QString *error)
     m_corrupt = false;
     m_profiles.clear();
     m_diskDigest.clear();
+    m_corruptDigest.clear();
 
     const QFileInfo info(m_filename);
     if (!info.exists()) {
@@ -200,6 +201,10 @@ ToolConnectionProfileStore::load(QString *error)
     QByteArray raw;
     if (!safeRead(m_filename, raw, error))
         return LoadState::IoError;
+    // An untrusted profile file can only be quarantined after a second
+    // byte-for-byte digest check under the same writer lock. Retain this
+    // digest for bounded data even when JSON parsing or validation fails.
+    m_corruptDigest = digest(raw);
     if (raw.size() == 0) {
         m_corrupt = true;
         fail(error, QStringLiteral("connection profile file is empty"));
@@ -295,7 +300,8 @@ ToolConnectionProfileStore::load(QString *error)
     sortProfiles(next);
     m_profiles = std::move(next);
     m_loaded = true;
-    m_diskDigest = digest(raw);
+    m_diskDigest = m_corruptDigest;
+    m_corruptDigest.clear();
     return legacy ? LoadState::MigratedV0 : LoadState::Loaded;
 }
 
@@ -327,7 +333,10 @@ bool ToolConnectionProfileStore::persist(const QVector<ToolConnectionProfile> &u
     QByteArray current;
     if (!safeRead(m_filename, current, error))
         return false;
-    if ((!current.isEmpty() ? digest(current) : QByteArray()) != m_diskDigest) {
+    // Existing zero-byte files are NOT equivalent to a missing path. A
+    // second process may have created a corrupt file since our load().
+    if ((QFileInfo::exists(m_filename) ? digest(current) : QByteArray())
+        != m_diskDigest) {
         fail(error, QStringLiteral("connection profiles changed in another process; reload first"));
         return false;
     }
@@ -435,9 +444,23 @@ bool ToolConnectionProfileStore::recoverCorrupt(QString *backupPath,
         fail(error, QStringLiteral("no corrupt profile file requiring recovery"));
         return false;
     }
+    if (m_corruptDigest.isEmpty()) {
+        // A file above 128 KiB was deliberately not ingested into memory.
+        // It has no defensible original fingerprint; keep it untouched
+        // rather than moving a possibly new file based on old metadata.
+        fail(error, QStringLiteral("oversized corrupt profile requires manual recovery"));
+        return false;
+    }
     QLockFile lock(m_filename + QStringLiteral(".lock"));
     if (!lock.tryLock(1000)) {
         fail(error, QStringLiteral("connection profile file is locked"));
+        return false;
+    }
+    QByteArray current;
+    if (!QFileInfo::exists(m_filename)
+        || !safeRead(m_filename, current, error)
+        || digest(current) != m_corruptDigest) {
+        fail(error, QStringLiteral("corrupt profile changed since load; reload before recovery"));
         return false;
     }
     const auto target = m_filename + QStringLiteral(".corrupt-")
@@ -452,5 +475,6 @@ bool ToolConnectionProfileStore::recoverCorrupt(QString *backupPath,
     m_loaded = true;
     m_corrupt = false;
     m_diskDigest.clear();
+    m_corruptDigest.clear();
     return true;
 }
