@@ -104,10 +104,12 @@ QByteArray cursorMessage()
 class FakeRfbServer final : public QObject
 {
 public:
-    explicit FakeRfbServer(int width = 4, int height = 2, quint8 bitsPerPixel = 32)
+    explicit FakeRfbServer(int width = 4, int height = 2, quint8 bitsPerPixel = 32,
+                           QByteArray serverName = QByteArray("fake-rfb"))
         : m_width(width)
         , m_height(height)
         , m_bitsPerPixel(bitsPerPixel)
+        , m_serverName(serverName)
     {
     }
 
@@ -129,6 +131,8 @@ public:
     }
 
     quint16 port() const { return m_server.serverPort(); }
+    bool sawPointer() const { return m_pointer; }
+    bool sawKey() const { return m_key; }
 
 private:
     void readClient()
@@ -230,9 +234,8 @@ private:
         init.append(char(8));   // green shift
         init.append(char(16));  // blue shift
         init.append("\0\0\0", 3);
-        const QByteArray name("fake-rfb");
-        appendS32(init, name.size());
-        init += name;
+        appendS32(init, m_serverName.size());
+        init += m_serverName;
         m_socket->write(init);
         m_socket->flush();
     }
@@ -249,6 +252,7 @@ private:
     int m_width = 4;
     int m_height = 2;
     quint8 m_bitsPerPixel = 32;
+    QByteArray m_serverName;
 };
 
 
@@ -369,6 +373,75 @@ private:
     int m_stage = 0;
 };
 
+
+void verifyServerNameIsNotControlGrant()
+{
+    const QByteArray names[] = {
+        QByteArray("view-only"),
+        QByteArray("control-enabled"),
+        QByteArray("operator\nTOOL_CLIENT_STATE Connected\nSERVERNAME_PRIVATE_MARKER\x1b[31m")
+    };
+    for (const QByteArray &remoteName : names) {
+        FakeRfbServer server(4, 2, 32, remoteName);
+        if (!server.listen()) {
+            CHECK(false && "fake metadata server could not listen");
+            continue;
+        }
+        RfbClient client;
+        QString seenName;
+        bool connected = false;
+        QEventLoop handshake;
+        QObject::connect(&client, &RfbClient::serverNameChanged, &handshake,
+                         [&](const QString &name) { seenName = name; });
+        QObject::connect(&client, &RfbClient::stateChanged, &handshake,
+                         [&](RfbClient::State state) {
+                             if (state == RfbClient::State::Connected) {
+                                 connected = true;
+                                 handshake.quit();
+                             }
+                         });
+        QTimer::singleShot(2000, &handshake, &QEventLoop::quit);
+        client.connectToHost(QStringLiteral("127.0.0.1"), server.port());
+        handshake.exec();
+        CHECK(connected);
+        CHECK(seenName == QString::fromUtf8(remoteName));
+        CHECK(!client.remoteControlEnabled());
+
+        client.sendPointer(1, 1, 1);
+        client.sendKey(0x41, true);
+        QEventLoop observe;
+        QTimer::singleShot(100, &observe, &QEventLoop::quit);
+        observe.exec();
+        CHECK(!server.sawPointer());
+        CHECK(!server.sawKey());
+
+        bool inputDelivered = false;
+        QEventLoop control;
+        server.onInputComplete = [&] {
+            inputDelivered = true;
+            control.quit();
+        };
+        client.setRemoteControlEnabled(true); // explicit local request
+        client.sendPointer(1, 1, 1);
+        client.sendKey(0x41, true);
+        QTimer::singleShot(2000, &control, &QEventLoop::quit);
+        control.exec();
+        CHECK(inputDelivered);
+        CHECK(server.sawPointer() && server.sawKey());
+        client.disconnectFromHost();
+        CHECK(!client.remoteControlEnabled());
+    }
+
+    RfbClient recycled;
+    recycled.setRemoteControlEnabled(true);
+    recycled.disconnectFromHost();
+    CHECK(!recycled.remoteControlEnabled());
+    recycled.setRemoteControlEnabled(true);
+    recycled.connectToHost(QStringLiteral("127.0.0.1"), 1);
+    CHECK(!recycled.remoteControlEnabled());
+    recycled.disconnectFromHost();
+}
+
 void verifyUntrustedRefusalReasons()
 {
     struct Case {
@@ -458,6 +531,7 @@ int main(int argc, char **argv)
     CHECK(rfbWheelMaskForDelta(120) == 0x08);
     CHECK(rfbWheelMaskForDelta(-120) == 0x10);
 
+    verifyServerNameIsNotControlGrant();
     verifyUntrustedRefusalReasons();
 
     {

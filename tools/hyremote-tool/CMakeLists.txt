@@ -202,6 +202,24 @@ if(HYREMOTE_BUILD_TESTS)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-profiles)
     endif()
 
+    # Production Tool UI: untrusted RFB ServerInit metadata is not a grant,
+    # cannot forge log lines, and cannot carry local control intent across
+    # disconnect/reconnect. Real TCP sending is checked in the RFB test.
+    add_test(
+        NAME hyremote-tool-client-ui-servername
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-servername PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_SERVER_NAME_CASE=metadata"
+        PASS_REGULAR_EXPRESSION "TOOL_SERVERNAME_UI_PASS metadata=1 explicit-intent=1 revoked=1 reconnect-view-only=1"
+        FAIL_REGULAR_EXPRESSION "SERVERNAME_PRIVATE_MARKER"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-servername)
+    endif()
+
     # Production diagnostics navigation and manual privacy actions at two
     # window sizes and both supported languages, no remote socket or real
     # operator profile. Clipboard is touched only by explicit test click.

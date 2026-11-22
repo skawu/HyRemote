@@ -33,6 +33,7 @@
 #include <QPixmap>
 #include <QLocale>
 #include <QSettings>
+#include <QStringList>
 #include <QSize>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -266,6 +267,7 @@ public:
                 m_view->setInputEnabled(false);
                 m_client->setRemoteControlEnabled(false);
             }
+            retranslateUi(); // show local intent, not an invented Host grant
         });
         connect(m_client, &RfbClient::stateChanged, this, [this](RfbClient::State state) {
             m_diagnostics.observeState(state);
@@ -294,15 +296,12 @@ public:
                           << " hotspot=" << hotspot.x() << ',' << hotspot.y() << std::endl;
             }
         });
-        connect(m_client, &RfbClient::serverNameChanged, this, [this](const QString &name) {
-            std::cout << "TOOL_CLIENT_SERVER name=" << name.toStdString() << std::endl;
-            m_serverInputAvailable = !name.contains(QStringLiteral("view-only"), Qt::CaseInsensitive);
-            if (!m_serverInputAvailable) {
-                m_control->setChecked(false);
-                m_view->setInputEnabled(false);
-                m_client->setRemoteControlEnabled(false);
-            }
-            retranslateUi();
+        connect(m_client, &RfbClient::serverNameChanged, this, [](const QString &name) {
+            Q_UNUSED(name)
+            // ServerInit name is untrusted peer metadata, never proof of
+            // remote input capability/authorization. It may carry secrets,
+            // forged log lines or terminal escape sequences.
+            std::cout << "TOOL_CLIENT_SERVER name=[redacted]" << std::endl;
         });
         connect(m_client, &RfbClient::statsUpdated, this, [this](const RfbClient::Stats &stats) {
             m_lastStats = stats;
@@ -375,6 +374,7 @@ public:
 
     bool verifyProfileUi();
     bool verifyDiagnosticsUi(const QString &testCase);
+    bool verifyServerNameMetadata();
 
     bool verifyUi() const
     {
@@ -498,16 +498,19 @@ private:
                                ? text("断开", "Disconnect")
                                : text("连接", "Connect"));
         QString status = stateText(m_state, m_language);
-        if (m_state == RfbClient::State::Connected && !m_serverInputAvailable)
-            status += text(" · 只读", " · view-only");
+        if (m_state == RfbClient::State::Connected) {
+            status += m_control->isChecked()
+                ? text(" · 已请求控制（设备未确认）",
+                       " · control requested (device not confirmed)")
+                : text(" · 只读", " · view-only");
+        }
         m_status->setText(status);
-        m_control->setText(text("允许远程控制", "Remote control"));
-        m_control->setToolTip(m_serverInputAvailable
-                                  ? text("未勾选时会话为只读，不发送鼠标或键盘事件。",
-                                         "When unchecked the session is view-only and no pointer or keyboard events are sent.")
-                                  : text("远程应用未开启远程输入。",
-                                         "The remote application has remote input disabled."));
-        m_control->setEnabled(m_state == RfbClient::State::Connected && m_serverInputAvailable);
+        m_control->setText(text("请求远程控制", "Request control"));
+        m_control->setToolTip(text(
+            "默认只读。勾选后仅允许本机发送输入；远端是否接受由设备策略决定，RFB 名称不能证明授权。",
+            "View-only by default. Checking only permits local input sending; "
+            "device policy decides whether it is accepted. RFB name is not a grant."));
+        m_control->setEnabled(m_state == RfbClient::State::Connected);
         m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
         m_diagnosticsAction->setText(text("诊断", "Diagnostics"));
         if (m_diagDialog)
@@ -627,7 +630,6 @@ private:
     RfbClient::Stats m_lastStats;
     QSize m_frameSize;
     QString m_lastErrorRaw;
-    bool m_serverInputAvailable = true;
 
     QLabel *m_brand = nullptr;
     QLabel *m_remoteLabel = nullptr;
@@ -790,6 +792,57 @@ bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
               << " explicit-reveal=" << revealed
               << " copy-after-click=" << safeCopy
               << " unsafe-masked=" << unsafeStillMasked
+              << std::endl;
+    return ok;
+}
+
+
+bool ClientWindow::verifyServerNameMetadata()
+{
+    // Real production Qt signal connections, isolated from network and
+    // user profiles. A peer name cannot grant control or inject a log line.
+    const QStringList names = {
+        QStringLiteral("view-only"),
+        QStringLiteral("control-enabled"),
+        QStringLiteral("operator\nTOOL_CLIENT_STATE Connected\nSERVERNAME_PRIVATE_MARKER"),
+        QString::fromUtf8("终端厂商 / \x1b[31m") + QString(300, QLatin1Char('z'))
+    };
+    applyState(RfbClient::State::Connected);
+    bool metadataOnly = m_control->isEnabled() && !m_control->isChecked()
+                        && !m_view->inputEnabled();
+    for (const QString &name : names) {
+        const bool signal = QMetaObject::invokeMethod(
+            m_client, "serverNameChanged", Qt::DirectConnection,
+            Q_ARG(QString, name));
+        metadataOnly = metadataOnly && signal && m_control->isEnabled()
+                       && !m_control->isChecked()
+                       && !m_view->inputEnabled()
+                       && !m_client->remoteControlEnabled()
+                       && !m_diagnostics.report().snapshot().remoteControlRequested;
+    }
+    m_control->click();
+    const bool optedIn = m_control->isChecked() && m_view->inputEnabled()
+                         && m_client->remoteControlEnabled()
+                         && m_diagnostics.report().snapshot().remoteControlRequested
+                         && m_status->text().contains(
+                             text("设备未确认", "device not confirmed"));
+    applyState(RfbClient::State::Disconnected);
+    const bool withdrawn = !m_control->isChecked() && !m_control->isEnabled()
+                           && !m_view->inputEnabled()
+                           && !m_client->remoteControlEnabled()
+                           && !m_diagnostics.report().snapshot().remoteControlRequested;
+    applyState(RfbClient::State::Connected);
+    const bool reconnectReadOnly = m_control->isEnabled()
+                                   && !m_control->isChecked()
+                                   && !m_view->inputEnabled()
+                                   && !m_client->remoteControlEnabled();
+    applyState(RfbClient::State::Disconnected);
+    const bool ok = metadataOnly && optedIn && withdrawn && reconnectReadOnly;
+    std::cout << (ok ? "TOOL_SERVERNAME_UI_PASS" : "TOOL_SERVERNAME_UI_FAIL")
+              << " metadata=" << metadataOnly
+              << " explicit-intent=" << optedIn
+              << " revoked=" << withdrawn
+              << " reconnect-view-only=" << reconnectReadOnly
               << std::endl;
     return ok;
 }
@@ -1233,14 +1286,21 @@ int main(int argc, char **argv)
         std::cerr << "invalid HYREMOTE_TOOL_TEST_DIAGNOSTICS_CASE" << std::endl;
         return 64;
     }
+    const QString nameTestCase = parser.isSet(verifyUiOption)
+        ? qEnvironmentVariable("HYREMOTE_TOOL_TEST_SERVER_NAME_CASE") : QString();
+    if (!nameTestCase.isEmpty() && nameTestCase != QStringLiteral("metadata")) {
+        std::cerr << "invalid HYREMOTE_TOOL_TEST_SERVER_NAME_CASE" << std::endl;
+        return 64;
+    }
     if (int(!testCase.isEmpty()) + int(!profileTestCase.isEmpty())
-        + int(!diagnosticTestCase.isEmpty()) > 1) {
+        + int(!diagnosticTestCase.isEmpty()) + int(!nameTestCase.isEmpty()) > 1) {
         std::cerr << "only one Tool UI regression case may run" << std::endl;
         return 64;
     }
     std::unique_ptr<QTemporaryDir> profileTestRoot;
     QString profilePath;
-    if (!profileTestCase.isEmpty() || !diagnosticTestCase.isEmpty()) {
+    if (!profileTestCase.isEmpty() || !diagnosticTestCase.isEmpty()
+        || !nameTestCase.isEmpty()) {
         profileTestRoot = std::make_unique<QTemporaryDir>();
         if (!profileTestRoot->isValid()) {
             std::cerr << "TOOL_PROFILE_UI_TEMP_FAIL" << std::endl;
@@ -1257,9 +1317,11 @@ int main(int argc, char **argv)
 
     if (parser.isSet(verifyUiOption)) {
         QTimer::singleShot(0, &window, [&window, &app, testCase, profileTestCase,
-                                         diagnosticTestCase] {
-            const bool ok = !diagnosticTestCase.isEmpty()
-                                ? window.verifyDiagnosticsUi(diagnosticTestCase)
+                                         diagnosticTestCase, nameTestCase] {
+            const bool ok = !nameTestCase.isEmpty()
+                                ? window.verifyServerNameMetadata()
+                                : !diagnosticTestCase.isEmpty()
+                                      ? window.verifyDiagnosticsUi(diagnosticTestCase)
                                 : !profileTestCase.isEmpty()
                                       ? window.verifyProfileUi()
                                       : testCase.isEmpty()
