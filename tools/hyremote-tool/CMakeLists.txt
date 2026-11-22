@@ -98,4 +98,20 @@ if(HYREMOTE_BUILD_TESTS)
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui)
     endif()
+
+    # Smoke the REAL application command-line precedence, independent of any
+    # saved UI preference in the runner's home directory.
+    add_test(
+        NAME hyremote-tool-client-ui-cli-en
+        COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                --verify-ui --language en
+    )
+    set_tests_properties(hyremote-tool-client-ui-cli-en PROPERTIES
+        TIMEOUT 20
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+        PASS_REGULAR_EXPRESSION "TOOL_CLIENT_UI_PASS.*lang=en"
+    )
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-cli-en)
+    endif()
 endif()
