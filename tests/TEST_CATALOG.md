@@ -169,6 +169,8 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | `hyremote-v01-example-smoke` | Installs the SDK then independently builds/runs canonical learning paths; proves developer adoption rather than protocol correctness. TG-021 guards registration by C++ API + Runtime + Python. |
 | `hyremote-tool-rfb-client` | Headless fake RFB 3.8 server drives the real HyRemoteTool client core: handshake/None, Raw and DesktopSize frames, pointer/key encoding and FPS/byte accounting. Fails on protocol or telemetry regressions without opening a window. |
 | `hyremote-tool-language-preference` | Qt-free UI-language policy checks local Auto zh_CN/zh_TW/en_US/fr_FR fallback, manual persistence across restarts, CLI one-launch priority without store mutation, and invalid values. |
+| `hyremote-tool-client-ui-language-repeat` | Runs the actual offscreen Tool combo signal while a launch-only English CLI override matches its already selected index; persists a new English manual preference over an existing saved Chinese setting without touching the user's profile. |
+| `hyremote-tool-client-ui-language-save-failure` | Runs the actual offscreen Tool combo against an unwritable settings path; proves language remains usable while a visible warning says the setting was not persisted. |
 | `hyremote-tool-client-ui-cli-en` | Boots the actual offscreen HyRemoteTool application with an explicit --language=en launch override and verifies it renders English without connecting or altering persistent settings. |
 | `hyremote-tool-client-ui` | Constructs the real HyRemoteTool client window offscreen and verifies the connection bar, framebuffer view and telemetry surface exist; it must not connect or open a listener. |
 
