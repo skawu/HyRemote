@@ -11,6 +11,8 @@ add_executable(hyremote-remote-support-showcase
     rfb_client.cpp
     rfb_client.h
     language_preference.hpp
+    connection_profile_store.cpp
+    connection_profile_store.hpp
     ../../examples/hyremote_branding.cpp
     ../../logo/hyremote-branding.qrc
 )
@@ -53,6 +55,20 @@ else()
 endif()
 
 if(HYREMOTE_BUILD_TESTS)
+    add_executable(hyremote-tool-connection-profiles-test
+        test_connection_profile_store.cpp
+        connection_profile_store.cpp
+        connection_profile_store.hpp
+    )
+    target_compile_features(hyremote-tool-connection-profiles-test PRIVATE cxx_std_17)
+    target_link_libraries(hyremote-tool-connection-profiles-test PRIVATE Qt6::Core)
+    add_test(NAME hyremote-tool-connection-profiles
+             COMMAND $<TARGET_FILE:hyremote-tool-connection-profiles-test>)
+    set_tests_properties(hyremote-tool-connection-profiles PROPERTIES TIMEOUT 30)
+    if(COMMAND hyremote_label_test_family)
+        hyremote_label_test_family("unit;tool;fast" hyremote-tool-connection-profiles)
+    endif()
+
     add_executable(hyremote-tool-language-preference-test
         test_language_preference.cpp
         language_preference.hpp
