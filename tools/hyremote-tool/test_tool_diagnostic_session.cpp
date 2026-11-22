@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QStringList>
 
 #include <iostream>
 #include <limits>
@@ -117,6 +118,28 @@ void verifyFailureFactPrecedence()
     observer.observeState(RfbClient::State::Failed);
     CHECK(snapshot(observer).value(QStringLiteral("lastFailure")).toString()
           == QStringLiteral("malformed-wire"));
+    const QStringList malformedProtectors = {
+        QStringLiteral("remote endpoint sent an oversized refusal reason"),
+        QStringLiteral("remote endpoint sent an oversized server name"),
+        QStringLiteral("remote endpoint exceeded the client receive budget"),
+        QStringLiteral("remote cut text exceeds the client budget"),
+        QStringLiteral("remote framebuffer update exceeds the client payload budget"),
+        QStringLiteral("remote resize exceeds the client allocation budget"),
+        QStringLiteral("the remote endpoint announced an empty framebuffer"),
+        QStringLiteral("remote cursor has an invalid size")
+    };
+    for (const QString &reason : malformedProtectors) {
+        observer.beginAttempt(QStringLiteral("host.local"), 5900);
+        observer.observeError(reason);
+        observer.observeState(RfbClient::State::Failed);
+        CHECK(snapshot(observer).value(QStringLiteral("lastFailure")).toString()
+              == QStringLiteral("malformed-wire"));
+    }
+    observer.beginAttempt(QStringLiteral("host.local"), 5900);
+    observer.observeError(QStringLiteral("could not allocate the remote framebuffer"));
+    observer.observeState(RfbClient::State::Failed);
+    CHECK(snapshot(observer).value(QStringLiteral("lastFailure")).toString()
+          == QStringLiteral("other"));
     observer.beginAttempt(QStringLiteral("host.local"), 5900);
     observer.observeError(QStringLiteral("not an RFB 3.x endpoint"));
     observer.observeState(RfbClient::State::Failed);

@@ -257,7 +257,10 @@ private:
 class RejectingRfbServer final : public QObject
 {
 public:
-    enum class Kind { SecurityTypes, SecurityResult, OversizedAuthReason };
+    enum class Kind {
+        SecurityTypes, SecurityResult, OversizedAuthReason,
+        OversizedRefusalReason, OversizedServerName
+    };
 
     explicit RejectingRfbServer(Kind kind) : m_kind(kind) {}
 
@@ -287,10 +290,16 @@ private:
         m_in += m_socket->readAll();
         if (m_stage == 0 && m_in.size() >= 12) {
             m_in.remove(0, 12); // Client RFB 3.8 version
-            if (m_kind == Kind::SecurityTypes) {
+            if (m_kind == Kind::SecurityTypes
+                || m_kind == Kind::OversizedRefusalReason) {
                 QByteArray refusal(1, char(0)); // SecurityTypes count=0
-                appendS32(refusal, maliciousReason().size());
-                refusal += maliciousReason();
+                if (m_kind == Kind::OversizedRefusalReason) {
+                    appendS32(refusal, 4097);
+                    // Keep socket open, proving no body wait for a bad length.
+                } else {
+                    appendS32(refusal, maliciousReason().size());
+                    refusal += maliciousReason();
+                }
                 m_socket->write(refusal);
                 m_socket->flush();
                 m_stage = 2;
@@ -303,6 +312,12 @@ private:
         if (m_stage == 1 && m_in.size() >= 1) {
             m_in.remove(0, 1); // Client selects SecurityType None
             QByteArray failure = QByteArray::fromHex("00000001");
+            if (m_kind == Kind::OversizedServerName) {
+                m_socket->write(QByteArray::fromHex("00000000"));
+                m_socket->flush();
+                m_stage = 3;
+                return; // wait for ClientInit, then send malformed ServerInit
+            }
             if (m_kind == Kind::OversizedAuthReason) {
                 appendS32(failure, 4097);
                 // Deliberately keep the socket open without a body: the
@@ -312,6 +327,27 @@ private:
                 failure += maliciousReason();
             }
             m_socket->write(failure);
+            m_socket->flush();
+            m_stage = 2;
+        }
+        if (m_stage == 3 && m_in.size() >= 1) {
+            m_in.remove(0, 1); // ClientInit: shared session
+            QByteArray init;
+            appendU16(init, 4);
+            appendU16(init, 2);
+            init.append(char(32)); // bits per pixel
+            init.append(char(24)); // depth
+            init.append(char(0));  // little endian
+            init.append(char(1));  // true color
+            appendU16(init, 255);
+            appendU16(init, 255);
+            appendU16(init, 255);
+            init.append(char(0));
+            init.append(char(8));
+            init.append(char(16));
+            init.append("\0\0\0", 3);
+            appendS32(init, 4097); // illegal nameLength, body intentionally absent
+            m_socket->write(init);
             m_socket->flush();
             m_stage = 2;
         }
@@ -345,7 +381,11 @@ void verifyUntrustedRefusalReasons()
         {RejectingRfbServer::Kind::SecurityResult,
          "remote authentication failed"},
         {RejectingRfbServer::Kind::OversizedAuthReason,
-         "remote endpoint sent an oversized authentication reason"}
+         "remote endpoint sent an oversized authentication reason"},
+        {RejectingRfbServer::Kind::OversizedRefusalReason,
+         "remote endpoint sent an oversized refusal reason"},
+        {RejectingRfbServer::Kind::OversizedServerName,
+         "remote endpoint sent an oversized server name"}
     };
     for (const auto &test : cases) {
         RejectingRfbServer server(test.kind);
@@ -395,9 +435,11 @@ void verifyUntrustedRefusalReasons()
               == QStringLiteral("[redacted]"));
         CHECK(!report.contains("secrets="));
         CHECK(!report.contains("TOOL_CLIENT_STATE"));
-        if (test.kind == RejectingRfbServer::Kind::OversizedAuthReason) {
-            // True RFB 3.8: None was already chosen successfully. A 4097
-            // length is malformed protocol framing, not security mismatch.
+        if (test.kind == RejectingRfbServer::Kind::OversizedAuthReason
+            || test.kind == RejectingRfbServer::Kind::OversizedRefusalReason
+            || test.kind == RejectingRfbServer::Kind::OversizedServerName) {
+            // True RFB 3.8 wire: an advertised 4097 length violates the
+            // protocol field budget, regardless of which handshake stage.
             CHECK(diagnostic.value(QStringLiteral("lastFailure")).toString()
                   == QStringLiteral("malformed-wire"));
         } else if (test.kind == RejectingRfbServer::Kind::SecurityResult) {
