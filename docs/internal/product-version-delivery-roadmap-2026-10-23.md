@@ -39,7 +39,7 @@
 
 | 要回答的问题 | 权威事实源 | 不可替代它的内容 |
 | --- | --- | --- |
-| **哪些用户成果排在何时、计划分配哪个版本？** | 本文件在 `develop` 上的最新已合并版本；本文件是唯一完整的跨版本产品成果/版本排序表 | Issue #594 的旧正文/评论、#605 的局部 Qt 决策、任何未合并 PR 或本地文件副本都不能形成另一张版本表 |
+| **哪些用户成果排在何时、计划分配哪个版本？** | 本文件在 `develop` 上的最新已合并版本；本文件是 HyRemote 本仓完整的跨版本成果/版本排序表；View 自己的版本由 View 仓库负责 | Issue #594 的旧正文/评论、#605 的局部 Qt 决策、任何未合并 PR 或本地文件副本都不能形成另一张版本表 |
 | **当前 train 是否登记、mandatory children 是什么、RC 能否激活/候选能否选择？** | `.github/release/release-trains.json` 与 release-scope gate；依 #24/#95 的机器准入和发布治理 | 本路线图里的 `PLANNED`、Issue 编号、PR 已合并或版本号本身都不构成激活/发布授权 |
 | **单个成果的需求、验收条件和实际进度是什么？** | 该成果的责任 Issue 当前正文/验收清单，加上关联 PR 的最新 HEAD、CI、独立 Review 和测试证据 | Issue 标题、历史评论、关闭状态本身或路线图摘要不能代替具体验收与实际状态 |
 | **功能是否已交付、某个 Qt/平台组合是否 Supported？** | 正式 Release/tag、不可变 release SHA、兼容矩阵及对应 exact-SHA 证据 | 规划文档、machine profile 存在、另一个 SHA 的测试通过都不能证明已发布或 Supported |
@@ -123,8 +123,8 @@
 **特别冲突和下一步：**
 
 1. 本文件旧 V1.1.0.0 行中 `Edge Connector` 易被误读为工厂另装软件；已按 **#827 获批的 V15** 修正为“HyRemoteView 产品内部 Edge”，不改变 `V1.1.0.0 STRATEGIC_CONDITIONAL` / #190 activation 和原 Gateway 技术 Gate。历史 Sidecar 方案只作为 #190 的历史记录。
-2. V15 Human H-T01=A 已明确 Tool/HyRemoteView 产品边界，而早期 #579 的 D+A Tool S1 包含远程会话交互。**历史排程未自动废止**；Human 已指定 View 使用 Git 子模块固定 HyRemote 源码版本，同时 HyRemote 仍独立研发和发布，但如要移动、缩减、调整已排 Tool 功能或给官方 View 指定新版本，仍须先在 #594 作正式产品影响决议，经受审路线图 PR 同步；在此以前只区分独立 Runtime/SDK、现有 Tool 与官方 View 的实际能力及维护范围，不自行生成第二份 Version Plan。
-3. 需求追踪统一使用 `V15 §/表6 场景 → V8 §/附录 → D1–D5 模块/合同 → 责任 Issue → 本文件唯一规划版本 → Gate-D/G3/I → 实际 PR/CTest/Viewer/设备记录 → Gate-R`。无证据填 `NOT_RUN`，现发维护不等待尚未获授权的全产品 Gate-I。
+2. V15 Human H-T01=A 已明确 Tool/HyRemoteView 产品边界，而早期 #579 的 D+A Tool S1 包含远程会话交互。**历史排程未自动废止**；Human 已指定 View 使用 Git 子模块固定 HyRemote 源码版本，同时 HyRemote 仍独立研发和发布，如要移动、缩减、调整已排 HyRemoteTool 功能，须先在 #594 作本仓产品影响决议并走受审路线图 PR；View 自己决定其版本计划，涉及 HyRemote 端接口/功能依赖时通过相互关联的跨仓 Issue/PR 协商，不反向支配 HyRemote 版本。
+3. 需求追踪统一使用 `V15 §/表6 场景 → V8 §/附录 → D1–D5 模块/合同 → 责任 Issue → 本仓 HyRemote 版本／View 自主版本及协议组合 → 适用 Gate-D/G3/I → 实际 PR/CTest/Viewer/设备记录 → Gate-R`。无证据填 `NOT_RUN`，现发维护不等待尚未获授权的全产品 Gate-I。
 4. V15/V8 正式 Word 二进制及逐原子技术签收的受控审查仍归 #843；本表只引用已审结构索引和获批事实，不把本次 GitHub 校准当作 56/99 全条技术审查完成。
 
 ### B. GA 后具体版本目标（规划号可调整，默认均未激活）
@@ -171,7 +171,7 @@
 4. **版本目标变更**：新的 Owner 决定先在 #594 提交“旧版号→新版号、为什么、谁受影响、依赖、机器是否激活、CI/用户影响”，再走独立路线图 PR 同步本表、中英文 `versioning`、对应 Issue/WBS；只有 **激活/发布** 才修改 `release-trains.json`；退休或重排的 *仅规划* 编号保留历史记录，不复用已发布 tag。
 5. **用户体验和产品闭环优先**：按上述五类角色/任务收集真实问题；开发从用户旅程的失败点设计可交付结果，分配版本号是为了排程，不是按版本号凑功能。公开版本完成后持续观察接入困难、远程交互成功率、实际画面刷新、控制安全、诊断可理解性和跨 Kit 回归；基线/量化指标由真实测量冻结，不造承诺。自 V1.0 往后继续覆盖嵌入式/Wayland/Touch/业务控制/文件/增强客户端，不在 V1.1 后停止规划。
 6. **每个已规划版本至少具备**：一个确切版本号、一个用户可验收结果、Owner Issues、前置依赖、明确不包含项、目标 Windows/Linux/Kit 范围、验收证据、状态。Issue 关闭 != Feature 已发布；FEATURE_PLANNED → ACTIVATED_DEV → IMPLEMENTED → QUALIFIED → RELEASED，候选和 RC 分开。
-7. **本地与云端责任**：云端 Owner 维护唯一全量版本表、版本冲突诊断与 release train 分类，Agent 执行代码/CI/PR/review，Human 只负责需真实 Windows/Viewer/设备或 GitHub 人工授权的节点。本地 Owner 只能使用本表的**当前明确开发版本**，不得自建平行 V0.4 功能计划或从“计划号”生成 release tag。
+7. **本地与云端责任**：HyRemote 云端 Owner 维护本仓权威版本表、版本冲突诊断与本仓 release train 分类，Agent 执行代码/CI/PR/review，Human 只负责需真实 Windows/Viewer/设备或 GitHub 人工授权的节点。本地 Owner 只能使用本表的**当前明确开发版本**，不得自建平行 V0.4 功能计划或从“计划号”生成 release tag。
 
 ## 一、交付对象与版本定义
 
