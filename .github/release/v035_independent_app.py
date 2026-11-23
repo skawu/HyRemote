@@ -15,7 +15,7 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import time
-from threading import Lock
+from threading import Lock, Thread
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -139,6 +139,77 @@ def gh(method, path, token, payload=None):
         return json.load(response)
 
 
+def _state_file(suffix):
+    # Must be an operator-controlled PERSISTENT writable volume, never a
+    # candidate checkout, ephemeral container layer, or GitHub Actions artifact.
+    root = os.environ.get("APP_STATE_DIR")
+    need(bool(root), "durable APP_STATE_DIR is required for required checks")
+    directory = Path(root)
+    need(directory.is_dir(), "APP_STATE_DIR must be an existing mounted directory")
+    return directory / ("v035-" + HEAD_SHA[:16] + suffix)
+
+
+def _durable_create(path):
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(("revoked " + HEAD_SHA + "\\n").encode("ascii"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        parent_fd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+    except Exception:
+        # Even an incompletely written marker is treated as revoked.
+        raise
+
+
+def is_revoked():
+    return _state_file(".revoked").exists()
+
+
+def mark_revoked():
+    _durable_create(_state_file(".revoked"))
+
+
+def is_revocation_acked():
+    return _state_file(".acked").exists()
+
+
+def attempt_revocation_once():
+    """Durably queued one-way REVOKE; a temporary API error cannot erase it."""
+    if not is_revoked() or is_revocation_acked():
+        return 0
+    token = create_installation_token()
+    count = revoke_on_tag_push(token)
+    if count:
+        _durable_create(_state_file(".acked"))
+    return count
+
+
+def revocation_retry_loop():
+    delay = 5
+    while True:
+        try:
+            with ISSUANCE_LOCK:
+                if is_revoked() and not is_revocation_acked():
+                    delivered = attempt_revocation_once()
+                    delay = 20 if delivered else min(300, delay * 2)
+                else:
+                    delay = 30
+        except Exception as error:
+            # Do not lose signed revocation or produce a success. Persisted
+            # marker survives process restarts and triggers the next attempt.
+            print("revocation retry pending:", type(error).__name__, flush=True)
+            delay = min(300, delay * 2)
+        time.sleep(delay)
+
+
 def create_installation_token():
     # The private key is kept OUTSIDE git, GitHub Actions, logs and PR artifacts.
     import jwt  # PyJWT[crypto] in the deployment-only locked environment
@@ -196,10 +267,14 @@ def check_pr(pr_number, event_sha, token):
         # Reject ABA: an unreviewed A cannot receive success if a transient
         # read_live happened to see approved HEAD_SHA in the middle.
         need(current_sha == HEAD_SHA, "initial PR HEAD is not approved frozen SHA")
+        need(not is_revoked(), "durable tag revocation forbids reauthorization")
         facts = read_live(pr_number, token)
         need((facts[0].get("head") or {}).get("sha") == current_sha,
              "audited facts and check target have different HEADs")
-        validate(*facts, tag_exists=has_release_tag(token))
+        tagged = has_release_tag(token)
+        if tagged:
+            mark_revoked()
+        validate(*facts, tag_exists=tagged)
     except Denied as error:
         conclusion, note = "failure", str(error)
     # Any REST error is propagated, never converted to success.
@@ -208,9 +283,12 @@ def check_pr(pr_number, event_sha, token):
             or (fresh.get("base") or {}).get("sha") != BASE_SHA):
         return "STALE"
     if conclusion == "success" and has_release_tag(token):
-        # An exception here would leave an earlier SUCCESS intact; instead
-        # issue a newer FAILURE check on the same commit.
+        # Persist first, then write FAILURE so later tag deletion or replay
+        # cannot resurrect an obsolete SUCCESS.
+        mark_revoked()
         conclusion, note = "failure", "release tag appeared before check publication"
+    if conclusion == "success" and is_revoked():
+        conclusion, note = "failure", "durable tag revocation forbids reauthorization"
     gh("POST", root + "/check-runs", token, {
         "name": CONTEXT, "head_sha": current_sha,
         "status": "completed", "conclusion": conclusion,
@@ -302,8 +380,16 @@ class Handler(BaseHTTPRequestHandler):
             installed = int(os.environ["GITHUB_INSTALLATION_ID"])
             if decide_tag_event(event_name, event, installed):
                 with ISSUANCE_LOCK:
-                    revoke_on_tag_push(create_installation_token())
-                self.send_response(200)
+                    # FIRST durably record the signed event, BEFORE any REST
+                    # operation. Retrying is our job: GitHub does not
+                    # automatically redeliver failed webhooks.
+                    mark_revoked()
+                    try:
+                        attempt_revocation_once()
+                    except Exception as error:
+                        self.log_error("durable revocation queued: %s",
+                                       type(error).__name__)
+                self.send_response(202)
                 self.end_headers()
                 return
             match = decide_event(event_name, event, installed)
@@ -338,10 +424,13 @@ def main():
         print(check_pr(args.check_pr, None, create_installation_token()))
     else:
         for name in ("GITHUB_APP_ID", "GITHUB_INSTALLATION_ID",
-                     "GITHUB_APP_PRIVATE_KEY_FILE", "GITHUB_WEBHOOK_SECRET"):
+                     "GITHUB_APP_PRIVATE_KEY_FILE", "GITHUB_WEBHOOK_SECRET",
+                     "APP_STATE_DIR"):
             need(bool(os.environ.get(name)), "missing required deployment setting " + name)
+        need(_state_file(".revoked").parent.is_dir(), "durable state mount unavailable")
         host = os.environ.get("APP_LISTEN_HOST", "127.0.0.1")
         port = int(os.environ.get("APP_LISTEN_PORT", "8097"))
+        Thread(target=revocation_retry_loop, daemon=True).start()
         ThreadingHTTPServer((host, port), Handler).serve_forever()
 
 
