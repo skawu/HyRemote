@@ -328,7 +328,7 @@ with app.issuance_guard():
                 self.assertTrue(entered.wait(5))
                 self.assertFalse(completed.wait(0.15))
                 # This process is blocked at flock. Service revokes first.
-                proc.stdin.write("REVOKE\\n")
+                proc.stdin.write("REVOKE\n")
                 proc.stdin.flush()
                 self.assertEqual(proc.wait(timeout=10), 0, proc.stderr.read())
                 self.assertTrue(completed.wait(10))
