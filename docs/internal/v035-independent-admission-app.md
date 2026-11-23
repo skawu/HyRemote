@@ -37,8 +37,9 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    Keep GitHub App private key in a secrets manager, mounted at a read-only
    file path and never present in logs. Mount a separately managed, restricted,
    **persistent writable state volume** for `APP_STATE_DIR`. It stores the
-   monotonic `v035-<SHA>.revoked` marker, `*.acked` delivery record, and
-   shared `*.issuance.lock` file. Use a Linux/POSIX local durable filesystem
+   monotonic `v035-<SHA>.revoked` marker, `*.success-attempted` pre-POST
+   journal, `*.acked` **last observed FAILURE** record, and shared
+   `*.issuance.lock` file. Use a Linux/POSIX local durable filesystem
    with working `flock(2)`, file fsync and directory fsync. Do not use a
    network mount with uncertain lock/durability semantics or per-process mounts.
    Never put this directory in the repository, container writable layer,
@@ -58,16 +59,30 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    cannot make tag creation and release merge a single atomic transaction:
    retain independent tag/release authority and recheck the tag immediately
    before formal promotion.
-4. The signed tag-push webhook writes `*.revoked` **and fsyncs it before**
-   it contacts GitHub. While revoked, even deletion of the tag or a replayed
-   `pull_request.edited` event cannot generate SUCCESS. A background worker
-   retries failing REST check updates with bounded delays across process
-   restarts. An existing but previously unsynced marker must be re-fsynced
-   (file and parent directory) before the worker attempts delivery or ACK.
-   Any fsync failure is an unavailable/failed-closed operation; an external
-   operations watchdog must alert on prolonged pending
-   `*.revoked` without `*.acked`. Only a separately reviewed release policy
-   may reset revocation state, never an ordinary PR/CLI invocation.
+4. Before any SUCCESS Checks POST, the App durably records a
+   `*.success-attempted` marker. A request that times out or whose issuing
+   process crashes may still be committed by GitHub later; absence of a
+   successful HTTP response is **not** proof that SUCCESS was not issued.
+   The signed tag-push webhook records `*.revoked` before any REST call.
+   Revocation targets the fixed approved `HEAD_SHA` **regardless of whether
+   the original PR is open or has the same branch/head**.
+   The service queries GitHub Check Runs filtered to that immutable commit,
+   exact context and its own App ID. If the latest observed App check is not
+   FAILURE, it posts a new FAILURE. The `*.acked` record means **a failure
+   was seen at one observation**, not permanent success of revocation.
+   After revocation the worker **continues reconciliation indefinitely**,
+   including after ACK, to detect and correct late remote SUCCESS after a
+   timeout. It re-fsyncs even existing markers before REST/ACK and restarts
+   reconciliation when the service restarts.
+
+   This is **eventual reconciliation, not an atomic safety guarantee**:
+   remote success can briefly precede the next poll or be replayed while
+   the service is down. Require independent service health/uptime alarms,
+   durable journal and regular check-result verification, and an independent
+   tag/release authority that freezes publication on any pending, degraded
+   or stale reconciliation. Do not consider the version REQUIRED source
+   gate safe for promotion solely because an ACK marker exists.
+   A separately reviewed release policy alone may reset revocation state.
 5. Validate with
    `python -m unittest discover -s tests/release-readiness -p test_v035_independent_app.py -v`.
    Before protecting any branch, install the App and verify **the App itself**
@@ -91,8 +106,12 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    does not satisfy the source binding, bad extra file/blob/mode/SHA/tag
    fails, old event/HEAD cannot approve new HEAD; verify concurrent manual
    CLI invocation cannot post SUCCESS after signed tag revocation, and test
-   fsync EIO followed by successful re-sync without missing a revocation.
-   Report ruleset ID,
+   fsync EIO followed by successful re-sync without missing a revocation;
+   close/move the original PR before a signed tag event and verify the
+   fixed SHA is still revoked; inject a late remote SUCCESS **after** a
+   verified FAILURE/ACK and verify the background reconciler repairs it.
+   Confirm that service outage or an ambiguous remote request is treated as
+   publication HOLD, never as an App admission PASS. Report ruleset ID,
    source integration ID, head SHA, API check publisher and negative outcomes
    to #95. Restore the single frozen candidate state after probes.
 
