@@ -171,6 +171,58 @@ def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
     return "rc7-scoped-post-acceptance-reopen"
 
 
+# #95/#1047: one exact untagged V0.3.5.0 security correction.
+# It cannot import later develop product work or repeat for a new base.
+V035_NUMERIC_BASE_SHA = "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
+V035_NUMERIC_HEAD_REF = "feature/95-release-preparation"
+V035_NUMERIC_FIXED_SOURCE_SHA = "fb35128fe0c330fc505979b7f54ceadc38fc3dbc"
+V035_NUMERIC_SOURCE_FILES = frozenset({
+    "src/runtime/src/detail/watermark_store.cpp",
+    "src/runtime/tests/test_watermark_policy.cpp",
+})
+V035_NUMERIC_GOVERNANCE_FILES = frozenset({
+    ".github/scripts/release_correction.py",
+    ".github/workflows/git-flow-policy.yml",
+})
+
+
+def validate_v035_numeric_watermark(*, git, version, notes_name,
+                                   base_notes, head_notes, base_cmake,
+                                   head_cmake, actual_base_sha, head_ref,
+                                   fixed_source_ref=V035_NUMERIC_FIXED_SOURCE_SHA,
+                                   governance_ref=DEVELOP_REF):
+    """Only the independently reviewed #1047 source and reviewed gate itself.
+
+    A protected release PR must carry both this validator and its workflow
+    from the separately reviewed develop tree. This is not publication authority.
+    """
+    if version != "0.3.5.0" or actual_base_sha != V035_NUMERIC_BASE_SHA:
+        raise SystemExit("V035 numeric correction denied: unapproved version/base")
+    if head_ref != V035_NUMERIC_HEAD_REF:
+        raise SystemExit("V035 numeric correction denied: unauthorized preparation branch")
+    if not base_notes.startswith(CANDIDATE_MARKER) or head_notes != base_notes:
+        raise SystemExit("V035 numeric correction denied: pending bilingual notes must be unchanged")
+    if head_cmake != base_cmake:
+        raise SystemExit("V035 numeric correction denied: VERSION/CMake must be unchanged")
+    expected = V035_NUMERIC_SOURCE_FILES | V035_NUMERIC_GOVERNANCE_FILES
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD").decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit(
+            "V035 numeric correction denied: changed-file scope differs from exact "
+            f"security+governance set: {sorted(changed)}")
+    # Immutable reviewed PR #1047 HEAD. No cherry-pick recomposition,
+    # partial test edits, or later unaccepted develop source allowed.
+    for file_name in sorted(V035_NUMERIC_SOURCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{fixed_source_ref}:{file_name}"):
+            raise SystemExit("V035 numeric correction denied: unreviewed source blob " + file_name)
+    # A release candidate must use governance already accepted on develop,
+    # not a gate independently weakened in the release-head PR.
+    for file_name in sorted(V035_NUMERIC_GOVERNANCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{governance_ref}:{file_name}"):
+            raise SystemExit("V035 numeric correction denied: unreviewed governance blob " + file_name)
+    return "v035-watermark-numeric-exact-security-correction"
+
+
 # ---------------------------------------------------------------- self test
 
 def _run(cwd: Path, *args: str) -> bytes:
@@ -404,6 +456,85 @@ def self_test() -> int:
                  expect_error="exact pending bilingual notes")
     rc7_scenario("RC7 CMake/version alteration rejected", wrong_cmake=True,
                  expect_error="must not alter the release VERSION")
+
+    # #95/#1047: one-time unpublished b068 candidate security correction.
+    # Probe successful exact source + multiple fail-closed adversarial inputs.
+    v035_notes = CANDIDATE_MARKER + "\n# 中文\n# English\n## Security boundary\n"
+    v035_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n"
+    v035_files = V035_NUMERIC_SOURCE_FILES | V035_NUMERIC_GOVERNANCE_FILES
+
+    def v035_scenario(name, *, wrong_version=False, wrong_base=False,
+                      wrong_head=False, wrong_notes=False, wrong_cmake=False,
+                      extra_file=False, missing_file=False, bad_source=False,
+                      bad_governance=False, expect_error=None):
+        nonlocal failures, cases
+        cases += 1
+        changed = set(v035_files)
+        if missing_file:
+            changed.remove("src/runtime/tests/test_watermark_policy.cpp")
+        if extra_file:
+            changed.add("src/runtime/src/transport/rfb_transport.cpp")
+
+        def git_fixture(*args):
+            if args[:2] == ("diff", "--name-only"):
+                return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
+            if args[0] == "show" and len(args) == 2:
+                ref, file_name = args[1].split(":", 1)
+                if file_name in V035_NUMERIC_SOURCE_FILES:
+                    if ref == "HEAD" and bad_source:
+                        return b"TAMPERED-SOURCE\n"
+                    return ("REVIEWED-1047:" + file_name).encode("utf-8")
+                if file_name in V035_NUMERIC_GOVERNANCE_FILES:
+                    if ref == "HEAD" and bad_governance:
+                        return b"TAMPERED-GOVERNANCE\n"
+                    return ("REVIEWED-GOVERNANCE:" + file_name).encode("utf-8")
+            raise AssertionError("unexpected Git query: " + repr(args))
+
+        try:
+            validate_v035_numeric_watermark(
+                git=git_fixture,
+                version=("0.3.6.0" if wrong_version else "0.3.5.0"),
+                notes_name="docs/releases/v0.3.5.0.md",
+                base_notes=v035_notes,
+                head_notes=(v035_notes + "changed\n" if wrong_notes else v035_notes),
+                base_cmake=v035_cmake,
+                head_cmake=(v035_cmake + b"changed" if wrong_cmake else v035_cmake),
+                actual_base_sha=("0" * 40 if wrong_base else V035_NUMERIC_BASE_SHA),
+                head_ref=("feature/789-release-preparation" if wrong_head
+                          else V035_NUMERIC_HEAD_REF),
+                fixed_source_ref="reviewed-source",
+                governance_ref="reviewed-governance")
+            if expect_error is not None:
+                print(f"FAIL {name}: expected {expect_error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+        except SystemExit as error:
+            if expect_error is None or expect_error not in str(error):
+                print(f"FAIL {name}: {error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+
+    v035_scenario("V035 exact #1047 security correction accepted")
+    v035_scenario("V035 wrong version denied", wrong_version=True,
+                  expect_error="unapproved version/base")
+    v035_scenario("V035 wrong frozen candidate denied", wrong_base=True,
+                  expect_error="unapproved version/base")
+    v035_scenario("V035 unrelated issue branch denied", wrong_head=True,
+                  expect_error="unauthorized preparation branch")
+    v035_scenario("V035 notes rewrite denied", wrong_notes=True,
+                  expect_error="pending bilingual notes")
+    v035_scenario("V035 project VERSION change denied", wrong_cmake=True,
+                  expect_error="VERSION/CMake")
+    v035_scenario("V035 extra RFB product edit denied", extra_file=True,
+                  expect_error="changed-file scope")
+    v035_scenario("V035 missing regression test denied", missing_file=True,
+                  expect_error="changed-file scope")
+    v035_scenario("V035 altered source blob denied", bad_source=True,
+                  expect_error="unreviewed source blob")
+    v035_scenario("V035 altered gate blob denied", bad_governance=True,
+                  expect_error="unreviewed governance blob")
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")

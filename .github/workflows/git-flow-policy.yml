@@ -349,6 +349,7 @@ jobs:
                       sys.path.insert(0, ".github/scripts")
                       from release_correction import validate as validate_correction
                       from release_correction import validate_reopen, validate_reopen_rc7
+                      from release_correction import validate_v035_numeric_watermark
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
                           # Only two exact independently reviewed exceptions exist:
                           # #806 accepted RC6->RC7, and #812/#768 accepted RC7->next
@@ -379,6 +380,17 @@ jobs:
                                   base_notes=old_notes, head_notes=notes,
                                   base_cmake=old_cmake, head_cmake=new_cmake,
                                   actual_base_sha=actual_accepted_base, head_ref=head)
+                      elif (actual_base == "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
+                            and head == "feature/95-release-preparation"):
+                          # One exact pre-publication P2 repair (#1047). The
+                          # validated source comes from immutable reviewed SHA;
+                          # the two governance files must already be on develop.
+                          # Never import unrelated #609/#876/Qt native work.
+                          stage = validate_v035_numeric_watermark(
+                              git=git, version=version, notes_name=notes_name,
+                              base_notes=old_notes, head_notes=notes,
+                              base_cmake=old_cmake, head_cmake=new_cmake,
+                              actual_base_sha=actual_base, head_ref=head)
                       else:
                           validate_correction(git=git, version=version, notes_name=notes_name,
                                               base_notes=old_notes, head_notes=notes,
