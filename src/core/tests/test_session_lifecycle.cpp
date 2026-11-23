@@ -279,6 +279,8 @@ HYR_TEST(a_capture_start_failure_faults_before_running)
 
     running.session->stop();
     HYR_CHECK(running.session->state() == SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+    HYR_CHECK(running.session->lastError()->code == SessionErrorCode::CaptureStartFailed);
 }
 
 HYR_TEST(a_transport_start_failure_faults_and_cleans_the_capture_source)
@@ -301,6 +303,8 @@ HYR_TEST(a_transport_start_failure_faults_and_cleans_the_capture_source)
 
     running.session->stop();
     HYR_CHECK(running.session->state() == SessionState::Stopped);
+    HYR_CHECK_EQ(running.session->stats().teardownsPerformed, std::uint64_t{1});
+    HYR_CHECK(running.session->lastError()->code == SessionErrorCode::TransportStartFailed);
 }
 
 HYR_TEST(recoverable_capture_events_do_not_fault_the_session)
