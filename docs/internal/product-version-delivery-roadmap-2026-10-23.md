@@ -60,7 +60,7 @@
 
 - **HyRemote 完整独立**：本仓负责 Runtime/SDK/设备端的代码、需求、公共 API、四条 Qt 接入路线、CI、SDK 安装包、版本计划、tag 与自身 release train；用户不安装 HyRemoteView 也应可正常使用。标准 RFB/VNC 兼容性、已发布支持矩阵和独立客户升级须保留。
 - **Viewer 不支配 Runtime**：HyRemoteView 在自己的 Git 工作树以 `components/HyRemote` 160000 gitlink 消费一个固定 HyRemote SHA。Git superproject 只是**依赖检出者**而非 HyRemote 产品 Owner、发行批准者或上层技术架构；View 的功能开发、测试或合并不得成为 HyRemote 独立研发/发布的强制前置条件。
-- **两条各自负责的版本计划**：本文件是 **HyRemote Runtime/SDK 与现有 HyRemoteTool 的权威版本计划**，不决定 HyRemoteView 独立客户端的版本号、激活或发布；View 自己维护客户端阶段与发布规划（View #1/#16）。**跨仓共享依赖**登记在 #594/#843 和相互关联的 Issue/PR 里，避免重复承诺或混淆已合格的 Runtime、View 和二者组合。
+- **两条各自负责的版本计划**：本文件是 **HyRemote Runtime/SDK 与现有 HyRemoteTool 的权威版本计划**，不决定 HyRemoteView 独立客户端的版本号、激活或发布；View 自己维护客户端阶段与发布规划（View Issues 1 and 16）。**跨仓共享依赖**登记在 #594/#843 和相互关联的 Issue/PR 里，避免重复承诺或混淆已合格的 Runtime、View 和二者组合。
 - **跨仓联合开发**：需要改变协议/Server/Client 的功能，分别在各自仓库受审提交并遵循各自 CI；View 可选择更新 Gitlink + 锁文件固定一组源码，用于真实联合构建/测试。**HyRemote 组件迭代无需逐次等待 View 更新子模块**；既有 Tool S1 成果不自动迁移给 View。
 - **资格与发布**：HyRemote SDK/Runtime 依据本仓真实支持资格和机读发布规则独立发布；只有 View 对某 HyRemote 版本的兼容声明、View 配对或捆绑交付，才必须具备双 SHA、协议与安全正负例、Qt/OS/CPU 真机/真实环境 E2E、升级回滚证据。View tag 只标 View 交付和明确已验证的配对，不代替 HyRemote SDK tag；源 SHA 固定不是互通 PASS。G3 PoC-only、Gate-D NOT_FROZEN、Gate-I NOT_AUTHORIZED 均保持。
 - **正式设计独立性**：V15/V8 中已批准的独立 Runtime/Viewer 进程与信任/协议职责继续有效；旧“两个完全不协作产品”与本次“一套体系”之间只修订组织协作描述，不默默削弱 HyRemote 独立性。正式 DOCX 的受控勘误及技术 Gate 仍由 #843 单独审签。
