@@ -1,5 +1,8 @@
 # D3｜HyRemoteView 内置 Edge / 可选 Gateway 跨模块接口收口（候选）
 
+> **2026-11-23 V1.7 收口更正（设计候选）**：工厂 Edge 继续只作为**同一 HyRemoteView 安装内的可选登录期角色**，可选 Gateway 仅路由，既不安装在 HMI 上，也不承接 Native 的真实 DeviceTLS 终点。HMI 的 Native 实现归 Private F14 **同 HMI Qt 进程模块**，Public Host 保持最终 View/ControlGrant。Edge 可按产品独立进程设计，但**不得类推**为 Human D-PROC=B 禁止的 HMI Native 独立进程。详见 [三项收口](hyremote-v17-three-closures-design-2026-11-23.md)。
+
+
 > **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。V15/V8 等效原文已取得，Native P-A 数值/TLS-first A 已获批准；其余内部接口、性能假设、原子验收与 Gate-D 仍待设计审签，不因上述决定自动冻结。
 
 > **设计主线**：全产品 #843 的 E-01/G-01，与 D1 HMI Device Contract、D2 HyRemoteView 客户端合同对接。现有 [Stage04 module](stage04-managed-edge-module-design-2026-11-04.md)、[Stage04 security](stage04-managed-edge-protocol-security-2026-11-04.md)、[Stage05 IDL](stage05-managed-edge-control-idl-2026-11-04.md)、[Stage05 DAG](stage05-managed-edge-implementation-dag-2026-11-04.md) 仍是细节主源；本稿**只做跨产品消费接口/状态/冲突消歧，不重新创建第二份 Gateway Control wire**。  
