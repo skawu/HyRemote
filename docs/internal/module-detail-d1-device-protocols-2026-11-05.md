@@ -212,7 +212,7 @@ DeploymentAdmitted
 
 | 层 | 拟定的唯一设计责任 | 失败/验收要求 |
 | --- | --- | --- |
-| F-05 Native parser / InternalInputEnvelope | 按受控 V8 值域接受 1..5；内部 `NativeButtonKind` 和携 Session/Scope/Grant/Target 的可信 InputTicket 原样保留 5 类，不借公开旧枚举做有损 cast。公开 `InputEvent` 的已有 ABI 不作静默修改；Legacy RFB 继续遵守已有协议与公开 API 兼容 | 非法 0/6+ 才按 V8 既有 INVALID_FIELD 拒绝；合法 4/5 若下游无法安全投递，应拒绝**该输入操作的接纳**并以现有受信失败/资源路径表明未执行，不得送一个 None 或回报 SUCCESS |
+| Private F14 Native parser / Public F-06 InternalInputEnvelope | 按受控 V8 值域接受 1..5；内部 `NativeButtonKind` 和携 Session/Scope/Grant/Target 的可信 InputTicket 原样保留 5 类，不借公开旧枚举做有损 cast。公开 `InputEvent` 的已有 ABI 不作静默修改；Legacy RFB 继续遵守已有协议与公开 API 兼容 | 非法 0/6+ 才按 V8 既有 INVALID_FIELD 拒绝；合法 4/5 若下游无法安全投递，应拒绝**该输入操作的接纳**并以现有受信失败/资源路径表明未执行，不得送一个 None 或回报 SUCCESS |
 | F-06 Control/Qt DispatchDomain | 五按钮与全部 Native KeyCode（含 17 个独立 KP 身份）在**同一** Host Admission、Qt 最后栅栏及来源 held 账本内处理；支持的 Qt Kit 使用独立可靠的 X1/X2→Qt Back/Forward 按钮映射且按同一原始按钮身份完成 Release；KP_0..9、KP_DECIMAL/ENTER/ADD/SUBTRACT/MULTIPLY/DIVIDE/EQUAL 保留 keypad 身份，在 Qt 目标适配器中携正确 `Qt::KeypadModifier`，不可无声当主键盘相应键或文本提交；不允许开私有第二路绕过已批准栅栏 | 需要精确 Qt Kit 的同步投递与真实 held 释放资格；不支持时不得向 Native Viewer 宣称该键已执行。不存在新增 Native 握手 caps 表达可选按钮，故完整合法 1..5 是协议互操作设计目标，不能无限期隐藏为未支持的可选扩展 |
 | 资源/退化 | V8 每真实 Qt leaf 普通 64、保护 136 上限不变。上位 69 键+3 按钮=72 类别是**当前三按钮实现模型**；五按钮与 17 个小键盘身份的设计总潜在类别为 **69+17+5=91**，但**同一叶子同时合法已接纳 held 上限仍为 72**。再加可等待的普通 64，受保护释放最坏需求仍 ≤136；超出资源时必须在 DOWN 入队前拒绝新 hold，不准接受后丢匹配 UP | 69 个旧逻辑键全持有时最多再接纳 3 个额外键/按钮 held；其余合法五按钮或小键盘新 DOWN 因容量拒绝，不是协议值域非法。凡已接纳的五种按钮都必须能按来源闭合释放，无卡键、无未记录事件 |
 | Viewer V-01/V-02 | 只有 View 当前真实目标能力与 HMI ControlGrant 许可下才发送合法 Native 1..5；输入是否发送/Host 是否执行是两个事实 | 不能因 Qt 当前本地不产生侧键而捏造额外协议输入或在未收到设备事实时显示“已执行” |
@@ -304,8 +304,8 @@ sequenceDiagram
 | 构建/部署 | 允许的结构 | 必须拒绝的行为 |
 | --- | --- | --- |
 | RFB-only | Shared Runtime + Core + 单独的 RFB transport；面向经批准的本地部署信任范围 | 不能因为 Native 编译关闭就放松 H-02a 或输入/输出隐私栅栏 |
-| Native-only | Shared Runtime + Core + 完整 Native transport、会话和设备安全适配 | 不借 RFB `FramebufferUpdate` 完成 Native 的画面路径；无 RFB 监听 |
-| Dual | Shared Runtime + Core；各自 RFB/Native 连接、认证、输入状态；共享设备 Scope/Policy/采集 | 不因为某一协议认证通过使另一协议连接获权；不能让故障造成未授权 listener 部分可用 |
+| Native-only | Public Shared Runtime + Core/HostPort + **Private F14 同进程完整 Native transport**、会话和设备安全适配 | 不借 RFB `FramebufferUpdate` 完成 Native 的画面路径；无 RFB 监听 |
+| Dual | Public Shared Runtime+Core+RFB 与 Private F14 同进程 Native 各自连接/认证/编码/队列，共享设备 Scope/Policy/采集 | 不因为某一协议认证通过使另一协议连接获权；不能让故障造成未授权 listener 部分可用 |
 | Managed Native | 经 Gateway/Edge **只透明中转**完整 Native 安全字节 | 无真实 Device TLS/独立设备信任时拒绝；Gateway 的 RoutePermit 不提供 View/ControlGrant |
 | Managed RFB | 当前**不具备**不可信公网的端到端设备保密资格 | 不能仅凭 WSS/HTTP Proxy/VNCAuth 进入 Managed Public 支持清单；等价 E2E 技术若未来提案需独立审查与实测 |
 
