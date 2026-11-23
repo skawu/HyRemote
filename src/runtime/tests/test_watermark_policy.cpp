@@ -563,6 +563,42 @@ void checkPersistedPolicySurvivesRestart()
               QStringLiteral("explicit OFF does not inherit a prior restore failure"));
     }
 
+    // A present but non-numeric field is damaged persisted state, not an omitted
+    // optional setting. Neither opacity nor font-size may silently use its default.
+    for (const QString &badField : {QStringLiteral("opacity"), QStringLiteral("font-size")}) {
+        const QString body = QStringLiteral(
+            "version=1\ntext=KEEP\nposition=bottom-right\nopacity=%1\nfont-size=%2\ncolor=#ffffff\n")
+            .arg(badField == QStringLiteral("opacity") ? QStringLiteral("bad-opacity") : QStringLiteral("0.35"),
+                 badField == QStringLiteral("font-size") ? QStringLiteral("bad-font") : QStringLiteral("16"));
+        QFile corrupted(storedPath);
+        check(corrupted.open(QIODevice::WriteOnly | QIODevice::Truncate),
+              QStringLiteral("a corrupt numeric watermark policy can be seeded"));
+        if (!corrupted.isOpen())
+            continue;
+        const QByteArray bytes = body.toUtf8();
+        check(corrupted.write(bytes) == bytes.size(),
+              QStringLiteral("the corrupt numeric policy is written in full"));
+        corrupted.close();
+
+        HyRemote::Runtime::AccessInstance restarted;
+        const auto restored = restarted.watermarkPolicy();
+        check(!restored.ok() && !restored.policy.enabled,
+              QStringLiteral("a corrupt numeric field is never restored as a default"));
+        check(restored.error.contains(QStringLiteral("invalid")),
+              QStringLiteral("the corrupt numeric field is diagnosed without its value"));
+        check(!restored.error.contains(QStringLiteral("bad-")),
+              QStringLiteral("untrusted numeric input is not echoed in diagnostics"));
+        check(!restarted.start(),
+              QStringLiteral("corrupt numeric watermark state refuses remote startup"));
+        const auto failure = restarted.lastError();
+        check(failure.has_value()
+                  && failure->code == HyRemote::Runtime::ErrorCode::InvalidConfiguration
+                  && failure->message.contains(QStringLiteral("remote output is refused")),
+              QStringLiteral("numeric restore errors fail closed before missing-target validation"));
+        check(!restarted.diagnosticSnapshot().effectivePort.has_value(),
+              QStringLiteral("numeric restore errors never open a remote listener"));
+    }
+
     // An oversized state file must never be materialized via an unbounded read, and its text
     // must not enter an ordinary diagnostic. The test intentionally exceeds the format cap.
     {
