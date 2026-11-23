@@ -13,16 +13,7 @@ paths:
 
 Root `AGENTS.md` remains the single execution entry.
 
-- Before adding, modifying or executing any test (CTest, planned registered
-  script, physical scenario, stress/scan), justify it item by item and obtain
-  Human confirmation. A throwaway scratch script is not an admissible test
-  type; see `script-planning/SKILL.md`. Each item must state: (1) name and concrete goal; (2) the real
-  risk or requirement; (3) why existing evidence, code review or current
-  tests cannot replace it; (4) exact timing, environment, scope and maximum
-  number of runs; (5) PASS/FAIL criteria, cost of not running, and expected
-  cost. Run only the confirmed scope. Do not widen a matrix, repeat a full
-  suite, or keep re-testing until a result looks good. Code review, QtPrivate/
-  QRhi source analysis and non-test engineering fixes remain autonomous.
+- **Agent owns test selection.** Before changing or running tests, inspect the affected behavior and existing tests once per task. Reuse the lowest-cost deterministic case that proves the risk, then run only the affected scope during iteration. Adding a new test case requires a named uncovered defect/contract and a failing oracle; prefer extending an existing suite. A new CTest executable, mock protocol server, matrix, workflow or test helper requires a distinct technical necessity, documented briefly in its PR. Do not seek Human approval for routine test design/runs or ask Human to relay commands; Human participates only in exceptional security/product decisions or unavoidable physical GUI work. Mandatory release/CI/ABI/security gates remain in force. Never rerun until green or add tests solely to increase the count.
 - Do not launch visible GUI applications on the Human's desktop without asking
   first, and never repeatedly restart the same window. Prefer offscreen, CLI
   diagnostics or CI evidence. Keep a single instance, close it when done, and
