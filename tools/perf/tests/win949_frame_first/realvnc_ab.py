@@ -304,9 +304,16 @@ class ScreenWatcher(threading.Thread):
                 time.sleep(self.interval)
                 continue
             if self.last_color is None:
-                # First sample after (re)locating: establish the baseline.
-                # Comparing against None would raise inside near() and kill
-                # this daemon thread, leaving every pending mark unclosed.
+                # First sample after (re)locating or an occlusion establishes
+                # a new observation baseline, NOT a measured transition.
+                # Any queued mark already showing this colour has an unknown
+                # onset; never let it match a later palette repeat as a fake
+                # long-latency delivery.
+                matched = [m for m in self.pending if near(color, m["target"])]
+                for m in matched:
+                    self.ambiguous.append({"seq": m["seq"],
+                                           "note": "colour-present-at-observation-resume"})
+                    self.pending.remove(m)
                 self.last_color = color
                 continue
             if not near(color, self.last_color):
