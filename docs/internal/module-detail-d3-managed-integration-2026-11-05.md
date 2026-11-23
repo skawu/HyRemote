@@ -245,7 +245,7 @@ sequenceDiagram
 | `EdgeEffectiveAdmission`（运行态） | E-01 本机当前许可裁决器，消费最新 SitePolicy + EdgeRunLease + Gateway trust | 只有 `LoginActive ∧ ViewProcessAlive ∧ ExplicitlyEnabled ∧ TrustedSite ∧ HmiShareAllowed ∧ NotExpired` 时，才有可能对**该 HMI/协议**许可新 Route；缺一项即关闭 |
 | `SiteLink`（网络态） | E-01 出站受信 Gateway 控制连接 | `LINK_DOWN/CONNECTING/VERIFIED/DEGRADED/CLOSED` 只证明站点控制通道状态，不证明指定 HMI DeviceTLS/Grant |
 | `RouteRecord + PairLedger`（每 Route） | Gateway 产生 RouteId/epoch；E-01 当前运行态验证并持有自己的 RouteContext | 仅在当前 `EdgeRunEpoch+SitePolicyRevision+EndpointBinding` 可用，进入 CLOSED 后永不因旧 Offer/ACK 复活 |
-| `HmiDeviceSession`（HMI 设备端） | HMI Framework F-05/F-06；Remote View 自己完成 TLS 和设备 Grant | 工厂 Edge 不持有/签发设备 ViewGrant/ControlGrant；关闭 Edge Route 不等于撤销其他合法 Direct session |
+| `HmiDeviceSession`（HMI 设备端） | **Private F14 同进程 Native 设备端**与 Public F-06 HostPolicy；远端 View 自己完成 DeviceTLS 信任校验，设备 Grant 由 Host 决定 | 工厂 Edge 不持有/签发设备 ViewGrant/ControlGrant；关闭 Edge Route 不等于撤销其他合法 Direct session |
 
 #### A. 明确区分关闭窗口、退出进程、注销和故障
 
