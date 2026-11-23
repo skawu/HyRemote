@@ -152,6 +152,8 @@ class EventAndCheckTests(unittest.TestCase):
     def test_denied_tree_produces_failure_not_pass(self):
         pr, cmp, base, head, old, new = fixtures()
         cmp["files"][0]["sha"] = "tampered"
+        base["tree"] = {"sha": "old"}
+        head["tree"] = {"sha": "new"}
         with patch.object(app, "gh") as api, patch.object(app, "has_release_tag", return_value=False):
             api.side_effect = [
                 pr,  # initial
