@@ -159,6 +159,7 @@ class EventAndCheckTests(unittest.TestCase):
                 pr,  # initial
                 pr, base, head, cmp, old, new, # live facts
                 pr,  # current PR
+                {"id": 123},  # App CHECK RUN created with FAILURE
             ]
             result = app.check_pr(589, app.HEAD_SHA, "synthetic-token")
             # sequence 8 GET then one POST
