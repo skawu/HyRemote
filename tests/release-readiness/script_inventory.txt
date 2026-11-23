@@ -10,6 +10,7 @@
 .github/scripts/release_scoped_admission.py
 .github/scripts/resolve-ci-scope.py
 .github/scripts/restore-v1-workflows.ps1
+.github/scripts/v035_trusted_admission.py
 .github/scripts/validate-qt-sdk.py
 build.cmd
 cmake/HyRemoteQtKitPrompt.cmd
