@@ -512,6 +512,8 @@ struct ClientState
     qint64 lastCursorPollMs = -1;
     bool continuousEnabled = false;
     bool continuousRequestArmed = false;
+    // After DesktopSize, only a fresh explicit full request can resume pixels.
+    bool awaitingResizeRefresh = false;
     RfbRect continuousRegion;
     ClientEncoding preferredEncoding = ClientEncoding::Raw;
     RfbUpdateState delivery;
@@ -1097,7 +1099,8 @@ private:
 
     void armContinuousRequest(ClientState &client)
     {
-        if (!client.continuousEnabled || client.delivery.hasOutstandingRequest())
+        if (!client.continuousEnabled || client.awaitingResizeRefresh
+            || client.delivery.hasOutstandingRequest())
             return;
         client.delivery.request(true, client.continuousRegion);
         client.continuousRequestArmed = true;
@@ -1407,6 +1410,13 @@ private:
                     consumeClientMessage(client, 10);
                     continue;
                 }
+                // The size notification consumed the previous request. Do not
+                // send new-geometry pixels until the viewer explicitly refreshes.
+                if (client.awaitingResizeRefresh && incremental) {
+                    consumeClientMessage(client, 10);
+                    continue;
+                }
+                client.awaitingResizeRefresh = false;
                 client.continuousRequestArmed = false;
                 client.delivery.request(
                     incremental,
@@ -1987,6 +1997,8 @@ private:
         if (!client.socket || client.phase != ClientPhase::Normal)
             return;
         refreshCursor(client);
+        if (client.awaitingResizeRefresh)
+            return;
         armContinuousRequest(client);
         if (!client.delivery.hasOutstandingRequest())
             return;
@@ -2037,7 +2049,7 @@ private:
             client.continuousRequestArmed = false;
             return;
         }
-        if (selected.size() + (resized ? 1U : 0U) > std::numeric_limits<std::uint16_t>::max()) {
+        if (!resized && selected.size() > std::numeric_limits<std::uint16_t>::max()) {
             protocolFailure(client, "RFB update rectangle count exceeds the protocol baseline");
             return;
         }
@@ -2053,7 +2065,7 @@ private:
         // #967: only a multi-Viewer frame can save a second whole-frame
         // encode. A single Viewer keeps the exact old path and never retains
         // an extra encoded framebuffer, so #790/#996 live-byte bounds hold.
-        const bool canShare = frame->storage && normalViewerCount() >= 2;
+        const bool canShare = !resized && frame->storage && normalViewerCount() >= 2;
         const bool reused = canShare && m_sharedUpdate
             && m_sharedUpdate->matches(
                 frame->storage, client.pixels, client.preferredEncoding,
@@ -2066,15 +2078,14 @@ private:
         } else {
             update.append(char(0));
             update.append(char(0));
-            appendU16(update, static_cast<std::uint16_t>(selected.size() + (resized ? 1U : 0U)));
+            appendU16(update, static_cast<std::uint16_t>(resized ? 1U : selected.size()));
             if (resized) {
                 appendU16(update, 0);
                 appendU16(update, 0);
                 appendU16(update, width);
                 appendU16(update, height);
                 appendS32(update, kEncodingDesktopSize);
-            }
-            {
+            } else {
                 HYREMOTE_P1_SCOPE(RfbEncode);
                 for (const RfbRect &rect : selected.rects()) {
                     if (!appendFramebufferRectangle(update, *frame, client, rect)) {
@@ -2123,7 +2134,14 @@ private:
         HYREMOTE_P1_TRACE_VIEWER_UPDATE(
             RfbSocketQueued, *frame, client.traceViewerId, traceUpdateId);
         client.traceUpdateSeq = traceUpdateId;
-        client.delivery.commitDelivered(selected);
+        if (resized) {
+            // DesktopSize consumes the request but does not deliver any pixels.
+            // Keep forced full damage for the viewer's next full request.
+            client.delivery.cancelRequest();
+            client.awaitingResizeRefresh = true;
+        } else {
+            client.delivery.commitDelivered(selected);
+        }
         client.continuousRequestArmed = false;
         // A continuously enabled viewer keeps one outstanding incremental
         // demand, but only one framebuffer may queue per socket at a time.
