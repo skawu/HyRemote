@@ -227,6 +227,8 @@ def combine(matrix, out):
         "analyzer": "tools/perf/analyze_frame_trace.py (schema=3, (pid,requestId) pairing)",
         "runs": runs,
     }
+    if not rows:
+        return rows
     out.mkdir(parents=True, exist_ok=True)
     (out / "matrix-stages.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
