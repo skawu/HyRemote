@@ -1,5 +1,8 @@
 # D1｜Framework 设备端模块详细设计：Core / Shared Runtime / 四接入 / 设备授权（候选 V1）
 
+> **2026-11-23 V1.7 收口更正（设计候选，尚未 Gate-D 冻结）**：统一适用 [三项设计收口](hyremote-v17-three-closures-design-2026-11-23.md)。F-01/F-02/F-03/F-06、Public RFB 和 Public `NativeHostPort` 在 HyRemote；Native 1.0 HMI TLS/Parser/Codec/PeerSender 的实际代码归 HyRemoteView Private，并与 Qt HMI 同进程（Human D-PROC=B）。本稿出现的 `F-05 Native` 指旧模块规范/Host 策略消费职责，**不能被当作 Public 必须实现 Native 协议服务端的授权**。撤权按 Human D-REVOKE=A 的 T0/T1/T2；不引入独立 Provider 进程。
+
+
 > **2026-11-05 Human 决策已生效**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698)。相关产品/安全取舍选 A；本文初始“待 Human 选择”语句如与本次批准冲突，以审批后的具体条款为准。批准不等于 V15/V8 原文审计、产品实现或设计冻结。
 
 > **归属**：[全产品模块设计总控 #843](https://github.com/skawu/HyRemote/issues/843)，D1 首轮；参考 [#830](https://github.com/skawu/HyRemote/issues/830) 的 HMI Native 安全设计与已合并 Stage04/05。  
