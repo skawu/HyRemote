@@ -1,5 +1,8 @@
 # D1｜设备协议详细设计：RFB 3.8 / Native 1.0 独立互操作、授权与状态契约（候选 V1）
 
+> **2026-11-23 V1.7 实现 Owner 更正（设计候选）**：本文 F-05 的 Native1.0 wire、TLS-first、AFS-01..12 继续作为**双方必须遵循的受控规范/互操作合同**，但具体 HMI Native Listener/Parser/TLS/Codec/egress **归 HyRemoteView Private F14**，不是公共 HyRemote 必须构建的服务端。Public 提供设备 Host Policy/Frame/QtFinalGate 和可选进程内 `NativeHostPort`；RFB 服务端仍 Public 独立。详情见 [统一收口](hyremote-v17-three-closures-design-2026-11-23.md)。Human D-PROC=B、D-REVOKE=A 已批准；旧阶段表述不能覆盖裁决。
+
+
 > **2026-11-05 Human 决策已生效**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698)。相关产品/安全取舍选 A；本文初始“待 Human 选择”语句如与本次批准冲突，以审批后的具体条款为准。批准不等于 V15/V8 原文审计、产品实现或设计冻结。
 
 > **归属：** [全产品模块设计总控 #843](https://github.com/skawu/HyRemote/issues/843)；继承 [D1 Framework 边界稿](module-detail-d1-framework-boundaries-2026-11-05.md)（PR #844）。  
