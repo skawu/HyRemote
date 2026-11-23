@@ -65,7 +65,7 @@ View 独立真实 E2E/版本配对与支持资格 ──> View 1.0
 #190 独立 Managed 安全/产品激活 + Native Direct + Edge ──> View Managed 后续独立版本
 ```
 
-**并行工作原则**：View #5 当前 G3 总门仍要求 A–H 证据整体 PASS；本路线将 RFB 与 Native 分路径，仅是向 View Owner 提交的**门禁拆分建议**，不是已生效的 G3 资格规则。若 #5 未正式修改，任意单路径 G3 证据不能自动解锁其正式 Gate-I。Gate-D 审的是设计完整性，G3 可进行已单独获准的有界 PoC；Gate-I 不能以本文件自动代替 Human 激活。RFB Direct 的真实实现、Private Native HMI/Client 的真实实现，均在对应 Gate-I 范围内；可在不同产品仓库按接口冻结并行，但真实 Host↔View 对拍必须锁两仓 SHA。Public 日常维护和已批准功能 train 不被全产品 Gate-D 反向阻断。**不做“每有一个中间合同就再开一轮架构研究”**。
+**并行工作原则**：独立审查已发现“共享 View Surface 无条件依赖 RFB G3”会让 Native-only 假性阻塞；现已修正 WBS V02：RFB 显示资格取 A03R，Native-only 共享 Qt Quick 显示资格取 A03N 中的专门正负证据，而不要求 RFB parser。**此仅为技术分流设计**，View #5 当前 G3 总门仍要求 A–H 证据整体 PASS；本路线将 RFB 与 Native 分路径，仅是向 View Owner 提交的**门禁拆分建议**，不是已生效的 G3 资格规则。若 #5 未正式修改，任意单路径 G3 证据不能自动解锁其正式 Gate-I。Gate-D 审的是设计完整性，G3 可进行已单独获准的有界 PoC；Gate-I 不能以本文件自动代替 Human 激活。RFB Direct 的真实实现、Private Native HMI/Client 的真实实现，均在对应 Gate-I 范围内；可在不同产品仓库按接口冻结并行，但真实 Host↔View 对拍必须锁两仓 SHA。Public 日常维护和已批准功能 train 不被全产品 Gate-D 反向阻断。**不做“每有一个中间合同就再开一轮架构研究”**。
 
 ## 4. 明确的非目标和质量下限
 
