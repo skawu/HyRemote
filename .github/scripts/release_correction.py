@@ -174,7 +174,7 @@ def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
 # #95/#1047: one exact untagged V0.3.5.0 security correction.
 # It cannot import later develop product work or repeat for a new base.
 V035_NUMERIC_BASE_SHA = "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
-V035_NUMERIC_HEAD_REF = "feature/95-release-preparation"
+V035_NUMERIC_HEAD_REF = "feature/589-release-preparation"
 # The independently reviewed #1047 was squash-merged into develop.
 # Pin that reachable immutable merge commit; the PR's unmerged HEAD object
 # is not guaranteed to exist in an isolated release-PR checkout.

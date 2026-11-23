@@ -381,7 +381,7 @@ jobs:
                                   base_cmake=old_cmake, head_cmake=new_cmake,
                                   actual_base_sha=actual_accepted_base, head_ref=head)
                       elif (actual_base == "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
-                            and head == "feature/95-release-preparation"):
+                            and head == "feature/589-release-preparation"):
                           # One exact pre-publication P2 repair (#1047). The
                           # validated source comes from immutable reviewed SHA;
                           # the two governance files must already be on develop.
