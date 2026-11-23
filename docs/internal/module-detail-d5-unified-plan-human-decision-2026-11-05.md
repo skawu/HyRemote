@@ -1,5 +1,8 @@
 # D5｜HyRemote 全产品统一实施规划、设计冻结准入和 Human 决策卡（候选）
 
+> **2026-11-23 Human 正式评审基线已接受（并非 Gate-D/Gate-I 授权）**：V1.7 版本路线图与 36 WBS 已获 Human 同意作为集中评审基线；RD-01/02/03 已在 [Gate-D 准备稿 §六/§七](hyremote-v17-gate-d-formal-review-preparation-2026-11-23.md) 具体化高风险需求核对、进程内单一 HostPort v1 IDL、Native 5 按钮/17 Keypad 与 Qt5/6 安全映射。正式源 Word 原子签收、Public/Private Owner 接口审签和真实独立 PR Review 仍 OPEN；View #5 G3 A～H 规则未正式批准按 RFB/Native 分拆。故 `REVIEW_PACKAGE=READY_WITH_FINDINGS`，`GATE_D=NOT_FROZEN`，`GATE_I=NOT_AUTHORIZED`；Public v0.3.5 维护沿旧权限，发布仍 HOLD。
+
+
 > **2026-11-23 V1.7 实质性纠偏（设计候选、未冻结）**：原 F14 “Framework Native / HyRemote” 实现 Owner 已正式不适用。Human D-PROC=B 确定 **F14（保留 WBS 编号）是 HyRemoteView Private 的同 HMI 进程 Native1.0 TLS/Parser/Codec/Listener 实现**；Public 只承担可选 `NativeHostPort`、唯一 Host Policy/Frame/QtFinalGate 与完整独立标准 RFB。F15 Public 四入口没有 F14 构建前置，V12 Native Client 以 Private F14 真 HMI DeviceTLS 为对应设备端；Gate-D 仍未冻结。依赖与设计合同以 [V1.7 三项收口](hyremote-v17-three-closures-design-2026-11-23.md) 为准，历史 F14 示意仅保留追溯。Human D-REVOKE=A 的 T0/T1/T2 同样覆盖受控出口，不恢复独立进程。
 
 
