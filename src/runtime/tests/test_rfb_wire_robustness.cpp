@@ -2402,10 +2402,11 @@ void testPartialIncrementalAndResize()
     }
     CHECK(sendUpdateRequest(socket, true, 0, 0, 80, 60));
     CHECK(readFramebufferUpdate(socket, frame, rectangles));
-    CHECK(rectangles.size() == 2U);
-    CHECK(rectangles.size() == 2U && rectangles.front().encoding == -223);
-    CHECK(rectangles.size() == 2U && rectangles.back().encoding == 15);
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == -223);
     CHECK(frame.width == 80 && frame.height == 60);
+    CHECK(sendUpdateRequest(socket, false, 0, 0, 80, 60));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 15);
     CHECK(frame.get(0, 0) == 0x445566U);
 
     socket.disconnectFromHost();
@@ -2833,18 +2834,21 @@ void testContinuousUpdatesForcedRefreshBounds()
     CHECK(frame.get(40, 40) == background);
     CHECK(frame.get(0, 0) == 0U);
 
-    // A resize must still communicate DesktopSize, but automatic pixel
-    // updates remain clipped to the enabled region.
+    // The size-only update must not cause automatic pixels. An explicit full
+    // request recovers every pixel, not just the ContinuousUpdates region.
     transport->enqueueFrame(makeFrame(96, 96, 0x224466U));
     CHECK(readFramebufferUpdate(socket, frame, rectangles));
-    CHECK(rectangles.size() == 2U);
-    CHECK(rectangles.size() == 2U && rectangles.front().encoding == -223);
-    CHECK(rectangles.size() == 2U && rectangles.back().x == 32
-          && rectangles.back().y == 32 && rectangles.back().width == 32
-          && rectangles.back().height == 32);
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == -223);
     CHECK(frame.width == 96 && frame.height == 96);
+    CHECK(noFramebufferData(socket));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, 96, 96));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+    CHECK(rectangles.size() == 1U && rectangles.front().x == 0
+          && rectangles.front().y == 0 && rectangles.front().width == 96
+          && rectangles.front().height == 96);
     CHECK(frame.get(40, 40) == 0x224466U);
-    CHECK(frame.get(0, 0) == 0U);
+    CHECK(frame.get(0, 0) == 0x224466U);
 
     CHECK(sendContinuousUpdates(socket, false, 0, 0, 0, 0));
     CHECK(readEndOfContinuousUpdates(socket));
@@ -2924,8 +2928,8 @@ void testPointerViewportTracksAdvertisedFramebuffer()
 
     CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
     CHECK(readFramebufferUpdate(socket, shown, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == -223);
     CHECK(shown.width == 96 && shown.height == 80);
-    CHECK(shown.get(15, 15) == 0x508060U);
     CHECK(sendPointerButton(socket, false, 18, 19));
     CHECK(recorder.waitFor([](const auto &inputs, const auto &) {
         return std::any_of(inputs.begin(), inputs.end(), [](const auto &e) {
@@ -2946,6 +2950,11 @@ void testPointerViewportTracksAdvertisedFramebuffer()
             CHECK(it->sourceViewport.height == 80U);
         }
     }
+    CHECK(noFramebufferData(socket));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, 96, 80));
+    CHECK(readFramebufferUpdate(socket, shown, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+    CHECK(shown.get(15, 15) == 0x508060U);
     socket.disconnectFromHost();
     waitForDisconnected(socket);
     transport->stop();
