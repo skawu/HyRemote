@@ -15,7 +15,9 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import time
+from threading import Lock
 import urllib.error
+import urllib.parse
 import urllib.request
 
 REPO = "skawu/HyRemote"
@@ -33,6 +35,8 @@ EXPECTED = {
 }
 ALLOWED_ACTIONS = frozenset({"opened", "reopened", "synchronize", "ready_for_review", "edited"})
 MAX_WEBHOOK_BYTES = 262144
+# Single-issuer deployment serializes PR success and tag-revocation checks.
+ISSUANCE_LOCK = Lock()
 
 
 class Denied(ValueError):
@@ -189,7 +193,12 @@ def check_pr(pr_number, event_sha, token):
     need(isinstance(current_sha, str) and len(current_sha) == 40, "invalid PR SHA")
     conclusion, note = "success", "Exact frozen source, four blobs and entire Git tree verified."
     try:
+        # Reject ABA: an unreviewed A cannot receive success if a transient
+        # read_live happened to see approved HEAD_SHA in the middle.
+        need(current_sha == HEAD_SHA, "initial PR HEAD is not approved frozen SHA")
         facts = read_live(pr_number, token)
+        need((facts[0].get("head") or {}).get("sha") == current_sha,
+             "audited facts and check target have different HEADs")
         validate(*facts, tag_exists=has_release_tag(token))
     except Denied as error:
         conclusion, note = "failure", str(error)
@@ -198,9 +207,10 @@ def check_pr(pr_number, event_sha, token):
     if ((fresh.get("head") or {}).get("sha") != current_sha
             or (fresh.get("base") or {}).get("sha") != BASE_SHA):
         return "STALE"
-    if conclusion == "success":
-        # Prevent publishing success after publication or tag changes.
-        need(not has_release_tag(token), "tag appeared before check publication")
+    if conclusion == "success" and has_release_tag(token):
+        # An exception here would leave an earlier SUCCESS intact; instead
+        # issue a newer FAILURE check on the same commit.
+        conclusion, note = "failure", "release tag appeared before check publication"
     gh("POST", root + "/check-runs", token, {
         "name": CONTEXT, "head_sha": current_sha,
         "status": "completed", "conclusion": conclusion,
@@ -229,6 +239,49 @@ def decide_event(event_name, payload, configured_installation_id):
     return number, sha
 
 
+def decide_tag_event(event_name, payload, configured_installation_id):
+    """Signed tag creation must revoke a previously issued success."""
+    if event_name != "push" or payload.get("ref") != "refs/tags/" + RELEASE_TAG:
+        return False
+    if payload.get("deleted") is True:
+        return False  # deletion does not restore authorization
+    if (payload.get("repository") or {}).get("full_name") != REPO:
+        return False
+    need((payload.get("installation") or {}).get("id") == configured_installation_id,
+         "wrong GitHub App installation")
+    return True
+
+
+def revoke_on_tag_push(token):
+    # Trust the signed push as an explicit REVOKE; do not rely on GitHub's
+    # eventually-consistent tag-ref lookup before posting FAILURE.
+    query = urllib.parse.urlencode({
+        "state": "open", "base": BASE_REF,
+        "head": "skawu:" + HEAD_REF, "per_page": 100,
+    })
+    prs = gh("GET", "/repos/" + REPO + "/pulls?" + query, token)
+    count = 0
+    for pr in prs:
+        if ((pr.get("head") or {}).get("sha") != HEAD_SHA
+                or (pr.get("base") or {}).get("ref") != BASE_REF):
+            continue
+        fresh = gh("GET", "/repos/" + REPO + "/pulls/" + str(pr["number"]), token)
+        if (fresh.get("head") or {}).get("sha") != HEAD_SHA:
+            continue
+        gh("POST", "/repos/" + REPO + "/check-runs", token, {
+            "name": CONTEXT, "head_sha": HEAD_SHA, "status": "completed",
+            "conclusion": "failure",
+            "external_id": "v035-tag-revoked-" + HEAD_SHA[:12],
+            "output": {
+                "title": "V0.3.5.0 admission revoked by signed tag push",
+                "summary": "Tag mutation invalidates prior admission. "
+                           "Requalification requires an explicit source review.",
+            },
+        })
+        count += 1
+    return count
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/github/webhook":
@@ -245,13 +298,21 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(401)
                 return
             event = json.loads(body)
-            match = decide_event(self.headers.get("X-GitHub-Event", ""),
-                                 event, int(os.environ["GITHUB_INSTALLATION_ID"]))
+            event_name = self.headers.get("X-GitHub-Event", "")
+            installed = int(os.environ["GITHUB_INSTALLATION_ID"])
+            if decide_tag_event(event_name, event, installed):
+                with ISSUANCE_LOCK:
+                    revoke_on_tag_push(create_installation_token())
+                self.send_response(200)
+                self.end_headers()
+                return
+            match = decide_event(event_name, event, installed)
             if match is None:
                 self.send_response(202)
                 self.end_headers()
                 return
-            outcome = check_pr(match[0], match[1], create_installation_token())
+            with ISSUANCE_LOCK:
+                outcome = check_pr(match[0], match[1], create_installation_token())
             self.send_response(200 if outcome != "STALE" else 202)
             self.end_headers()
         except (Denied, ValueError, KeyError, OSError, urllib.error.URLError) as error:
