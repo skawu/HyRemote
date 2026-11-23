@@ -334,3 +334,58 @@ V8 附录 F：术语与审计名称归 CT-15，尤其注意 HostGrant/RoutePermi
 **保持不宣称完成的事项**：上表对应的是原有索引所摘要的技术义务，而非 V15/V8 正式 DOCX 每一句原文的受控逐字审签；附录 E/F 原文细节未逐句检查；`NativeHostPort` 在此是足以约束开发的接口语义/ABI 形状，非已生成可编译头文件；Qt5/Qt6/SoC/ARM64/Windows/Linux 图形支持和可靠性不能从逻辑合同推断真实合格；View G3/Native E2E/Gateway #190 仍是独立后续资格。**三项内容收口不意味着设计经过正式 Human 冻结审批，更不授权编码或测试**。
 
 **决策与门禁**：D-PROC=B APPROVED，D-REVOKE=A APPROVED；其它 Human 批准的产品分期继续有效。TARGET_ARCH=V1.7_SINGLE_CANDIDATE；THREE_CONTENT_CLOSURES=DESIGN_COMPLETED_FOR_REVIEW；NORMATIVE_BYTE_REDLINE=NOT_DONE（原件不可访问）；Gate-D=NOT_FROZEN；Gate-I=NOT_AUTHORIZED；PRODUCT_CODE=UNCHANGED。
+
+
+## 4. 可以交给各模块 Owner 的最小接口定义与错误时序（设计补充）
+
+本节不定义可编译 C/C++ 头文件，不新造 Native 网络字段，而把需要约束实现的**数据结构、Owner、跨线程和可失败条件**确定下来。约束的优先级高于历史模块设计中含糊的“通过事件通知即可”“全部 Frame 可 zero-copy”等描述。
+
+### 4.1 Host↔Private Native 进程内 ABI 单一调用约束
+
+| API / 数据 | 输入与前置 | 出口事实、持有权 | 不满足时行为 |
+|---|---|---|---|
+| `Prepare(host_port_descriptor, module_config)` | 必须含 ABI major/minor/size、HostEpoch、可信配置 digest、QtKit profile；只在装载前准备阶段调用 | Private 只返回 `PREPARED` 或拒绝原因，不开放 Listener | 不兼容/不可信立即 `MODULE_UNAVAILABLE`，Public RFB_ONLY 路径独立 |
+| `StartAdmission(admission_epoch)` | Host 完成必需 RFB/Native 预绑定、Target 与权限准入；调用所在管理线程由 Host 明确登记 | Native 可开始接受新 Peer；该状态不是 Peer 已获 Grant | 任一必需端失败本次 AdmissionEpoch 不对外发布 |
+| `OpenPeer(provenance)` | 当前 TLS ConnectionInstance、认证档位、可信模块返回的设备身份/会话证据；绑定 ModuleGeneration | Host 分配 SessionId/Epoch，返回不透明 SessionHandle（Host owns） | 不在当前 ModuleGeneration 或 DeviceTLS 尚未建立则拒绝 |
+| `Authorize(Session,Target,Scope,Kind)` | Host 当前 TargetGeneration、PolicyEpoch、Scope 和身份保证级别 | Host 可返回 `ViewGrantEpoch` 或 `ControlGrantEpoch`；Peer 不持“自行续期权” | POLICY_DENIED、SCOPE_UNAVAILABLE、STALE_SESSION，均不改变 Native1.0 报文字段 |
+| `AcquireAuthorizedFrame(Session,Target,PrivacyRev,budget)` | 有效 ViewGrant、清洁 Surface、合格 ContentRevision、资源预留 | Host owns backing，Private 取得 LeaseHandle/len/format/epochs/expiry；只读是受信 API 约束 | RESOURCE_LIMIT、FRAME_UNAVAILABLE、PRIVACY_UNVERIFIABLE、STALE_EPOCH；不得回退 raw Frame |
+| `ReleaseFrameLease(LeaseHandle)` | 只能由持有者释放一次，Host 校验 Generation | 真引用计数归零才能回收，TTL 到期不自动释放 | 重复 Release 幂等拒绝或错误记录；不能二次 free |
+| `SubmitInputIntent(Session,Epochs,Input)` | 当前 ControlGrant、可信 Peer/Target/Geometry；传入有来源和顺序的事件 | 返回 HOST_ACCEPTED 或 DENIED；QtFinalGate 实际执行另行记录 | 不可把返回 HOST_ACCEPTED 写为 BUSINESS_APPLIED |
+| `CloseOrRevoke(RevokeId,AffectedGrantSet)` | Host 先 T0，按 Grant/Scope/Target 确定受影响 Peer | Private 收到撤权命令只记 REQUEST_ACCEPTED；T1 须等 Peer 最后实际写入域报告 | 未执行 Barrier 不得提前报告 STOPPED；T2 必须另等 Qt Input/held 结算 |
+| `StopNewPeer/Quiesce/Destroy` | 模块状态 ACTIVE→QUIESCING，先禁接入、逐 Peer 停发、清输入与真实引用 | STOPPED 不等于 UNLOAD_ALLOWED；Owner 在合法网络线程释放 QSslSocket | 未实际归零的回调/QtObject/Worker/Lease 存在时禁止卸载，必要时保留映射至 HMI 进程退出 |
+
+**调用/线程规则**：Public HostPort 接口函数不能假定来自 Qt GUI；与 Target / Qt 输入有关的调用应由 Host 以受控异步命令转移到合法线程，在最终执行时重新校验 Epoch。阻止同步网络线程等待 GUI 再反向等待网络线程的循环等待。所有跨线程任务在调度/取消/结束时保留 ModuleGeneration 与 SessionEpoch 及引用计数；异步函数的 Accepted 返回值不是业务成功或撤权完成。C ABI 边界的“含长度 buffer”只约束正常调用；Private 同进程仍有能力通过内存破坏越界访问，不宣称安全沙箱。
+
+### 4.2 最终发送串行化证明条件
+
+`EncodedChunk` 在编码完成时始终带 `HostEpoch/SessionEpoch/ViewGrantEpoch/PrivacyRevision/TargetGeneration/FrameId/LeaseId`。**网络线程**处理的最后数据写入序列必须满足：
+
+1. 取得 Peer EgressActor 当前状态（`ACTIVE/BLOCKING/ABORTED`），以及适用 Grant 的最新 Host PolicyFence；
+2. 读取所有 Epoch 与 Lease Deadline；只有逐项仍有效且网络预算已预留时接受本次 FinalSend；
+3. 在同一所属网络执行域内、不发生线程迁移/异步挂起地提交 `QSslSocket::write`，保留实际 accepted bytes 和保守 TLS 队列信用；
+4. T0 使 Host 当前 Grant 进入 BLOCKING；T0 后才首次执行最终检查的旧包必须拒绝；
+5. T1 要求与仍在执行的旧 FinalSend 交错操作全部结束、对应 Peer 的禁止代际对未来迟到 chunk 持久生效、旧可控应用候选清理，并完成必要 TLS abort；聚合的 T1 只等待**受影响** Peer；
+6. T2 除 T1 外还要求 Qt 已开始的同步 Adapter 调用结束及按来源 held 释放。`QtFinalGate` 的输入临界区与发送临界区独立，不进行跨线程长锁。
+
+这种合同容许 D-REVOKE=A 的 T0–T1 有界过程，但不允许旧权限的帧在 T0 后新做最终检查还能继续提交。Socket 已接收字节与已送远端的事实须区分。RFB 与 Native 共享 Host 的撤权事件，不共享写入网络 Actor；Private 模块不能因为“网络事件已排队”报告 T1。
+
+### 4.3 Qt Surface 的“支持”不是“Qt 库存在”
+
+| 来源 | 可作为正确性候选的前置 | 高性能路径的附加资格 | 不合格时声明 |
+|---|---|---|---|
+| Raster Widgets | 可在合法 GUI 绘制上下文获取完整窗口绘制内容，Popup 与敏感 overlay 事实可见 | 证明无额外强制整屏重绘且 FrameSource 可按真实 Damage 驱动 | LIMITED 或 FRAME_UNAVAILABLE，不虚构原生视频图层 |
+| QOpenGLWidget | 当前 GL context/FBO 有合法读取权，Resize 与 context loss 导致资源代际变更 | 可持有同步合格的 GL 渲染完成资源，避免长期同步 glReadPixels | 只有低频读回时标 LIMITED，不宣称高 FPS |
+| QQuickWindow/QuickView | 当前 RenderLoop 可取得完成的 Frame 或低频合法 grabWindow，渲染所有权明确 | 真实 QSG/RHI 完成点、资源 lifetime/fence、GPU 读回/共享路径经特定 Qt Kit 约束 | 无可呈现帧时 UNAVAILABLE，不以 sceneChanged 替代 RenderCompleted |
+| QQuickWidget / Qt6 RHI Widget | 实际离屏渲染结果、接口与 Qt Kit 一致 | 充分处理额外 pass 和重建资源，防 GUI 读回拖慢 HMI | 禁用高性能宣传，保持受控兼容条件 |
+| Native/video/mixed | 真实 video/native frame provider 与 Z/Alpha/Clip/DPR/遮挡信息齐备 | 完整已合成来源与资源同步已知 | 缺必需敏感内容安全覆盖则不发布远端 TargetFrame |
+
+`NoNewFrame`（内容可能静止）、`UnchangedContent`（已有合法画面仍当前）与 `Unavailable`（无法保证画面）必须有不同 Host 状态。允许复用当前且未失效的合法内容作为首次 FULL，但不允许把旧内容标为新 ContentRevision。Qt5.15 与 Qt6.8 的实际类/后端须按 Kit/Window/Surface Profile 分别记录，没有“任何 Qt 图形后端通用高性能捕获”这种支持级别。
+
+### 4.4 设计审查后仍然真实存在的四项客观限制
+
+1. **同进程可信代码风险**不可由 HostPort 或设计审查消除。要求 OS 强制隔离 Native 的产品场景与 D-PROC=B 固有不相容，不能改用原来独立进程绕开 Human 裁决。
+2. **任意 Qt GUI/Native Surface 全自动完整高 FPS**不存在无需条件的公共 API。对未知原生/混合画面只能限定资格或 fail closed；不能通过“后续测试”设计一个不存在的读图能力。
+3. **128MiB/96MiB/512KiB 与任意多 Peer 大尺寸组合**可能有物理资源矛盾；必须在支持配置中限制在途副本、隐私派生和最大可声明并发，不能静默扩大已批准预算。
+4. **源文完整性与实现真实性**未自动取得：本稿基于此前经 Human 确认正文等效的源索引和已有技术设计；正式 V15/V8/ADR 字节原件未在本轮逐字打开，故不冒称法律式原文 redline；无产品运行或技术验证证据，Gate-D 仅可提交设计评审申请。
+
+**此处即本次三项收口的终点**：技术合同与影响范围已经写出，新增问题必须证明违反既定不变量才会改变架构，不再按功能名称无止境增加平行专项。后续是 Human 对正式内容的集中审批，以及独立授权的真实实施/支持资格，不是继续自造 V1.8。
