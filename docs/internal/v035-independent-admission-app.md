@@ -37,7 +37,10 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    Keep GitHub App private key in a secrets manager, mounted at a read-only
    file path and never present in logs. Mount a separately managed, restricted,
    **persistent writable state volume** for `APP_STATE_DIR`. It stores the
-   monotonic `v035-<SHA>.revoked` marker and the `*.acked` delivery record.
+   monotonic `v035-<SHA>.revoked` marker, `*.acked` delivery record, and
+   shared `*.issuance.lock` file. Use a Linux/POSIX local durable filesystem
+   with working `flock(2)`, file fsync and directory fsync. Do not use a
+   network mount with uncertain lock/durability semantics or per-process mounts.
    Never put this directory in the repository, container writable layer,
    ephemeral cache, build artifact, or user home.
 3. Required environment: `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`,
@@ -46,8 +49,12 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    Bind the built-in HTTP server to `127.0.0.1:8097`; use a secure TLS
    ingress/reverse proxy with egress to `api.github.com`, resource/rate
    limits, and ingress webhook signature verification. No public direct HTTP.
-   Use exactly one running issuer instance: the in-process lock serializes
-   PR admission and tag revocations. GitHub webhooks are asynchronous and
+   Use exactly one running issuer service instance. Its webhook threads,
+   retry worker, and any trusted manual `--check-pr` process MUST share the
+   same `APP_STATE_DIR` and cross-process POSIX `flock` lock; an in-process
+   mutex alone does not protect CLI issuance. The process lock encompasses
+   the final revocation check and the check-runs POST. CLI from a different
+   host or volume is prohibited. GitHub webhooks are asynchronous and
    cannot make tag creation and release merge a single atomic transaction:
    retain independent tag/release authority and recheck the tag immediately
    before formal promotion.
@@ -55,15 +62,20 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    it contacts GitHub. While revoked, even deletion of the tag or a replayed
    `pull_request.edited` event cannot generate SUCCESS. A background worker
    retries failing REST check updates with bounded delays across process
-   restarts; an external operations watchdog must alert on prolonged pending
+   restarts. An existing but previously unsynced marker must be re-fsynced
+   (file and parent directory) before the worker attempts delivery or ACK.
+   Any fsync failure is an unavailable/failed-closed operation; an external
+   operations watchdog must alert on prolonged pending
    `*.revoked` without `*.acked`. Only a separately reviewed release policy
    may reset revocation state, never an ordinary PR/CLI invocation.
 5. Validate with
    `python -m unittest discover -s tests/release-readiness -p test_v035_independent_app.py -v`.
    Before protecting any branch, install the App and verify **the App itself**
    can publish `v035-independent-source-admission` on the one frozen PR SHA.
-   For cold-start/manual check from the trusted host:
+   For cold-start/manual check from the trusted **same host and mounted state**:
    `python .github/release/v035_independent_app.py --check-pr <PR_NUMBER>`.
+   Execute it only using the reviewed pinned App artifact and identical
+   `APP_STATE_DIR`; never bypass its cross-process lock or clear markers.
    Never use a personal token to fabricate an identically named check.
 6. Once live App check source and ID have been confirmed, generate—not yet
    apply—the narrowly scoped ruleset body using
@@ -77,7 +89,10 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
 7. Prove enforcement on a **non-merged, disposable** negative PR/head:
    missing App check blocks, ordinary Actions check with the same name
    does not satisfy the source binding, bad extra file/blob/mode/SHA/tag
-   fails, old event/HEAD cannot approve new HEAD. Report ruleset ID,
+   fails, old event/HEAD cannot approve new HEAD; verify concurrent manual
+   CLI invocation cannot post SUCCESS after signed tag revocation, and test
+   fsync EIO followed by successful re-sync without missing a revocation.
+   Report ruleset ID,
    source integration ID, head SHA, API check publisher and negative outcomes
    to #95. Restore the single frozen candidate state after probes.
 
