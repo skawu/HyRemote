@@ -50,7 +50,7 @@ Tracked, planned directories only:
 
 `tmp/` holds **run outputs only**: evidence, logs, generated data and captured
 screenshots. It never holds executable scripts. Scripts that are needed again
-belong in a tracked directory with a name, a self-test and an owner.
+belong in a tracked directory with one owner and validation proportionate to the risk.
 
 Prefer reuse over creation. The repository already has
 `tools/perf/aggregate_cpu_probe.py`, `tools/perf/assess_quick_public_profile.py`,
@@ -65,8 +65,12 @@ One script with an explicit `--case` / `--profile` argument replaces a family of
 near-duplicate files. Copying a working probe and changing one constant is a
 defect: it leaves no single owner, no self-test and no registration.
 
-Every new script needs a deterministic self-test with a positive and a negative
-case, following the `.github/scripts/resolve-ci-scope.py --self-test` pattern.
+Scripts that decide security, compatibility, CI or release outcomes need a deterministic
+positive and negative check, preferably in an existing test. Small diagnostic or
+formatting helpers can be validated by their owning integration task; do **not**
+create a second test script or executable merely to test a low-risk helper.
+Reuse the existing `.github/scripts/resolve-ci-scope.py --self-test` pattern
+where its risk and oracle actually apply.
 
 ## 5. One-off compiler invocations
 
