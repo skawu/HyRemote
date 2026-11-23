@@ -184,6 +184,8 @@ class ScreenWatcher(threading.Thread):
         self.pending = []          # marks awaiting an on-screen transition
         self.detected = []         # {"seq", "detect_ms", "first_color"}
         self.ambiguous = []        # target colour already on screen at mark
+        self.hwnd = None           # connected Viewer window owning the marker
+        self.occlusion_logged = False
         self.stop_flag = threading.Event()
         self.start()
 
@@ -195,6 +197,9 @@ class ScreenWatcher(threading.Thread):
         same palette colours over large areas."""
         import ctypes
         import ctypes.wintypes as wt
+        user32 = ctypes.windll.user32
+        self.hwnd = hwnd
+        self._raise_viewer()
         content, cw, ch = client_content_rect(hwnd)
         self.rect = content
         self.scale = cw / fb_size[0] if fb_size[0] else 1.0
@@ -207,6 +212,48 @@ class ScreenWatcher(threading.Thread):
         log(f"marker sampling point at screen {self.point} "
             f"(client origin {content[:2]}, client {cw}x{ch}, fb {fb_size[0]}x{fb_size[1]})")
         return True
+
+    def _raise_viewer(self):
+        """Keep the sampled Viewer window above other top-most windows.
+
+        The desktop runs concurrent automation; a single SetWindowPos at
+        setup is not enough. If another top-most window covers the marker
+        point, ImageGrab reads that window's pixels and every pending mark
+        stays unclosed, which was previously misread as a product frame
+        regression."""
+        import ctypes
+        if self.hwnd is None:
+            return False
+        user32 = ctypes.windll.user32
+        if not user32.IsWindow(self.hwnd):
+            return False
+        user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
+        user32.BringWindowToTop(self.hwnd)
+        user32.SetForegroundWindow(self.hwnd)
+        user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x0053)
+        return True
+
+    def _viewer_owns_point(self, px, py):
+        import ctypes
+        import ctypes.wintypes as wt
+        if self.hwnd is None:
+            return False
+        user32 = ctypes.windll.user32
+        top = user32.WindowFromPoint(wt.POINT(int(px), int(py)))
+        if not top:
+            return False
+        root = user32.GetAncestor(top, 2)  # GA_ROOT
+        return root == self.hwnd or top == self.hwnd
+
+    def _point_owner_title(self, px, py):
+        import ctypes
+        import ctypes.wintypes as wt
+        user32 = ctypes.windll.user32
+        hwnd = user32.WindowFromPoint(wt.POINT(int(px), int(py)))
+        buf = ctypes.create_unicode_buffer(256)
+        if hwnd:
+            user32.GetWindowTextW(hwnd, buf, 256)
+        return hwnd, buf.value
 
     def submit_mark(self, seq, state, t_ms):
         target = tuple(self.palette[state % len(self.palette)])
@@ -231,12 +278,31 @@ class ScreenWatcher(threading.Thread):
                     time.sleep(self.interval)
                     continue
                 px, py = self.point
+                if not self._viewer_owns_point(px, py):
+                    self._raise_viewer()
+                    if not self._viewer_owns_point(px, py):
+                        if not self.occlusion_logged:
+                            owner, title = self._point_owner_title(px, py)
+                            log(f"WARNING marker point occluded by hwnd={owner} "
+                                f"title={title!r}; skipping viewer samples")
+                            self.occlusion_logged = True
+                        for m in self.pending:
+                            self.ambiguous.append({"seq": m["seq"],
+                                                   "note": "occluded-during-observation"})
+                        self.pending.clear()
+                        self.last_color = None
+                        time.sleep(self.interval)
+                        continue
+                    if self.occlusion_logged:
+                        log("marker point visible again; resuming viewer samples")
+                        self.occlusion_logged = False
+                        self.last_color = None
                 bbox = (px - half, py - half, px + half, py + half)
                 img = np.asarray(ImageGrab.grab(bbox=bbox).convert("RGB"))
+                color = tuple(int(v) for v in img[half, half])
             except Exception:
                 time.sleep(self.interval)
                 continue
-            color = tuple(int(v) for v in img[half, half])
             if self.last_color is None:
                 # First sample after (re)locating: establish the baseline.
                 # Comparing against None would raise inside near() and kill
