@@ -110,14 +110,38 @@ def tag_exists(token):
         raise
 
 
-def live(token):
+def find_release_pr(token):
     query = urllib.parse.urlencode({
         "state": "open", "base": BASE_REF, "head": "skawu:" + HEAD_REF,
         "per_page": 100,
     })
     prs = api("GET", "pulls?" + query, token)
     need(len(prs) == 1, "expected one matching release correction PR")
-    pr = api("GET", "pulls/" + str(prs[0]["number"]), token)
+    return api("GET", "pulls/" + str(prs[0]["number"]), token)
+
+
+def event_matches_pr(run, pr):
+    """Do not allow an earlier workflow_run to write onto a newer PR HEAD.
+
+    Require the exact run's SHA and its originating PR identity. GitHub can
+    omit pull_requests in some webhook payloads: fail CLOSED in that case,
+    rather than treating a shared branch name as an authorization.
+    """
+    sha = run.get("head_sha")
+    if not isinstance(sha, str) or len(sha) != 40:
+        return False
+    if (pr.get("head") or {}).get("sha") != sha:
+        return False
+    associated = run.get("pull_requests") or []
+    return any(
+        item.get("number") == pr.get("number")
+        and (item.get("head") or {}).get("sha") == sha
+        for item in associated
+    )
+
+
+def live(token, run, pr):
+    need(event_matches_pr(run, pr), "stale/mismatched workflow event")
     base = pr["base"]["sha"]
     head = pr["head"]["sha"]
     # No checkout or invocation of a candidate-supplied workflow/validator.
@@ -131,7 +155,6 @@ def live(token):
     need(fresh["base"]["sha"] == base and fresh["head"]["sha"] == head,
          "release correction PR changed during audit")
     need(not tag_exists(token), "version tag appeared during audit")
-    return pr, head
 
 
 def run_event(event_path):
@@ -147,20 +170,26 @@ def run_event(event_path):
         print("SKIP unrelated PR branch")
         return
     token = os.environ["GH_TOKEN"]
-    # Fail closed: failed/preempted topology never earns a PASS admission.
+    pr = find_release_pr(token)
+    if not event_matches_pr(run, pr):
+        # Delayed/cancelled events must not contaminate any newer PR HEAD.
+        print("SKIP stale/foreign workflow_run SHA or PR identity")
+        return
+    sha = run["head_sha"]  # NEVER rewrite results onto a re-queried newer SHA.
     result, detail = "success", "Exact reviewed security and governance blobs, complete Git trees and untagged state match."
     try:
         need(run.get("conclusion") == "success", "Git Flow workflow did not pass")
-        pr, sha = live(token)
+        live(token, run, pr)
     except (Denied, KeyError, ValueError, urllib.error.URLError) as error:
         result, detail = "failure", type(error).__name__ + ": " + str(error)
-        query = urllib.parse.urlencode({
-            "state": "open", "base": BASE_REF, "head": "skawu:" + HEAD_REF,
-        })
-        prs = api("GET", "pulls?" + query, token)
-        if len(prs) != 1:
-            raise Denied("no unique matching PR to report failure: " + detail)
-        sha = prs[0]["head"]["sha"]
+
+    # A PR may move in the window between validation and check creation.
+    # A stale event is harmless: skip rather than issuing SUCCESS or FAILURE
+    # for a new commit's identity. A missing check must block when required.
+    current = api("GET", "pulls/" + str(pr["number"]), token)
+    if not event_matches_pr(run, current):
+        print("SKIP PR HEAD moved before check write")
+        return
     api("POST", "check-runs", token, {
         "name": CHECK,
         "head_sha": sha,
@@ -195,6 +224,18 @@ def self_test():
                       for p, sha in BLOBS.items()]}
     base_case = [pr, diff, tree(old), tree(new)]
     validate(*base_case, tag_exists=False)
+    # The event's PR number AND SHA must match: old success/failure runs
+    # may not write onto newer HEADs or a different PR sharing the branch.
+    valid_run = {"head_sha": "a" * 40,
+                 "pull_requests": [{"number": 1, "head": {"sha": "a" * 40}}]}
+    assert event_matches_pr(valid_run, pr)
+    for mutation in (
+        {"head_sha": "b" * 40, "pull_requests": valid_run["pull_requests"]},
+        {"head_sha": "a" * 40, "pull_requests": []},
+        {"head_sha": "a" * 40, "pull_requests": [{"number": 2, "head": {"sha": "a" * 40}}]},
+        {"head_sha": "a" * 40, "pull_requests": [{"number": 1, "head": {"sha": "b" * 40}}]},
+    ):
+        assert not event_matches_pr(mutation, pr), "stale/foreign event was accepted"
     mutations = []
     def case(name, index, change, tag=False):
         c = copy.deepcopy(base_case)
@@ -226,7 +267,8 @@ def self_test():
         except Denied:
             continue
         raise AssertionError("negative unexpectedly passed: " + name)
-    print("PASS trusted V035 audit: 1 positive +", len(mutations), "negative cases")
+    print("PASS trusted V035 audit: 1 tree-positive +", len(mutations),
+          "tree-negatives and 4 stale/foreign event identity negatives")
 
 
 def main():
