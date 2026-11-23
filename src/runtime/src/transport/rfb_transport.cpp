@@ -2233,9 +2233,18 @@ public:
                 return;
 
             RfbWorker *worker = m_worker;
-            QMetaObject::invokeMethod(worker, [worker] { worker->shutdown(); }, Qt::BlockingQueuedConnection);
-            m_thread->quit();
-            m_thread->wait();
+            // A fatal transport event is published on the worker thread and may synchronously stop
+            // this transport. BlockingQueuedConnection to the worker's own event loop would deadlock
+            // (qtbase qmetaobject.cpp: postEvent + semaphore.acquire on the receiving thread).
+            if (QThread::currentThread() == m_thread.get()) {
+                worker->shutdown();
+                m_thread->quit();  // QThread::quit() is safe from the worker itself; wait() is not.
+            } else {
+                QMetaObject::invokeMethod(worker, [worker] { worker->shutdown(); },
+                                          Qt::BlockingQueuedConnection);
+                m_thread->quit();
+                m_thread->wait();
+            }
             m_worker = nullptr;
             m_thread.reset();
 
