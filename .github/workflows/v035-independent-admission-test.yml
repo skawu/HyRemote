@@ -1,0 +1,28 @@
+# #95 / Human D-ADMISSION=A: test independent GitHub App code only.
+# No App credentials, protected-branch writes or release-authority approval.
+name: V035 independent admission source tests
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - '.github/release/v035_independent_app.py'
+      - 'tests/release-readiness/test_v035_independent_app.py'
+      - '.github/workflows/v035-independent-admission-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-source-tests:
+    name: Independent App syntax and adversarial cases
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile Python source and adversarial tests
+        run: |
+          PYTHONPYCACHEPREFIX=/tmp/hyremote-app-pycache python3 -m py_compile .github/release/v035_independent_app.py tests/release-readiness/test_v035_independent_app.py
+          PYTHONPYCACHEPREFIX=/tmp/hyremote-app-pycache python3 -m unittest discover -s tests/release-readiness -p test_v035_independent_app.py -v
+      - name: Confirm script inventory
+        run: cmake -DHYREMOTE_SOURCE_DIR="$PWD" -P tests/release-readiness/check_script_discipline.cmake
