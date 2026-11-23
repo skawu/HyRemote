@@ -4,7 +4,7 @@
 
 ## 一、执行规则：防止 AI 无限制增加工作和偏离目标
 
-1. **固定 WBS 边界**：只使用当前 35 项已识别用户成果和必要支持/验证工作，不自动拆成无限子 Issue，不因“持续推进”新增新架构/通道/云控制层。正式施工时每一条任务只允许一个实现 Owner、一个代码仓和可复现证据出口；跨仓并行用依赖 Issue/PR 合同协作。
+1. **条件依赖防止错误全局阻塞**：表中 `A,B` 是同一声明路径的 AND；`A 或 B` 和 `Public=X；View=Y` 是条件 OR，绝不把一张跨仓验收台账写成必须等全部产品完成。View G3 只制约适用 View 路径，不制约已有 Public SDK 的维护或已批准的 Public 专项。独立产品各自 Gate-R 单独核验。\n2. **固定 WBS 边界**：只使用当前 35 项已识别用户成果和必要支持/验证工作，不自动拆成无限子 Issue，不因“持续推进”新增新架构/通道/云控制层。正式施工时每一条任务只允许一个实现 Owner、一个代码仓和可复现证据出口；跨仓并行用依赖 Issue/PR 合同协作。
 2. **实际已授权的 V0.3.5.0 与维护车道独立进行**；P-EXT 与 View Native 新增代码只在 Gate-D/所需 G3/正式 Gate-I 后实施。View G3 PoC 本身有独立明确授权规则，不把先前 ADS 治理恢复。
 3. **每个代码任务至多一个清晰产品变化/接口**，避免把构建、协议、GUI、性能和发布汇成巨 PR；必要的独立审查/CI/安全用例均在同任务验收下进行，而不是新造统一质量服务。
 4. **禁止错误状态提升**：`PLANNED → DESIGN_REVIEWED → IMPLEMENTATION_AUTHORIZED → SOURCE_COMPLETE → REVIEWED/TESTED → PRODUCT_QUALIFIED → RELEASED`；实际应以 owning issue、同 SHA CI 和运行/发行证据独立标注。任何状态不确定标 `NOT_RUN/UNKNOWN`。
@@ -12,7 +12,7 @@
 6. 已发生的 #565/#567/#362 现场问题、V0.3.5 性能/水印 P2 按原有 Issue/维护车道做，不因为本 WBS 又开一个同样的重构专题；优先真实用户结果。
 7. **无工期虚估**：在 G3 QtQuick/DeviceTLS 与具体 Qt Kit/Profile 尚无实证前，不伪造“几日完成/某天发布”，用前置完成条件与用户结果定义阶段。
 
-## 二、可执行 WBS（35 项、五个责任域、依赖无环）
+## 二、可执行 WBS（35 项、五个责任域；按产品声明选择条件前置）
 
 ### 设计批准与既有产品维护
 
@@ -21,11 +21,11 @@
 | A01 | 公共架构/QA | — | D1–D5、V1.7 受控差异和 V15/V8 源追踪审查；逐条标记当期/延期/可选 | 记录 source→CT→状态/错误/测试/Owner；旧 Native Public Owner 全部纠偏；提交 Gate-D 合同 | Gate-D | 候选待审 |
 | A02 | Human/独立审查 | A01 | 集中审查重大设计冲突与当前产品支持范围；正式决定 Gate-D 或带条件批准 | 书面限定已批准/未批准范围；任何关键 OPEN 不得假装 FROZEN | Gate-D | 未批准 |
 | A03 | View G3 Owner | A01 | 围绕 View RFB/Quick、Native DeviceTLS/Grant 各自拟定最小 G3 真实实验及负例证据；不把 Mock 当产品 | 精确 SHA/Qt Kit/平台/输入/CPU/P95/内存/许可证/安全；失败给出明确 GO/NO-GO | G3 | NOT_PASSED；原 #5 |
-| A04 | Human/产品 Owner | A02,A03 | 按 Public Extension、View RFB、Native、Managed 分路径确认 Gate-I 实施权限 | 每条获准工作包列仓库、范围、基线、审核 Owner；未获批准路径不实施 | Gate-I | NOT_AUTHORIZED |
+| A04 | Human/产品 Owner | A02 | 按 Public Extension、View RFB、Native、Managed 分路径确认 Gate-I 实施权限 | 每条获准工作包列仓库、范围、基线、审核 Owner；未获批准路径不实施；各路径适用的 G3 证据在该路径 Gate-I 中独立核验；Public Extension 不等待 View G3 | Gate-I | NOT_AUTHORIZED |
 | A05 | HyRemote Owner #594 | A01 | 为 Public P-EXT 选择单独可交付 Feature 目标/既有安排影响；与 View 候选版号独立审定 | 旧→新编号与原因、Tool/Qt/0.3.5影响、评审 PR；Machine train 仅激活时修改 | 版本决策 | 待批准 |
 | H01 | HyRemote #95 / #783 | — | V0.3.5.0 原已批准范围收口：路径/文字水印、P2 fail-closed、RealVNC A/B runner 观测可信、CPU/画面质量和真实 Viewer | #1048 仅修 sample 被遮挡假阴性，motion 1V 仍须真实裁定；最终候选同 SHA L2/Review/Viewer；目前 HOLD | V0.3.5 | ACTIVE/HOLD |
-| H02 | HyRemoteTool #579/#586 | H01 | 依既有 V0.3.6.0 规划实现 Tool S1 /设备档案/缩放/语言/安全键鼠/基础诊断（只在原 train 准入后） | Win 实机 800×600、真实维护 Viewer、断线/held、状态真实、独立 Tool 安装；不承接 Native | Public 0.3.6 planned | PLANNED |
-| H03 | HyRemote #592 | H01 | 依 V0.3.7.0 条件 Docker 实际 Qt App + SDK + config/state/secret | 实际容器真实 Viewer/非 root/restart/recreate/权限，缺环境保持 NOT_RUN 且不阻 RC | Public 0.3.7 conditional | PLANNED |
+| H02 | HyRemoteTool #579/#586 | — | 依既有 V0.3.6.0 规划实现 Tool S1 /设备档案/缩放/语言/安全键鼠/基础诊断（只在原 train 准入后） | Win 实机 800×600、真实维护 Viewer、断线/held、状态真实、独立 Tool 安装；不承接 Native；Tool 可与 V0.3.5 收口隔离并行；正式发行遵循 Public 既有 lineage | Public 0.3.6 planned | PLANNED |
+| H03 | HyRemote #592 | — | 依 V0.3.7.0 条件 Docker 实际 Qt App + SDK + config/state/secret | 实际容器真实 Viewer/非 root/restart/recreate/权限，缺环境保持 NOT_RUN 且不阻 RC；Docker 可在 #591 配置合同可用后独立设计/实测，正式发行仍受既定版本 lineage 约束 | Public 0.3.7 conditional | PLANNED |
 | H04 | HyRemote #235/#95 | H01 | 按现有 V0.4 RC → V1.0 GA 不开发新功能，只资格化 Windows Qt 5.15/6.8 已承诺单元 | 在 Gate 满足情况下冻结真实支持矩阵、API/Kit/安装/安全/Viewer/性能/发布；0.4 active:false 不抢跑 | Public RC/GA | CONDITIONAL |
 
 ### Public Extension & Qt Host
@@ -44,11 +44,11 @@
 
 | WBS | 唯一 Owner（类型/仓库） | 前置 | 实际交付结果 | 最小验收/可证伪失败 | 版本/CT | 当前状态 |
 |---|---|---|---|---|---|---|
-| V01 | HyRemoteView Client | A04 | 有限状态/长度 RFB3.8 parser、Raw/TRLE/尺寸变化/必要输入释放与旧主机兼容 | 有界流量/恶意包/断线/重连/合法 old RFB Host 与真实 Viewer 正反例 | View 0.1 proposed, CT-07/10 | 未编码 |
+| V01 | HyRemoteView Client | A03,A04 | 有限状态/长度 RFB3.8 parser、Raw/TRLE/尺寸变化/必要输入释放与旧主机兼容 | 有界流量/恶意包/断线/重连/合法 old RFB Host 与真实 Viewer 正反例；View RFB 正式实现须其自身 G3/安全资格；不以 Public 已发布 RFB 代替 | View 0.1 proposed, CT-07/10 | 未编码 |
 | V02 | HyRemoteView Surface | A04,A03 | 协议中立 immutable FrameSnapshot、Qt Quick RenderSurface、DisplayEpoch、DPR/座标逆变换 | 真帧/旧帧/失权遮帧与焦点输入独立；适用 Windows/Linux 真 Kit 性能、GPU/CPU/RSS 出口；G3 不以 Mock PASS | View 0.1 proposed, CT-10 | 未编码 |
 | V03 | HyRemoteView Identity | A04 | DeviceProfile/DeviceCatalog、OS SecretStore、证书变化与最小 DeviceTrust（第一切片） | 同 IP 不同设备拒旧 trust；明文存储不可用时安全失败；RFB 无自然人身份显示真实 | View 0.1 proposed, CT-10/14 | 未编码 |
 | V04 | HyRemoteView E2E QA | V01,V02,V03 | 独立 View RFB Direct 预览候选/用户工作流 | 精确 Public release SHA × View SHA，键鼠/帧/Resize/丢网/旧版本/隐私/软件包，合格才可发布 0.1 | View 0.1 proposed | NOT_RUN |
-| N01 | HyRemoteView Private Host | P01,P02,A04 | Private HMI 同 Qt OS 进程 Native 模块构建/装配、签名/运行时/Qt Kit compatibility、生命周期 | Public 不含 Native parser/TLS，Static Qt 仅可受控整机编译；停用后回调/Lease/Qt QObject 归零再允许 unload | View 0.2 proposed, CT-02/03/14 | 未编码 |
+| N01 | HyRemoteView Private Host | P01,P02,A03,A04 | Private HMI 同 Qt OS 进程 Native 模块构建/装配、签名/运行时/Qt Kit compatibility、生命周期 | Public 不含 Native parser/TLS，Static Qt 仅可受控整机编译；停用后回调/Lease/Qt QObject 归零再允许 unload；Private Native HMI 正式实现须 Native G3 适用证据；不因 Public 延后而私自复制 HostPort | View 0.2 proposed, CT-02/03/14 | 未编码 |
 | N02 | HyRemoteView Private Host | N01,P03 | Native 21 type 完整协议 parser/Encoder、TLS-first 双档、DeviceTLS 私钥/Peer 身份/错误语义 | 26 正向 byte vectors、12 负向规格、消息长度/时序/密文错误、授权前不泄 Target；plain 绝非明文 | View 0.2 proposed, CT-07 | 未编码 |
 | N03 | HyRemoteView Private Host | N02,P05,P06 | Native per-Peer codec/Full-Delta 基线、最终 EgressActor、T1 fence 与 Qt TLS pending 预算 | 末端 final check 与 write 不再异步跳域；旧 TLS 无法清理时合法网络线程 abort，T1/T2 真实结算；资源严格限额 | View 0.2 proposed, CT-06/08 | 未编码 |
 | N04 | HyRemoteView Private Host | N02,P06 | Native 五按钮/17 keypad/中文 committed text/input Grant 进入同一 QtFinalGate | 跨 RFB 同 Scope 单控制者/held 来源隔离；网络接纳不冒充 Qt/业务已执行 | View 0.2 proposed, CT-09 | 未编码 |
@@ -59,7 +59,7 @@
 
 | WBS | 唯一 Owner（类型/仓库） | 前置 | 实际交付结果 | 最小验收/可证伪失败 | 版本/CT | 当前状态 |
 |---|---|---|---|---|---|---|
-| W01 | HyRemoteView Workspace | V04,V06 | 协议中立 DeviceWorkspace/多 Target/多窗口焦点/旧画面与错误事实呈现 | 客户可识别设备/权限/画面时效；跨设备操作不误投递、证书轮换及离线 Direct 不需云 | View 0.3 proposed | 未编码 |
+| W01 | HyRemoteView Workspace | V04 或 V06（按所声明协议能力；Native 增强还须 V06） | 协议中立 DeviceWorkspace/多 Target/多窗口焦点/旧画面与错误事实呈现 | 客户可识别设备/权限/画面时效；跨设备操作不误投递、证书轮换及离线 Direct 不需云；工作区共享能力可先消费已合格 RFB/Native 任一分支，不形成双协议强制前置 | View 0.3 proposed | 未编码 |
 | W02 | HyRemoteView Workspace | W01 | 诊断来源等级、最小 OEM branding/权限显示/支持资料出口 | 不把 Gateway 登录称设备授权，不承诺没有 Host 业务回执的成功；密钥及报告脱敏 | View 0.3 proposed | 未编码 |
 | E01 | HyRemoteView Edge | W01,A04 | 同一 View 安装默认 OFF 的登录态站点共享/EndpointBinding、RunLease/RunEpoch/可信策略持久化 | 显式管理员与设备白名单，View 退出/OS 注销/崩溃撤 Route；升级/恢复不复活未许可旧共享 | View 0.4 conditional, CT-12 | 未编码 |
 | E02 | Gateway 独立 Owner #190 | E01,V06,A04 | 受独立 #190 激活后 Stage05 唯一控制 IDL/RoutePermit/PairLedger/opaque FIFO | 租户与 HMI 白名单/一次配对/网络双向保序/期限和操作审计；不解 DeviceTLS，不发 Host Grant | Managed 条件版本 | 未激活 |
@@ -69,10 +69,10 @@
 
 | WBS | 唯一 Owner（类型/仓库） | 前置 | 实际交付结果 | 最小验收/可证伪失败 | 版本/CT | 当前状态 |
 |---|---|---|---|---|---|---|
-| Q01 | 跨仓 Release QA | P07,V04,V06 | Source SHA 与 View gitlink/lock、HostPort ABI、Native Wire、QtKit/OS 的配对支持矩阵 | 不把 gitlink 固定视为互通 PASS，变更仅在对应产品支持矩阵中声明已通过单元 | 各 View Release | NOT_RUN |
+| Q01 | 跨仓 Release QA | 条件前置：Public=P07；View RFB=V04；View Native=V06 | Source SHA 与 View gitlink/lock、HostPort ABI、Native Wire、QtKit/OS 的配对支持矩阵 | 不把 gitlink 固定视为互通 PASS，变更仅在对应产品支持矩阵中声明已通过单元；每个已声明产品/协议单独固定兼容矩阵，不能因 View Native 未完成阻断 Public 或 View RFB | 各 View Release | NOT_RUN |
 | Q02 | 跨仓 QA / 用户环境仅必要时 | Q01 | Windows x86_64 Qt5/6.8 真实本地 HMI+Viewer；Linux/ARM64/EGLFS/Wayland 依适用产品档位另证 | 0/1/2 Viewer 资源/帧龄/现场输入与真实采集后端；用户现场环境未到不要求重复人工验证、不宣称 Supported | 各平台声明 | NOT_RUN |
-| Q03 | 跨仓 QA | Q01,Q02 | Public SDK 独立安装；View 单包 Edge；Private HMI 模块签名、升级、回滚、失权高水位 | P1/P2、恶意包、TLS 失败、错误 Qt Kit、实际重启/旧授权不复活；没有真实证据不给出 release PASS | 各产品 Gate-R | NOT_RUN |
-| Q04 | 各仓产品 Owner / Human 发布授权 | Q03 | Public/View/Tool/Gateway 分别接受适用版本/客户结果和独立发行资格 | Human 只审批重大正式节点；不强制同号发布，不用 View 未完阻断 Public；必须是被批准 train/tag/SHA | Gate-R | NOT_AUTHORIZED |
+| Q03 | 跨仓 QA | Q01,Q02（分别仅取本次产品/平台声明的实例） | Public SDK 独立安装；View 单包 Edge；Private HMI 模块签名、升级、回滚、失权高水位 | P1/P2、恶意包、TLS 失败、错误 Qt Kit、实际重启/旧授权不复活；没有真实证据不给出 release PASS；安装验收按此产品的真实构件进行，不能要求所有组件（含 Gateway）预先实现 | 各产品 Gate-R | NOT_RUN |
+| Q04 | 各仓产品 Owner / Human 发布授权 | Q03（仅本次产品对应实例） | Public/View/Tool/Gateway 分别接受适用版本/客户结果和独立发行资格 | Human 只审批重大正式节点；不强制同号发布，不用 View 未完阻断 Public；必须是被批准 train/tag/SHA；每个产品独立发行，不能以其他产品的未完成项阻断 | Gate-R | NOT_AUTHORIZED |
 
 ## 三、里程碑与唯一关键路径
 
