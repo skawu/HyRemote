@@ -35,9 +35,14 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    onto independently administered compute. Pin image digest / file checksum.
    Build with Python >=3.11 and `PyJWT[crypto]>=2.10,<3` on that machine.
    Keep GitHub App private key in a secrets manager, mounted at a read-only
-   file path and never present in logs.
+   file path and never present in logs. Mount a separately managed, restricted,
+   **persistent writable state volume** for `APP_STATE_DIR`. It stores the
+   monotonic `v035-<SHA>.revoked` marker and the `*.acked` delivery record.
+   Never put this directory in the repository, container writable layer,
+   ephemeral cache, build artifact, or user home.
 3. Required environment: `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`,
-   `GITHUB_APP_PRIVATE_KEY_FILE`, `GITHUB_WEBHOOK_SECRET`.
+   `GITHUB_APP_PRIVATE_KEY_FILE`, `GITHUB_WEBHOOK_SECRET`,
+   `APP_STATE_DIR` (durable, pre-created directory).
    Bind the built-in HTTP server to `127.0.0.1:8097`; use a secure TLS
    ingress/reverse proxy with egress to `api.github.com`, resource/rate
    limits, and ingress webhook signature verification. No public direct HTTP.
@@ -46,14 +51,21 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    cannot make tag creation and release merge a single atomic transaction:
    retain independent tag/release authority and recheck the tag immediately
    before formal promotion.
-4. Validate with
+4. The signed tag-push webhook writes `*.revoked` **and fsyncs it before**
+   it contacts GitHub. While revoked, even deletion of the tag or a replayed
+   `pull_request.edited` event cannot generate SUCCESS. A background worker
+   retries failing REST check updates with bounded delays across process
+   restarts; an external operations watchdog must alert on prolonged pending
+   `*.revoked` without `*.acked`. Only a separately reviewed release policy
+   may reset revocation state, never an ordinary PR/CLI invocation.
+5. Validate with
    `python -m unittest discover -s tests/release-readiness -p test_v035_independent_app.py -v`.
    Before protecting any branch, install the App and verify **the App itself**
    can publish `v035-independent-source-admission` on the one frozen PR SHA.
    For cold-start/manual check from the trusted host:
    `python .github/release/v035_independent_app.py --check-pr <PR_NUMBER>`.
    Never use a personal token to fabricate an identically named check.
-5. Once live App check source and ID have been confirmed, generate—not yet
+6. Once live App check source and ID have been confirmed, generate—not yet
    apply—the narrowly scoped ruleset body using
    `python .github/release/v035_independent_app.py --print-ruleset <REAL_APP_ID>`.
    An authorized repo admin then creates it via repository Rulesets
@@ -62,7 +74,7 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    context is exact, `strict_required_status_checks_policy=true`, the
    matching ref is ONLY `refs/heads/release/v0.3.5.0`, no bypass actor,
    and the existing generic release ruleset remains unchanged.
-6. Prove enforcement on a **non-merged, disposable** negative PR/head:
+7. Prove enforcement on a **non-merged, disposable** negative PR/head:
    missing App check blocks, ordinary Actions check with the same name
    does not satisfy the source binding, bad extra file/blob/mode/SHA/tag
    fails, old event/HEAD cannot approve new HEAD. Report ruleset ID,

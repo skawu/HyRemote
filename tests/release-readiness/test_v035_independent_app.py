@@ -5,6 +5,8 @@ import copy
 import hashlib
 import hmac
 import importlib.util
+import os
+import tempfile
 from pathlib import Path
 import sys
 import unittest
@@ -98,6 +100,14 @@ class ExactTreeTests(unittest.TestCase):
 
 
 class EventAndCheckTests(unittest.TestCase):
+    def setUp(self):
+        # This directory represents an independently mounted durable volume.
+        self._state = tempfile.TemporaryDirectory()
+        self.addCleanup(self._state.cleanup)
+        env = patch.dict(os.environ, {"APP_STATE_DIR": self._state.name})
+        env.start()
+        self.addCleanup(env.stop)
+
     def test_webhook_identity(self):
         pr = fixtures()[0]
         event = {"action": "opened", "repository": {"full_name": app.REPO},
@@ -211,6 +221,46 @@ class EventAndCheckTests(unittest.TestCase):
             self.assertEqual(app.revoke_on_tag_push("synthetic-token"), 1)
         self.assertEqual(posts[0]["conclusion"], "failure")
         self.assertEqual(posts[0]["head_sha"], app.HEAD_SHA)
+
+    def test_revocation_survives_tag_deletion_and_pr_edited(self):
+        app.mark_revoked()
+        self.assertTrue(app.is_revoked())
+        self.assertTrue(list(Path(self._state.name).glob("*.revoked")))
+        pr = fixtures()[0]
+        posts = []
+        def api(method, path, token, body=None):
+            if method == "POST":
+                posts.append(body)
+                return {"id": 999}
+            return pr
+        # Tag is gone, but one-way durable revocation MUST forbid success.
+        with patch.object(app, "gh", side_effect=api), patch.object(
+                app, "read_live") as live, patch.object(
+                app, "has_release_tag", return_value=False):
+            self.assertEqual(app.check_pr(589, app.HEAD_SHA, "synthetic-token"),
+                             "FAILURE")
+            live.assert_not_called()
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["conclusion"], "failure")
+        self.assertTrue(app.is_revoked())
+
+    def test_revocation_retries_after_api_outage(self):
+        app.mark_revoked()
+        self.assertFalse(app.is_revocation_acked())
+        with patch.object(app, "create_installation_token", return_value="test-token"), patch.object(
+                app, "revoke_on_tag_push", side_effect=[OSError("synthetic REST 503"), 1]) as call:
+            with self.assertRaises(OSError):
+                app.attempt_revocation_once()
+            self.assertTrue(app.is_revoked())  # Event survives failure.
+            self.assertFalse(app.is_revocation_acked())
+            self.assertEqual(app.attempt_revocation_once(), 1)
+            self.assertTrue(app.is_revocation_acked())
+            self.assertEqual(call.call_count, 2)
+
+    def test_missing_durable_state_fails_closed(self):
+        with patch.dict(os.environ, {"APP_STATE_DIR": ""}):
+            with self.assertRaises(app.Denied):
+                app.is_revoked()
 
     def test_denied_tree_produces_failure_not_pass(self):
         pr, cmp, base, head, old, new = fixtures()
