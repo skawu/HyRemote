@@ -1,6 +1,6 @@
 # D4｜HyRemoteTool、安装交付与全产品安全/质量合同（候选）
 
-> **2026-11-23 V1.7 收口更正（设计候选）**：当前产品级质量边界对齐 [三项收口](hyremote-v17-three-closures-design-2026-11-23.md)：Public Host+RFB-only 无 Private 依赖；设备 Native TLS/Parser/Codec 是 **HyRemoteView Private F14 同 HMI 进程模块**；Public 仅提供 HostPort 和设备授权/帧/输入。已批准 H-O01/H-O02=A 为**本期明确拒绝/事实表述**，其未来接口与回执不应成为当期设计冻结强制条件。不要把 Gate-D 设计审查当成产品测试。
+> **2026-11-23 V1.7 收口更正（设计候选）**：当前产品级质量边界对齐 [三项收口](hyremote-v17-three-closures-design-2026-11-23.md)：Public Host+RFB-only 无 Private 依赖；设备 Native TLS/Parser/Codec 是 **HyRemoteView Private F14 同 HMI 进程模块**；Public 仅提供 HostPort 和设备授权/帧/输入。已批准 H-O01/H-O02=A 为**本期明确拒绝/事实表述**，其未来接口与回执不应成为当期设计冻结强制条件。不要把 Gate-D 设计审查当成产品测试。 **正式设计约束 D-PROC=B（同进程 Private Native）、D-REVOKE=A（T0/T1/T2）已批准，不重开。**
 
 
 > **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。V15/V8 等效原文已取得，Native P-A 数值/TLS-first A 已获批准；其余内部接口、性能假设、原子验收与 Gate-D 仍待设计审签，不因上述决定自动冻结。
