@@ -32,7 +32,7 @@
 | 阶段 | 交付范围 | 当前设计状态 | 未能自动越过的门禁 |
 | --- | --- | --- | --- |
 | W00 源结构/行为初步追踪 | 14 模块 #843 + [来源审计](module-detail-source-audit-v15-v8-2026-11-05.md) + V15 56 行 + V8 99 行 + Native 21 类负向规格 | **送审稿 SHA 匹配；56 行行为/失败映射、99 节主责索引形成，未验证实现** | 细分原子合同与状态/错误/测试/Owner，Wire 数值已获 Human P-A/A 批准；剩余状态、异常测试与真实互通仍未完成 |
-| D1 Framework | F01–F06：Core、Runtime、四入口、RFB/Native、Host 安全 | **既有 D1 候选 + F-02 RT-01..08 / F-06 POL-01..08 细化** | 需审签 Qt 最终投递线性化、逐 Session 过滤/缓存所有权及技术失败回退；真实产品验证不算 Gate-D 的前置 PASS |
+| D1 Framework | F01–F06：Core、Runtime、四入口、Public RFB、Native 规范/HostPort（实际 Native HMI Private F14）、Host 安全 | **既有 D1 候选 + F-02 RT-01..08 / F-06 POL-01..08 细化** | 需审签 Qt 最终投递线性化、逐 Session 过滤/缓存所有权及技术失败回退；真实产品验证不算 Gate-D 的前置 PASS |
 | D2 HyRemoteView | V01–V03：完整 Direct、QtQuick、Trust、设备/凭据/诊断/OEM | **设计候选** | G3 #5 **NOT PASSED**、真实 Native DeviceTLS/Frame/Grant、源条款对照 |
 | D3 Edge/Gateway | E01/G01：同安装 Edge、受管控制/字节隧道、ACL/自托管 | **复用 Stage04/05 并形成跨模块候选** | #190 **NOT_ACTIVATED**、control IDL 版本、OS 后台安全、真实 Managed E2E |
 | D4 Tool/交付/安全 | T01、X01、X02：Tool 角色、安装/Qt Kit、全系统验收 | **设计候选** | **H-T01=A 已批准**，不再重开分工；Tool S1 #586 OPEN，支持矩阵实证尚缺 |
@@ -118,7 +118,7 @@ flowchart TB
 
 **说明**：依赖图是 Gate-I 后的**按声明路径的技术偏序**；RFB-only 不需要 F14/V12，Native-only 不需要 F13/V10，V13 安全存储基础为 V12 的前置但不要求先实现两种客户端，适用 G3 不得变成全部产品统一实施阻塞器。初始总控 W00 及整个 Gate-D 仍须逐原子审签，图表修正不是冻结结论。
 
-**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。F13 与 F14 可在共同 HMI Policy/Frame 基础后并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 **X10 实际有按发布档位选择的 RFB Direct、Native Direct、Managed 三类验证支路**：RFB-only 不要求 Native Listener，Native-only 不依赖 RFB 帧；仅 Managed 安全路径才必须同时具备 F14/V12/E10/G10 及 #190 独立激活，**Gateway 未激活不得阻塞合格 Direct 的设计/验证/独立发布申请**。图中的 X10R/X10N/X10M 都是现有 WBS X10 的条件验收分支，不是三个新增产品或新实施阶段。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586，**H-T01=A 已正式批准未来产品分工**。Tool 不成为 View/HMI/Gateway 的强制打包依赖。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
+**说明**：箭头代表被批准的未来实施依赖，而非现在自动启动代码。**G3 PoC 可以独立于 Gate-D 设计冻结开展技术验证；Gate-I 实施授权必须同时审查 Gate-D 与适用的 G3/安全证据**。Public F13 与 Private F14 可在共同 HMI Policy/Frame/HostPort 基础后按批准范围并行；V10 可基于现有标准 RFB3.8 在获得 Gate-I 后与 F13 并行设计/研发；Factory Edge/Gateway 可在 Stage05 IDL 审核与 #190 独立产品激活后并行实施，不必等真 Native Viewer 完成才设计 FIFO relay，但 **X10 实际有按发布档位选择的 RFB Direct、Native Direct、Managed 三类验证支路**：RFB-only 不要求 Native Listener，Native-only 不依赖 RFB 帧；仅 Managed 安全路径才必须同时具备 F14/V12/E10/G10 及 #190 独立激活，**Gateway 未激活不得阻塞合格 Direct 的设计/验证/独立发布申请**。图中的 X10R/X10N/X10M 都是现有 WBS X10 的条件验收分支，不是三个新增产品或新实施阶段。Tool 已发布的基础 RFB 回归维护可按独立产品路线继续；未完成 S1 遵循 #586，**H-T01=A 已正式批准未来产品分工**。Tool 不成为 View/HMI/Gateway 的强制打包依赖。Stage05 S05-A..I 细粒度计划继续有效，不重写控制 wire。
 
 **不得用“Gateway 已启动”倒推 HMI Native 或 View 资格；不得以“PoC 编译通过”倒推正式客户端授权。**
 
