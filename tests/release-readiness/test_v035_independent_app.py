@@ -153,6 +153,7 @@ class EventAndCheckTests(unittest.TestCase):
         self.assertEqual(posts[0][1]["name"], app.CONTEXT)
         self.assertEqual(posts[0][1]["head_sha"], app.HEAD_SHA)
         self.assertEqual(posts[0][1]["conclusion"], "success")
+        self.assertTrue(app._state_file(".success-attempted").exists())
 
     def test_old_webhook_cannot_write_new_sha(self):
         posts = []
@@ -208,21 +209,71 @@ class EventAndCheckTests(unittest.TestCase):
         self.assertFalse(app.decide_tag_event("push", bad, 77))
         with self.assertRaises(app.Denied):
             app.decide_tag_event("push", payload, 78)
-        pr = fixtures()[0]
         posts = []
         def api(method, path, token, body=None):
             if method == "POST":
                 posts.append(body)
                 return {"id": 456}
-            if "/pulls?" in path:
-                return [pr]
-            if "/pulls/589" in path:
-                return pr
-            raise AssertionError(path)
-        with patch.object(app, "gh", side_effect=api):
+            self.assertIn("/commits/" + app.HEAD_SHA + "/check-runs?", path)
+            self.assertNotIn("/pulls", path)  # Revoke even for closed/moved PR.
+            return {"total_count": 0, "check_runs": []}
+        with patch.dict(os.environ, {"GITHUB_APP_ID": "77"}), patch.object(
+                app, "gh", side_effect=api):
             self.assertEqual(app.revoke_on_tag_push("synthetic-token"), 1)
         self.assertEqual(posts[0]["conclusion"], "failure")
         self.assertEqual(posts[0]["head_sha"], app.HEAD_SHA)
+        self.assertFalse(app.is_revocation_acked())  # POST not remote proof.
+
+    def test_late_remote_success_after_verified_failure_is_repaired(self):
+        # A timed-out SUCCESS can finish on GitHub AFTER our newer FAILURE.
+        # An .acked marker must NEVER stop future scans and correction.
+        app.mark_revoked()
+        checks = []
+        paths = []
+        def api(method, path, token, body=None):
+            paths.append(path)
+            if method == "GET":
+                self.assertIn("/commits/" + app.HEAD_SHA + "/check-runs?", path)
+                return {"total_count": len(checks), "check_runs": list(checks)}
+            self.assertEqual(method, "POST")
+            self.assertEqual(body["head_sha"], app.HEAD_SHA)
+            checks.append({"id": 100 + len(checks),
+                           "name": app.CONTEXT, "head_sha": app.HEAD_SHA,
+                           "app": {"id": 77}, "status": "completed",
+                           "conclusion": body["conclusion"]})
+            return {"id": checks[-1]["id"]}
+        with patch.dict(os.environ, {"GITHUB_APP_ID": "77"}), patch.object(
+                app, "gh", side_effect=api), patch.object(
+                app, "create_installation_token", return_value="test-token"):
+            self.assertEqual(app.attempt_revocation_once(), 1)
+            self.assertFalse(app.is_revocation_acked())
+            self.assertEqual(app.attempt_revocation_once(), 0)
+            self.assertTrue(app.is_revocation_acked())
+            # Late completion of an older in-flight remote SUCCESS.
+            checks.append({"id": 102, "name": app.CONTEXT,
+                           "head_sha": app.HEAD_SHA, "app": {"id": 77},
+                           "status": "completed", "conclusion": "success"})
+            self.assertEqual(app.attempt_revocation_once(), 1)
+            self.assertEqual(checks[-1]["conclusion"], "failure")
+            self.assertEqual(app.attempt_revocation_once(), 0)
+            self.assertTrue(app.is_revocation_acked())
+        self.assertFalse(any("/pulls" in path for path in paths))
+
+    def test_untrusted_remote_check_source_fails_closed(self):
+        app.mark_revoked()
+        bad = {"id": 31, "name": app.CONTEXT, "head_sha": app.HEAD_SHA,
+               "app": {"id": 22}, "status": "completed", "conclusion": "failure"}
+        posts = []
+        def api(method, path, token, body=None):
+            if method == "POST":
+                posts.append(body)
+            return {"total_count": 1, "check_runs": [bad]}
+        with patch.dict(os.environ, {"GITHUB_APP_ID": "77"}), patch.object(
+                app, "gh", side_effect=api), patch.object(
+                app, "create_installation_token", return_value="test-token"):
+            with self.assertRaises(app.Denied):
+                app.attempt_revocation_once()
+        self.assertEqual(posts, [])
 
     def test_revocation_survives_tag_deletion_and_pr_edited(self):
         app.mark_revoked()
@@ -250,14 +301,16 @@ class EventAndCheckTests(unittest.TestCase):
         app.mark_revoked()
         self.assertFalse(app.is_revocation_acked())
         with patch.object(app, "create_installation_token", return_value="test-token"), patch.object(
-                app, "revoke_on_tag_push", side_effect=[OSError("synthetic REST 503"), 1]) as call:
+                app, "revoke_on_tag_push",
+                side_effect=[OSError("synthetic REST 503"), 1, 0]) as call:
             with self.assertRaises(OSError):
                 app.attempt_revocation_once()
             self.assertTrue(app.is_revoked())  # Event survives failure.
             self.assertFalse(app.is_revocation_acked())
             self.assertEqual(app.attempt_revocation_once(), 1)
-            self.assertTrue(app.is_revocation_acked())
-            self.assertEqual(call.call_count, 2)
+            self.assertFalse(app.is_revocation_acked())  # POST is not ACK.
+            self.assertEqual(app.attempt_revocation_once(), 0)
+            self.assertEqual(call.call_count, 3)  # Reconciliation continues.
 
     def test_visible_revocation_resyncs_after_first_fsync_error(self):
         # Creating a directory entry is not equivalent to durably recording it.
