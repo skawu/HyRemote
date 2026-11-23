@@ -149,6 +149,69 @@ class EventAndCheckTests(unittest.TestCase):
             self.assertEqual(app.check_pr(589, "a"*40, "synthetic-token"), "STALE")
         self.assertEqual(posts, [])
 
+    def test_branch_aba_never_grants_success_to_initial_unreviewed_head(self):
+        pr = fixtures()[0]
+        pr["head"]["sha"] = "a" * 40
+        with patch.object(app, "gh") as api, patch.object(app, "read_live") as audit:
+            api.side_effect = [pr, pr, {"id": 123}]
+            self.assertEqual(app.check_pr(589, "a" * 40, "synthetic-token"),
+                             "FAILURE")
+            audit.assert_not_called()
+            self.assertEqual(api.call_args.args[3]["head_sha"], "a" * 40)
+            self.assertEqual(api.call_args.args[3]["conclusion"], "failure")
+
+    def test_tag_appears_between_snapshots_issues_failure(self):
+        pr, cmp, base, head, old, new = fixtures()
+        base["tree"], head["tree"] = {"sha": "old"}, {"sha": "new"}
+        posts = []
+        def api(method, path, token, payload=None):
+            if method == "POST":
+                posts.append(payload)
+                return {"id": 123}
+            if "/git/trees/" in path:
+                return old if path.endswith("old?recursive=1") else new
+            if "/git/commits/" + app.BASE_SHA in path:
+                return base
+            if "/git/commits/" + app.HEAD_SHA in path:
+                return head
+            if "/compare/" in path:
+                return cmp
+            return pr
+        with patch.object(app, "gh", side_effect=api), patch.object(
+                app, "has_release_tag", side_effect=[False, True]):
+            self.assertEqual(app.check_pr(589, app.HEAD_SHA, "synthetic-token"),
+                             "FAILURE")
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["conclusion"], "failure")
+        self.assertEqual(posts[0]["head_sha"], app.HEAD_SHA)
+
+    def test_signed_tag_event_revokes_existing_success(self):
+        payload = {"ref": "refs/tags/" + app.RELEASE_TAG, "deleted": False,
+                   "repository": {"full_name": app.REPO},
+                   "installation": {"id": 77}}
+        self.assertTrue(app.decide_tag_event("push", payload, 77))
+        self.assertFalse(app.decide_tag_event("pull_request", payload, 77))
+        bad = copy.deepcopy(payload)
+        bad["deleted"] = True
+        self.assertFalse(app.decide_tag_event("push", bad, 77))
+        with self.assertRaises(app.Denied):
+            app.decide_tag_event("push", payload, 78)
+        pr = fixtures()[0]
+        posts = []
+        def api(method, path, token, body=None):
+            if method == "POST":
+                posts.append(body)
+                return {"id": 456}
+            if "/pulls?" in path:
+                return [pr]
+            if "/pulls/589" in path:
+                return pr
+            raise AssertionError(path)
+        with patch.object(app, "gh", side_effect=api):
+            self.assertEqual(app.revoke_on_tag_push("synthetic-token"), 1)
+        self.assertEqual(posts[0]["conclusion"], "failure")
+        self.assertEqual(posts[0]["head_sha"], app.HEAD_SHA)
+
     def test_denied_tree_produces_failure_not_pass(self):
         pr, cmp, base, head, old, new = fixtures()
         cmp["files"][0]["sha"] = "tampered"

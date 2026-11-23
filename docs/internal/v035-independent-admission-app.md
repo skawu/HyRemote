@@ -27,7 +27,9 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    `GitHub Actions` workflow or ordinary commit status. Install on the
    **selected repository** `skawu/HyRemote` only.
    Repository permissions: **Contents: Read**, **Pull requests: Read**,
-   **Checks: Read and write**. Subscribe to **Pull request** events.
+   **Checks: Read and write**. Subscribe to **Pull request** and **Push**
+   events; a signed tag creation triggers a newer FAILURE check and revokes
+   any earlier approval. Deleting the tag does not restore authorization.
    Configure an HTTPS webhook URL `/github/webhook` and random webhook secret.
 2. Deploy an immutable reviewed artifact from the approved App source commit
    onto independently administered compute. Pin image digest / file checksum.
@@ -39,6 +41,11 @@ must match the original full source tree, with no published `v0.3.5.0` tag.
    Bind the built-in HTTP server to `127.0.0.1:8097`; use a secure TLS
    ingress/reverse proxy with egress to `api.github.com`, resource/rate
    limits, and ingress webhook signature verification. No public direct HTTP.
+   Use exactly one running issuer instance: the in-process lock serializes
+   PR admission and tag revocations. GitHub webhooks are asynchronous and
+   cannot make tag creation and release merge a single atomic transaction:
+   retain independent tag/release authority and recheck the tag immediately
+   before formal promotion.
 4. Validate with
    `python -m unittest discover -s tests/release-readiness -p test_v035_independent_app.py -v`.
    Before protecting any branch, install the App and verify **the App itself**
