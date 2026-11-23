@@ -1,5 +1,8 @@
 # D1｜设备协议详细设计：RFB 3.8 / Native 1.0 独立互操作、授权与状态契约（候选 V1）
 
+> **2026-11-23 Gate-D 设计细化（候选，尚未 Owner 审签）**：现有 §4.2.1 关于 5 鼠标按钮/17 Keypad 尚未闭合的历史判断不应被解释为本轮未处理。V1.7 [Gate-D 评审准备稿 §六/§七](hyremote-v17-gate-d-formal-review-preparation-2026-11-23.md) 已提出唯一 `AuthorizedInputIntent`（不改公开 `InputEvent` ABI）、X1/X2→Qt Back/Forward、17 Keypad→KeypadModifier、RFB+Native 同一 Public F-06 合成 HeldLedger、72 Accepted DOWN 信用 + 64 Normal + 136 ProtectedRelease 的守恒合同，并明确只有 **Qt 实际交付**才能登记 HELD、迟到回调消费时复核当前 Epoch。该内容仍待 Public F-03/F-06 与 Private F14 双 Owner 技术签收，Qt5/6 实机 NOT_RUN；不得把设计候选当成已实现或 Gate-D PASS。
+
+
 > **2026-11-23 V1.7 实现 Owner 更正（设计候选）**：本文 F-05 的 Native1.0 wire、TLS-first、AFS-01..12 继续作为**双方必须遵循的受控规范/互操作合同**，但具体 HMI Native Listener/Parser/TLS/Codec/egress **归 HyRemoteView Private F14**，不是公共 HyRemote 必须构建的服务端。Public 提供设备 Host Policy/Frame/QtFinalGate 和可选进程内 `NativeHostPort`；RFB 服务端仍 Public 独立。详情见 [统一收口](hyremote-v17-three-closures-design-2026-11-23.md)。Human D-PROC=B、D-REVOKE=A 已批准；旧阶段表述不能覆盖裁决。
 
 
