@@ -66,6 +66,32 @@ def near(a, b):
         abs(int(x) - int(y)) <= COLOR_TOL for x, y in zip(a, b))
 
 
+def viewer_user32():
+    """Use pointer-sized Win32 HWND signatures on 64-bit Windows.
+
+    ctypes' default c_int return truncates/sign-extends high-bit handles:
+    EnumWindows gives wt.HWND, so every lookup must use that same type.
+    """
+    import ctypes
+    import ctypes.wintypes as wt
+    user32 = ctypes.windll.user32
+    user32.WindowFromPoint.argtypes = (wt.POINT,)
+    user32.WindowFromPoint.restype = wt.HWND
+    user32.GetAncestor.argtypes = (wt.HWND, wt.UINT)
+    user32.GetAncestor.restype = wt.HWND
+    user32.IsWindow.argtypes = (wt.HWND,)
+    user32.IsWindow.restype = wt.BOOL
+    user32.SetWindowPos.argtypes = (wt.HWND, wt.HWND, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, wt.UINT)
+    user32.SetWindowPos.restype = wt.BOOL
+    user32.GetWindowTextW.argtypes = (wt.HWND, wt.LPWSTR, ctypes.c_int)
+    user32.GetWindowThreadProcessId.argtypes = (wt.HWND, ctypes.POINTER(wt.DWORD))
+    user32.GetWindowRect.argtypes = (wt.HWND, ctypes.POINTER(wt.RECT))
+    user32.GetClientRect.argtypes = (wt.HWND, ctypes.POINTER(wt.RECT))
+    user32.ClientToScreen.argtypes = (wt.HWND, ctypes.POINTER(wt.POINT))
+    return user32
+
+
 def viewer_window_rect(viewer_pids, port):
     """Screen rect of the actual connection window: RealVNC Viewer titles it
     `<host>::<port> - RealVNC Viewer`. The viewer process also owns helper
@@ -75,7 +101,7 @@ def viewer_window_rect(viewer_pids, port):
     automation on this desktop cannot cover the sampled region."""
     import ctypes
     import ctypes.wintypes as wt
-    user32 = ctypes.windll.user32
+    user32 = viewer_user32()
     found = []
     pid_holder = ctypes.c_ulong()
     prefix = f"127.0.0.1::{port}"
@@ -107,7 +133,7 @@ def client_content_rect(hwnd):
     region of the viewer window (no title bar or frame)."""
     import ctypes
     import ctypes.wintypes as wt
-    user32 = ctypes.windll.user32
+    user32 = viewer_user32()
     pt = wt.POINT(0, 0)
     user32.ClientToScreen(hwnd, ctypes.byref(pt))
     cr = wt.RECT()
@@ -187,6 +213,7 @@ class ScreenWatcher(threading.Thread):
         self.hwnd = None           # connected Viewer window owning the marker
         self.occlusion_logged = False
         self.stop_flag = threading.Event()
+        self._marks_lock = threading.Lock()
         self.start()
 
     def locate_marker(self, hwnd, fb_size):
@@ -224,21 +251,19 @@ class ScreenWatcher(threading.Thread):
         import ctypes
         if self.hwnd is None:
             return False
-        user32 = ctypes.windll.user32
+        user32 = viewer_user32()
         if not user32.IsWindow(self.hwnd):
             return False
-        user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
-        user32.BringWindowToTop(self.hwnd)
-        user32.SetForegroundWindow(self.hwnd)
-        user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x0053)
-        return True
+        # HWND_TOPMOST and NOACTIVATE; 0x0053 does NOT contain NOZORDER.
+        # Do not activate this test window or interfere with other user windows.
+        return bool(user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0, 0x0053))
 
     def _viewer_owns_point(self, px, py):
         import ctypes
         import ctypes.wintypes as wt
         if self.hwnd is None:
             return False
-        user32 = ctypes.windll.user32
+        user32 = viewer_user32()
         top = user32.WindowFromPoint(wt.POINT(int(px), int(py)))
         if not top:
             return False
@@ -248,7 +273,7 @@ class ScreenWatcher(threading.Thread):
     def _point_owner_title(self, px, py):
         import ctypes
         import ctypes.wintypes as wt
-        user32 = ctypes.windll.user32
+        user32 = viewer_user32()
         hwnd = user32.WindowFromPoint(wt.POINT(int(px), int(py)))
         buf = ctypes.create_unicode_buffer(256)
         if hwnd:
@@ -260,10 +285,24 @@ class ScreenWatcher(threading.Thread):
         if self.point is None:
             self.detected.append({"seq": seq, "detect_ms": None, "note": "no-marker-point"})
             return
-        if near(self.last_color, target):
-            self.ambiguous.append({"seq": seq, "note": "target-already-on-screen"})
-            return
-        self.pending.append({"seq": seq, "target": target, "t_ms": t_ms})
+        with self._marks_lock:
+            if near(self.last_color, target):
+                self.ambiguous.append({"seq": seq, "note": "target-already-on-screen"})
+                return
+            self.pending.append({"seq": seq, "target": target, "t_ms": t_ms})
+
+    def _record_occlusion(self, px, py):
+        if not self.occlusion_logged:
+            owner, title = self._point_owner_title(px, py)
+            log(f"WARNING marker point occluded by hwnd={owner} "
+                f"title={title!r}; skipping viewer samples")
+            self.occlusion_logged = True
+        with self._marks_lock:
+            for m in self.pending:
+                self.ambiguous.append({"seq": m["seq"],
+                                       "note": "occluded-during-observation"})
+            self.pending.clear()
+            self.last_color = None
 
     def run(self):
         # Sample only the marker neighbourhood (80x80 around the sampling
@@ -281,59 +320,54 @@ class ScreenWatcher(threading.Thread):
                 if not self._viewer_owns_point(px, py):
                     self._raise_viewer()
                     if not self._viewer_owns_point(px, py):
-                        if not self.occlusion_logged:
-                            owner, title = self._point_owner_title(px, py)
-                            log(f"WARNING marker point occluded by hwnd={owner} "
-                                f"title={title!r}; skipping viewer samples")
-                            self.occlusion_logged = True
-                        for m in self.pending:
-                            self.ambiguous.append({"seq": m["seq"],
-                                                   "note": "occluded-during-observation"})
-                        self.pending.clear()
-                        self.last_color = None
+                        self._record_occlusion(px, py)
                         time.sleep(self.interval)
                         continue
-                    if self.occlusion_logged:
-                        log("marker point visible again; resuming viewer samples")
-                        self.occlusion_logged = False
+                if self.occlusion_logged:
+                    log("marker point visible again; resuming viewer samples")
+                    self.occlusion_logged = False
+                    with self._marks_lock:
                         self.last_color = None
                 bbox = (px - half, py - half, px + half, py + half)
                 img = np.asarray(ImageGrab.grab(bbox=bbox).convert("RGB"))
+                # A competing topmost window can cover the point *during* grab.
+                # A pre-grab ownership check alone can fabricate a delivery.
+                if not self._viewer_owns_point(px, py):
+                    self._record_occlusion(px, py)
+                    time.sleep(self.interval)
+                    continue
                 color = tuple(int(v) for v in img[half, half])
             except Exception:
                 time.sleep(self.interval)
                 continue
-            if self.last_color is None:
-                # First sample after (re)locating or an occlusion establishes
-                # a new observation baseline, NOT a measured transition.
-                # Any queued mark already showing this colour has an unknown
-                # onset; never let it match a later palette repeat as a fake
-                # long-latency delivery.
-                matched = [m for m in self.pending if near(color, m["target"])]
-                for m in matched:
-                    self.ambiguous.append({"seq": m["seq"],
-                                           "note": "colour-present-at-observation-resume"})
-                    self.pending.remove(m)
-                self.last_color = color
-                continue
-            if not near(color, self.last_color):
-                matches = [m for m in self.pending if near(color, m["target"])]
-                if len(matches) > 1:
-                    # P2 review: with pending marks spanning the palette's
-                    # 2 s repeat period, ONE observed transition cannot tell
-                    # which pending mark it belongs to — drop them all as
-                    # ambiguous instead of fabricating fast/slow samples.
-                    for m in matches:
+            # Atomically commit the visible baseline and classify pending
+            # marks against submit_mark(); otherwise a same-colour mark inserted
+            # between the snapshot and last_color update becomes fake latency.
+            with self._marks_lock:
+                if self.last_color is None:
+                    matched = [m for m in self.pending if near(color, m["target"])]
+                    for m in matched:
                         self.ambiguous.append({"seq": m["seq"],
-                                               "note": "aliased-pending-cluster"})
+                                               "note": "colour-present-at-observation-resume"})
                         self.pending.remove(m)
-                elif matches:
-                    m = matches[0]
-                    self.detected.append({"seq": m["seq"],
-                                          "detect_ms": round(now_ms - m["t_ms"], 1),
-                                          "first_color": color})
-                    self.pending.remove(m)
-            self.last_color = color
+                    self.last_color = color
+                    continue
+                if not near(color, self.last_color):
+                    matches = [m for m in self.pending if near(color, m["target"])]
+                    if len(matches) > 1:
+                        # One transition cannot identify a mark across repeated
+                        # palette cycles; classify aliases rather than guessing.
+                        for m in matches:
+                            self.ambiguous.append({"seq": m["seq"],
+                                                   "note": "aliased-pending-cluster"})
+                            self.pending.remove(m)
+                    elif matches:
+                        m = matches[0]
+                        self.detected.append({"seq": m["seq"],
+                                              "detect_ms": round(now_ms - m["t_ms"], 1),
+                                              "first_color": color})
+                        self.pending.remove(m)
+                self.last_color = color
             time.sleep(self.interval)
 
 
