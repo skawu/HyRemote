@@ -6,7 +6,9 @@ import hashlib
 import hmac
 import importlib.util
 import os
+import subprocess
 import tempfile
+import threading
 from pathlib import Path
 import sys
 import unittest
@@ -256,6 +258,90 @@ class EventAndCheckTests(unittest.TestCase):
             self.assertEqual(app.attempt_revocation_once(), 1)
             self.assertTrue(app.is_revocation_acked())
             self.assertEqual(call.call_count, 2)
+
+    def test_visible_revocation_resyncs_after_first_fsync_error(self):
+        # Creating a directory entry is not equivalent to durably recording it.
+        # First fsync can fail AFTER the file has become visible.
+        real_fsync = os.fsync
+        with patch.object(app.os, "fsync", side_effect=OSError("injected EIO")):
+            with self.assertRaises(OSError):
+                app.mark_revoked()
+        self.assertTrue(app.is_revoked())
+        with patch.object(app.os, "fsync", wraps=real_fsync) as sync:
+            app.mark_revoked()
+            self.assertGreaterEqual(sync.call_count, 2)  # file + parent dir
+
+    def test_revocation_delivery_rejects_unsynced_existing_marker(self):
+        app.mark_revoked()
+        with patch.object(app.os, "fsync", side_effect=OSError("injected EIO")), patch.object(
+                app, "create_installation_token") as token:
+            with self.assertRaises(OSError):
+                app.attempt_revocation_once()
+            token.assert_not_called()
+        self.assertFalse(app.is_revocation_acked())
+
+    @unittest.skipUnless(os.name == "posix", "external issuer requires POSIX flock")
+    def test_cli_cannot_post_success_after_other_process_revokes(self):
+        # Reproduce reviewed P1: an independent CLI process must not publish
+        # SUCCESS after the webhook service durably posts a revocation.
+        child = """
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("v035_child", sys.argv[1])
+app = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(app)
+with app.issuance_guard():
+    print("LOCKED", flush=True)
+    sys.stdin.readline()
+    app.mark_revoked()
+"""
+        proc = subprocess.Popen(
+            [sys.executable, "-c", child, str(PATH)],
+            env=os.environ.copy(), stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        worker = None
+        try:
+            self.assertEqual(proc.stdout.readline().strip(), "LOCKED")
+            pr = fixtures()[0]
+            writes, outcomes, failures = [], [], []
+            entered = threading.Event()
+            completed = threading.Event()
+
+            def fake_gh(method, path, token, payload=None):
+                if method == "POST":
+                    writes.append(payload)
+                    return {"id": 100}
+                return pr
+
+            def cli():
+                entered.set()
+                try:
+                    outcomes.append(app.check_pr(589, app.HEAD_SHA, "synthetic-token"))
+                except BaseException as error:
+                    failures.append(error)
+                finally:
+                    completed.set()
+
+            with patch.object(app, "gh", side_effect=fake_gh), patch.object(
+                    app, "has_release_tag", return_value=False):
+                worker = threading.Thread(target=cli, daemon=True)
+                worker.start()
+                self.assertTrue(entered.wait(5))
+                self.assertFalse(completed.wait(0.15))
+                # This process is blocked at flock. Service revokes first.
+                proc.stdin.write("REVOKE\\n")
+                proc.stdin.flush()
+                self.assertEqual(proc.wait(timeout=10), 0, proc.stderr.read())
+                self.assertTrue(completed.wait(10))
+            self.assertEqual(failures, [])
+            self.assertEqual(outcomes, ["FAILURE"])
+            self.assertEqual([x["conclusion"] for x in writes], ["failure"])
+            self.assertTrue(app.is_revoked())
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.communicate(timeout=5)
+            if worker is not None:
+                worker.join(timeout=5)
 
     def test_missing_durable_state_fails_closed(self):
         with patch.dict(os.environ, {"APP_STATE_DIR": ""}):
