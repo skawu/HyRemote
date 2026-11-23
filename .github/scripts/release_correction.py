@@ -175,7 +175,10 @@ def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
 # It cannot import later develop product work or repeat for a new base.
 V035_NUMERIC_BASE_SHA = "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
 V035_NUMERIC_HEAD_REF = "feature/95-release-preparation"
-V035_NUMERIC_FIXED_SOURCE_SHA = "fb35128fe0c330fc505979b7f54ceadc38fc3dbc"
+# The independently reviewed #1047 was squash-merged into develop.
+# Pin that reachable immutable merge commit; the PR's unmerged HEAD object
+# is not guaranteed to exist in an isolated release-PR checkout.
+V035_NUMERIC_FIXED_SOURCE_SHA = "73cd3e11dabeff2a114ffa50a48105ef2080fd0f"
 V035_NUMERIC_SOURCE_FILES = frozenset({
     "src/runtime/src/detail/watermark_store.cpp",
     "src/runtime/tests/test_watermark_policy.cpp",
