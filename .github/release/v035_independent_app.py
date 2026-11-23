@@ -8,6 +8,7 @@ Network TLS and webhook ingress are provided by an external managed host.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import hmac
 import json
@@ -149,24 +150,56 @@ def _state_file(suffix):
     return directory / ("v035-" + HEAD_SHA[:16] + suffix)
 
 
+@contextmanager
+def issuance_guard():
+    """Single machine, shared-state POSIX lock for ALL check and revoke issuers.
+
+    A process-local threading.Lock is insufficient: the trusted --check-pr CLI
+    runs in a separate process from the webhook/retry service.
+    """
+    with ISSUANCE_LOCK:
+        try:
+            import fcntl
+        except ImportError as error:
+            raise Denied("issuer requires POSIX flock and durable filesystem") from error
+        lock_path = _state_file(".issuance.lock")
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT |
+                     getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
 def _durable_create(path):
+    """Create OR re-sync an existing marker after a previous fsync failure."""
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError:
-        return
-    try:
+        fd = None
+    if fd is not None:
         with os.fdopen(fd, "wb") as stream:
             stream.write(("revoked " + HEAD_SHA + "\\n").encode("ascii"))
             stream.flush()
             os.fsync(stream.fileno())
-        parent_fd = os.open(str(path.parent), os.O_RDONLY)
+    else:
+        # The last attempt may have created a visible but not durable entry.
+        # Returning without fsync would wrongly acknowledge webhook delivery.
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         try:
-            os.fsync(parent_fd)
+            os.fsync(fd)
         finally:
-            os.close(parent_fd)
-    except Exception:
-        # Even an incompletely written marker is treated as revoked.
-        raise
+            os.close(fd)
+    parent_fd = os.open(str(path.parent), os.O_RDONLY |
+                        getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(parent_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def is_revoked():
@@ -183,7 +216,12 @@ def is_revocation_acked():
 
 def attempt_revocation_once():
     """Durably queued one-way REVOKE; a temporary API error cannot erase it."""
-    if not is_revoked() or is_revocation_acked():
+    if not is_revoked():
+        return 0
+    # An existing .revoked entry may have failed an earlier fsync. Do not
+    # attempt delivery (or consider an ACK) until both fsyncs succeed.
+    mark_revoked()
+    if is_revocation_acked():
         return 0
     token = create_installation_token()
     count = revoke_on_tag_push(token)
@@ -196,7 +234,7 @@ def revocation_retry_loop():
     delay = 5
     while True:
         try:
-            with ISSUANCE_LOCK:
+            with issuance_guard():
                 if is_revoked() and not is_revocation_acked():
                     delivered = attempt_revocation_once()
                     delay = 20 if delivered else min(300, delay * 2)
@@ -253,6 +291,12 @@ def read_live(pr_number, token):
 
 
 def check_pr(pr_number, event_sha, token):
+    """Serialize every SUCCESS/FAILURE publication across all issuer processes."""
+    with issuance_guard():
+        return _check_pr_locked(pr_number, event_sha, token)
+
+
+def _check_pr_locked(pr_number, event_sha, token):
     """Emit a check ONLY on the current PR head, never a stale webhook SHA."""
     root = "/repos/" + REPO
     pr = gh("GET", root + "/pulls/" + str(pr_number), token)
@@ -379,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
             event_name = self.headers.get("X-GitHub-Event", "")
             installed = int(os.environ["GITHUB_INSTALLATION_ID"])
             if decide_tag_event(event_name, event, installed):
-                with ISSUANCE_LOCK:
+                with issuance_guard():
                     # FIRST durably record the signed event, BEFORE any REST
                     # operation. Retrying is our job: GitHub does not
                     # automatically redeliver failed webhooks.
@@ -397,8 +441,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_response(202)
                 self.end_headers()
                 return
-            with ISSUANCE_LOCK:
-                outcome = check_pr(match[0], match[1], create_installation_token())
+            outcome = check_pr(match[0], match[1], create_installation_token())
             self.send_response(200 if outcome != "STALE" else 202)
             self.end_headers()
         except (Denied, ValueError, KeyError, OSError, urllib.error.URLError) as error:
