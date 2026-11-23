@@ -250,7 +250,7 @@ class EventAndCheckTests(unittest.TestCase):
             self.assertEqual(app.attempt_revocation_once(), 0)
             self.assertTrue(app.is_revocation_acked())
             # Late completion of an older in-flight remote SUCCESS.
-            checks.append({"id": 102, "name": app.CONTEXT,
+            checks.append({"id": 101, "name": app.CONTEXT,
                            "head_sha": app.HEAD_SHA, "app": {"id": 77},
                            "status": "completed", "conclusion": "success"})
             self.assertEqual(app.attempt_revocation_once(), 1)
