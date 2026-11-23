@@ -47,7 +47,7 @@
 | WBS | 唯一 Owner（类型/仓库） | 前置 | 实际交付结果 | 最小验收/可证伪失败 | 版本/CT | 当前状态 |
 |---|---|---|---|---|---|---|
 | V01 | HyRemoteView Client | A03R,A04 | 有限状态/长度 RFB3.8 parser、Raw/TRLE/尺寸变化/必要输入释放与旧主机兼容 | 有界流量/恶意包/断线/重连/合法 old RFB Host 与真实 Viewer 正反例；View RFB 正式实现须其自身 G3/安全资格；不以 Public 已发布 RFB 代替 | View 0.1 proposed, CT-07/10 | 未编码 |
-| V02 | HyRemoteView Surface | A04 + 条件显示资格：RFB=A03R；Native-only=A03N中的共享 Qt Quick 证据（须先获 View #5 范围化 Gate 正式批准，否则执行 A–H 全量） | 协议中立 immutable FrameSnapshot、Qt Quick RenderSurface、DisplayEpoch、DPR/座标逆变换 | 真帧/旧帧/失权遮帧与焦点输入独立；适用 Windows/Linux 真 Kit 性能、GPU/CPU/RSS 出口；RFB 与 Native 的共享 Qt Quick 渲染证据可以复用，但绝不要求 Native-only 通过 RFB parser/G3，也不以 Mock PASS | View 0.1 proposed, CT-10 | 未编码 |
+| V02 | HyRemoteView Surface | A04 + 条件显示资格：RFB=A03R；Native-only=A03N中的共享 Qt Quick 证据（须先获 View #5 范围化 Gate 正式批准，否则执行 A–H 全量） | 协议中立 immutable FrameSnapshot、Qt Quick RenderSurface、DisplayEpoch、DPR/座标逆变换 | 真帧/旧帧/失权遮帧与焦点输入独立；适用 Windows/Linux 真 Kit 性能、GPU/CPU/RSS 出口；RFB 与 Native 的共享 Qt Quick 渲染证据可以复用，但绝不要求 Native-only 通过 RFB parser/G3，也不以 Mock PASS | View 0.1/0.2 共享基础, CT-10 | 未编码 |
 | V03 | HyRemoteView Identity | A04 | DeviceProfile/DeviceCatalog、OS SecretStore、证书变化与最小 DeviceTrust（第一切片） | 同 IP 不同设备拒旧 trust；明文存储不可用时安全失败；RFB 无自然人身份显示真实 | View 0.1 proposed, CT-10/14 | 未编码 |
 | V04 | HyRemoteView E2E QA | V01,V02,V03 | 独立 View RFB Direct 预览候选/用户工作流 | 精确 Public release SHA × View SHA，键鼠/帧/Resize/丢网/旧版本/隐私/软件包，合格才可发布 0.1 | View 0.1 proposed | NOT_RUN |
 | N01 | HyRemoteView Private Host | P01,P02,A03N,A04 | Private HMI 同 Qt OS 进程 Native 模块构建/装配、签名/运行时/Qt Kit compatibility、生命周期 | Public 不含 Native parser/TLS，Static Qt 仅可受控整机编译；停用后回调/Lease/Qt QObject 归零再允许 unload；Private Native HMI 正式实现须 Native G3 适用证据；不因 Public 延后而私自复制 HostPort | View 0.2 proposed, CT-02/03/14 | 未编码 |
@@ -55,7 +55,7 @@
 | N03 | HyRemoteView Private Host | N02,P05,P06 | Native per-Peer codec/Full-Delta 基线、最终 EgressActor、T1 fence 与 Qt TLS pending 预算 | 末端 final check 与 write 不再异步跳域；旧 TLS 无法清理时合法网络线程 abort，T1/T2 真实结算；资源严格限额 | View 0.2 proposed, CT-06/08 | 未编码 |
 | N04 | HyRemoteView Private Host | N02,P06 | Native 五按钮/17 keypad/中文 committed text/input Grant 进入同一 QtFinalGate | 跨 RFB 同 Scope 单控制者/held 来源隔离；网络接纳不冒充 Qt/业务已执行 | View 0.2 proposed, CT-09 | 未编码 |
 | V05 | HyRemoteView Native Client | N02,V02,V03 | 真正 Native TLS Trust/User/Target/ViewGrant/ControlGrant/帧和输入解析，不以 RFB 代实现 | 拒假 HMI/错误证书/旧 Grant/错报文/迟到回调；有真实 ControlGrant 才允许输入 | View 0.2 proposed, CT-07/10 | 未编码 |
-| V06 | 跨仓 QA | N03,N04,V05,P07 | 真实 Host↔View Native Direct 双 SHA/ABI/Kit/权限/安全/性能闭环 | DeviceTLS/HostGrant/Frame/输入/T0-T1-T2 两端 + Qt GUI 真实业务；两协议同时启用/单独启用；负例、回滚 | View 0.2 proposed | NOT_RUN |
+| V06 | 跨仓 QA | N03,N04,V05；P07 仅 DUAL 声明/公共 RFB 独立回归时附加（Native-only 不依赖 P07） | 真实 Host↔View Native Direct 双 SHA/ABI/Kit/权限/安全/性能闭环 | DeviceTLS/HostGrant/Frame/输入/T0-T1-T2 两端 + Qt GUI 真实业务；Native-only 独立完成真实 E2E；若声明 DUAL，再要求 P07 RFB-only 回归和双端共存验收；负例、回滚 | View 0.2 proposed | NOT_RUN |
 
 ### Workspace、Factory Edge 与 Gateway
 
