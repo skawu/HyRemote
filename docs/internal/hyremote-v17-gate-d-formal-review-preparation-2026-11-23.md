@@ -44,6 +44,8 @@ V8 P-A 合法五按钮（含 X1/X2）、17 个独立 keypad 与中文 committed 
 
 ### RD-04｜P1 Gate-I 治理：View #5 G3 与 WBS 分路径不一致
 
+**独立自动技术审查实况**：Codex 对 PR #1049 的 `8ec6c634` 给出一条真实 P2：WBS V02 共享 Qt Quick Surface 依赖 `A03R`，经 V05 向 Native-only 传播 RFB parser G3 的错误前置。已在当前候选的 WBS 修正为：RFB 使用 A03R 的显示资格；Native-only 使用 A03N 中专门的协议中立 Qt Quick FrameSnapshot/RenderSurface 真实正负证据。**不更改 View #5 现行 A～H 全量门禁**，只有 View Owner 未来正式批准范围化 Gate 才可按该条件链申请 Gate-I。原自动审查为 COMMENTED / P2 发现，并非批准、Human 签收或测试 PASS。
+
 WBS A03R/A03N 将 RFB Direct 与 Native DeviceTLS 技术资格拆分，是避免全部产品被错误 AND 阻塞的**建议**。但 View #5 现行权威仍要求 POC-A..H 全部 PASS 才有整体 G3 PASS_TO_G4；尚无已批准的 RFB-only 单独 G3 放行规则。
 
 **关闭条件**：View Owner 正式决定保持 #5 全量 G3，或者批准按 RFB-only/Native Direct 明确拆分每路径适用安全/许可证/性能与真实证据。**在该决定前即使 A03R 单项通过，也不能推出 View Gate-I 已准入。** 这是正式实施前的治理条件，不把 G3 真机测试作为 Gate-D 冻结的逻辑前置。
