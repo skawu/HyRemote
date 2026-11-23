@@ -339,7 +339,8 @@ with app.issuance_guard():
         finally:
             if proc.poll() is None:
                 proc.kill()
-                proc.communicate(timeout=5)
+            # Always close subprocess pipes; even successful waits leave open FDs.
+            proc.communicate(timeout=5)
             if worker is not None:
                 worker.join(timeout=5)
 
