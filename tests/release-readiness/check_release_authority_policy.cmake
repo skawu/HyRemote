@@ -561,8 +561,9 @@ foreach(document IN LISTS declared_authority_documents)
     set(scan_text "${document_text}")
     string(REGEX MATCHALL "\\[[^]]*\\]\\([^)]*\\)" markdown_links "${document_text}")
     foreach(markdown_link IN LISTS markdown_links)
-        if(markdown_link MATCHES "github\\.com/" AND
-           NOT markdown_link MATCHES "github\\.com/[^/]+/HyRemote/")
+        string(TOLOWER "${markdown_link}" lower_link)
+        if(lower_link MATCHES "github\\.com/" AND
+           NOT lower_link MATCHES "github\\.com/skawu/hyremote/")
             string(REPLACE "${markdown_link}" "" scan_text "${scan_text}")
         endif()
     endforeach()
