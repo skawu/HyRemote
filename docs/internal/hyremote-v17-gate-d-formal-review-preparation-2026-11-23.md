@@ -171,8 +171,8 @@ PR #1049 仍为 Draft、没有独立 Review；候选与 develop 存在一项后�
 
 1. 所有跨模块 `request_id` 在 HostEpoch+ModuleGeneration 内唯一，`on_host_completion` 可晚于同步 `ACCEPTED` 且**不保证不同请求之间的回调先后**；同一请求仅一次 terminal Completion。Terminal `CANCELLED/STALE_HANDLE` 之后不再发第二次成功。
 2. Host 的 Session/Grant/Frame/QtInput 事实由 Host 所属管理执行域生成；Private 的 QSslSocket 始终只由实际 network QObject 线程访问。Host 不能从异步 callback 在持锁时反向同步等待 Peer Actor；Private callback 也不能同步等待 GUI 执行再等待 Host 资源。
-3. 输入/帧任务在任何异步队列必须携 HostEpoch/ModuleGeneration/SessionEpoch/TargetGeneration/PolicyEpoch；取消或模块停止之后的旧完成回调只进行安全引用归还，不得对旧会话执行业务。
-4. 对内存句柄 `u64` 值零表示无效，跨 HostEpoch、ModuleGeneration、SessionEpoch 永不复活；跨模块 buffer 如需跨调用保持只能由 Host 显式 FrameLease 或调用者 copy，接收者不得越界修改或从不同运行库释放。
+3. 输入/帧任务在任何异步队列必须携 HostEpoch/ModuleGeneration/SessionEpoch/TargetGeneration/PolicyEpoch；**任何 `on_host_completion` 即使返回了旧的成功 Grant/Frame，也必须在消费回调时重新检查 Host 当前代际、政策和有效期**；取消或模块停止之后的旧完成回调只进行安全引用归还，不得对旧会话执行业务。
+4. 对内存句柄 `u64` 值零表示无效，跨 HostEpoch、ModuleGeneration、SessionEpoch 永不复活；跨模块 buffer 如需跨调用保持只能由 Host 显式 FrameLease 或调用者 copy，接收者不得越界修改或从不同运行库释放。**所有 `u64 len` 在转换 `size_t` 前做溢出/预算检查，指针/长度二元组的所有权只在已登记的 Request/Lease 有效期内存在；`prepare(config_blob)` 如需异步保留配置必须在返回前完成合法复制**。
 5. `ViewGrant` 仅 Host 签发，Private 只持结果事实；敏感帧来源 OutputGuard 已脱敏。Trusted same-process Private 可能因代码缺陷读写 HMI 其它地址，ABI 不是安全沙箱。
 
 **映射 V8 B.1/B.2**：五组业务语义不是五项真实 ABI 函数，以上单个表允许多函数组成；必须保存原 B.1 七项宿主接口和 B.2 七类授权事件的**全部语义**。由于正式 Word 原件字段名未逐字取得，原规范函数签名/事件名映射仍须在正式评审时逐条签收，不能谎称上表已经完成该项原文等价证明。
@@ -235,9 +235,9 @@ AuthorizedInputIntent {
 
 **保护性 Held 与队列守恒**：
 1. `HeldKey=(Target,SourceSession,Scope,KeyZone,RawNativeKeyId)`；`HeldButton=(Target,SourceSession,Scope,RawNativeButtonId)`，对已有 Public RFB 输入用稳定的原公共身份。任何 RemoteSession 的撤权只释放它被设备实际接受的 synthetic held，不凭无可观测的现场物理按键推断状态。
-2. 虽然逻辑类别扩展为 69+17+5=91，但**每个真实 Qt leaf 的“合法已接受 held 实例数”严格限为 72**（跨受管来源总计）；另有普通待处理 64，保护性释放预约总数仍为 136，不能把 91+64=155 偷换成既有预算。准入新 DOWN 前必须先给它的匹配 UP 预留信用；无信用时前端收到资源拒绝，DOWN 没有被接受不得造 UP。
-3. 特别注意键按下多来源冲突：设备 Host 维护 per-source 引用与目标聚合 held 状态，同一 Qt synthetic 键在两个受信来源按住时，先失权的来源释放不导致其它来源误 UP；完全无法区分现场本地硬件状态的 QtKit，不得称能保证物理本地按键和合成远控键绝对互不干扰。
-4. 重复 DOWN/无匹配 UP、旧 Session 的迟到 UP、FocusLost、TargetDestroy、QtContextChange、Policy T0/T1/T2 时，必须按 source/epoch 消费或拒绝，防止跨 Session 卡键；不得将保护性 UP 计入新授权输入资格。
+2. 虽然逻辑类别扩展为 69+17+5=91，但**每个真实 Qt leaf 的已接受、尚未结清 DOWN 实例信用总数严格限为 72**（跨受管远端来源总计；包含还在 Qt 队列里的待执行 DOWN），普通待处理 64，保护性释放预留 136。单个 DOWN 可经 PENDING_RESERVED→QUEUED→DELIVERED_HELD→RELEASED/REJECTED_AT_FINAL_GATE 转移。**只有 Qt 最终受权实际交付后才把它登记为设备已持有 Synthetic Held**；若 T0 或 TargetDestroy 先阻断一个尚未交付的 DOWN，取消该 token 并归还预留信用，绝不能制造没有真实 DOWN 的 Qt UP。已交付 DOWN 通过受保护安全 UP 结算，匹配释放预留不得被普通事件挤占。没有信用就在接纳 DOWN 前拒绝，不能把 91+64=155 偷换为已批准的 136。
+3. 特别注意键按下多来源冲突：**Public F-06 是 RFB 与 Native 共同的唯一 Synthetic Held 账本**；RFB legacy `InputEvent` 先由受信 transport context 加上 SourceSession/Scope，再归一化为内部 `AuthorizedInputIntent`，**不能让现有 RFB mailbox 与 Private Native 各自成为互不知晓的最后设备持有者**。同一 Qt synthetic 键在两个受信来源按住时，先失权的来源释放不导致其它来源误 UP；完全无法区分现场本地硬件状态的 QtKit，不得称能保证物理本地按键和合成远控键绝对互不干扰。
+4. 重复 DOWN/无匹配 UP、旧 Session 的迟到 UP、FocusLost、TargetDestroy、QtContextChange、Policy T0/T1/T2 时，必须按 source/epoch 消费或拒绝。**重复 DOWN 对已持有同一 Source+Key 不能重复取得 Held 信用，必须按既有 repeat 语义处理或在无受信重复资格时拒绝**；迟到 UP 不能释放新 Session 同名 Key。保护性 UP 不构成新授权输入，也不得使旧来源获得控制权。
 5. 正常 64/保护 136 的预算是**已批准的每 Qt leaf 上限**，不是每 Peer 每码独立提供同等预算；支持多个 Peer 时用同一受管叶子额度和按来源记账，不能把 RAM 限额偷偷乘以 Peer 数。
 
 **RD-03 当前判定**：`LOSSLESS_INTERNAL_MAPPING_DESIGNED`；`PUBLIC_F03_F06_AND_PRIVATE_F14_SIGNOFF=OPEN`；`QT5_QT6_REAL_TARGET_EVIDENCE=NOT_RUN`。在正式设计 Review 通过前不得宣称“RD-03 已获批准”或“合法五按钮已实现”。
@@ -258,3 +258,23 @@ AuthorizedInputIntent {
 | 128MiB 多 Peer 4K | 输入/采集预算分别先预约，再准入，不以 Qt 内部缓冲“自然有界”当已达标 | 设计合同已明确，真实资源未测 |
 
 **本次设计补充结束时的状态**：RD-01 `HIGH_RISK_DESIGN_MAPPED / ATOMIC_SOURCE_SIGNOFF_OPEN`；RD-02 `MINIMAL_IDL_SPECIFIED / DUAL_OWNER_SIGNOFF_OPEN`；RD-03 `LOSSLESS_MAPPING_DESIGNED / QTKIT_AND_OWNER_SIGNOFF_OPEN`。三个 P0 已有具体、可反证的唯一实施合同候选，但**尚不可据此单方面称 Gate-D 已满足全部冻结条件**。下一道仅为现有 A02 的独立 Owner/Reviewer 签收和 Human 一次集中 Gate-D 决策，不新增研究专题。
+
+
+## 七、与编制过程分开的反向技术检查（同一 AI 的独立视角自审，非第三方 Review）
+
+为了不把“有接口表”误当作“已具备完整准入”，在上述合同形成后用失败驱动逐项反向检查；以下结果只由本轮助手完成，**不能冒充独立 GitHub Reviewer 或两仓 Owner 审签**。
+
+| 反证问题 | 检查出的漏洞 | 当前处理 | 对 Gate-D 的影响 |
+|---|---|---|---|
+| RFB 与 Native 是否使用两套 Held 账本 | 旧 Public 三按钮 mailbox 与新增 Private 五按钮处理可能在同一 Scope 双方各自释放 | 将最终 Remote Synthetic Held 唯一 Owner 固定 Public F-06；RFB 旧事件附受信 Source 后也进入相同内部输入域；Private 不能直接执行 Qt | 设计修订已写；实现边界待 Public/Private 双 Owner 审签 |
+| 72 held/136 release 是否真的守恒 | 若“已队列接纳 DOWN”误作“Qt 真正按下”，撤权可能凭无效按下生成 UP | 分成 PENDING_RESERVED/QUEUED/DELIVERED_HELD/REJECTED/RELEASED；取消未交付 DOWN 释放额度但不 Qt UP，已交付才按来源保护性释放 | 修订后与 64/136 预算不矛盾，真实高并发未测 |
+| Async Host callback 是否能在 T0 后重新授权 | 仅检查 request 发起时 Epoch 会使迟到 Host 完成回调激活旧 Grant | 回调**消费时**再核当前 epoch/expiry；只允许旧引用归还，绝不复活旧 View/Control | 设计修订，Owner/线程细节待审签 |
+| HostPort frame 指针/大长度 | `u64 len` 到 `size_t` 或回调后存裸指针可能溢出或悬空 | 长度先验预算、Lease pin/Release 责任、配置 Blob 返回前 copy | 设计修订，不代表代码安全已验证 |
+| T0 与 Socket write 交错 | 检查完成后实际写仍可能越过 T0 | 只允许 D-REVOKE=A 已批准的**先检查后交错写入**短窗口；T1 Actor 完成全部在途写，TLS 不可选择删除时 abort | 契约清楚；真实 Qt 并发证据留 Gate-G3/实施 |
+| Qt5.15 与 Qt6.8 输入构造器 | 不能把某一 Qt6 QMouseEvent/QKeyEvent 构造器原样外推 Qt5 | 只冻结合法 `Qt::BackButton/ForwardButton`、`Qt::KeypadModifier` 语义；具体构造器由精确 QtKit 适配 | 设计条件成立，具体平台资格 NOT_RUN |
+| Native 没有可选键码 caps | “某个合法按钮不支持”若每次只是默默拒用户动作，产品却宣称完整 Native | 必须在 Target/Profile Native 准入前完整检验 5 button+17 keypad 的能力，不能通过 per-key 伪成功掩盖不兼容 | 设计约束已写，产品支持档位待实测 |
+| 同进程模块安全 | C ABI、签名、工作线程不提供进程隔离 | 风险保持公开；若需求要求恶意代码 OS 隔离，与 Human D-PROC=B 不相容，不能私自改进程路线 | 架构固有代价已批准，不重开 |
+| 需求文字“索引有链接即已批准” | 155 源二级索引中部分当期/延期按章节粗推；抽查发现 §9.1 等错误 | 本轮只将 23 高风险复合断面逐项显式审查、10 处原映射纠错；剩余原 Word 原子义务不能伪称全审签 | **RD-01 正式签收仍 OPEN** |
+| 同进程停用 & QObject 线程退出 | `STOPPED` 不等于 Qt Object 全销毁，也不能安全 `deleteLater` 永久等 | STOPPED/RESOURCES_QUIESCED/UNLOAD_ALLOWED 区分；无法归零时不可热卸载并保留状态为 UNCONFIRMED | 设计形状明确，owner 复核待办 |
+
+**结论**：RD-02/03 已有足够明确的唯一设计候选，可进入双仓 Owner 技术签收；RD-01 本期高风险语义映射取得实质进展，但**不能从已审的 23 类断面反推出全部 V15/V8 原子要求都完成签收**。本轮没有得到独立 Reviewer 的正式评论，因此 Gate-D 仍为 `REVIEW_READY_WITH_P0_OPEN`，不宣称技术冻结。下一个可执行步骤限于现有 A02 的实际 Owner/Reviewer 复核与必要的原文核签，不继续自动创建新技术主题。
