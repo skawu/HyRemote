@@ -1,4 +1,5 @@
 .github/release/resolve-release-tag.py
+.github/release/v035_independent_app.py
 .github/scripts/check_review_dispositions.py
 .github/scripts/check-pr-branch-name.sh
 .github/scripts/drain-superseded-v1-runs.ps1
@@ -27,6 +28,7 @@ tests/product-e2e/example_product_fit.py
 tests/product-e2e/qml_product_fit.py
 tests/release-readiness/verify_linux_dependency_origin.py
 tests/release-readiness/verify_linux_deployed_elf_paths.py
+tests/release-readiness/test_v035_independent_app.py
 tests/v01-examples/example_adoption_smoke.py
 tools/local-owner/guard_scratch_writes.py
 tools/local-owner/register-worker.ps1
