@@ -1,5 +1,8 @@
 # D2｜HyRemoteView 客户端模块详细设计 V-01/V-02/V-03（候选）
 
+> **2026-11-23 V1.7 收口更正（设计候选）**：View 客户端 V-01..V-03 的原责任不变；Native 设备端实现新增明确归属为 **同仓 Private F14 HMI 模块、与 Qt HMI 同进程**，设备数据仍由 Public HostGrant/OutputGuard/QtFinalGate 唯一批准。RFB/Native Direct 分别独立；View Native Client 依赖 Private F14 真 HMI DeviceTLS，但不是 Public F14。详见 [三项收口](hyremote-v17-three-closures-design-2026-11-23.md)。
+
+
 > **2026-11-05 决策状态更新**：[Human #843 决策记录](https://github.com/skawu/HyRemote/issues/843#issuecomment-6646988698) 已批准 H-T01/H-DUAL/H-REVOKE/H-EDGE/H-RFB 均选择 A。V15/V8 等效原文已取得，Native P-A 数值/TLS-first A 已获批准；其余内部接口、性能假设、原子验收与 Gate-D 仍待设计审签，不因上述决定自动冻结。
 
 > **治理入口：** [HyRemote #843](https://github.com/skawu/HyRemote/issues/843)；跨仓前提为 [HyRemoteView #1](https://github.com/skawu/HyRemoteView/issues/1) / [#4](https://github.com/skawu/HyRemoteView/issues/4) / [#5](https://github.com/skawu/HyRemoteView/issues/5)，及已批准 `HYR-PD-001/V15`、`HYR-ARCH-001/V8`。  
