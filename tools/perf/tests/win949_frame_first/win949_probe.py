@@ -51,9 +51,20 @@ except ImportError:  # pragma: no cover - psutil is required for host metrics
 
 RFB_VERSION = b"RFB 003.008\n"
 
+# Same allocation budgets as tools/hyremote-tool/rfb_client.cpp. An untrusted Host must not be able
+# to make this probe allocate unbounded memory and corrupt the A/B measurement.
+MAX_TEXT_BYTES = 4096
+MAX_RAW_RECT_BYTES = 64 * 1024 * 1024
+MAX_FRAMEBUFFER_PIXELS = 16 * 1024 * 1024
+
 
 class RfbError(RuntimeError):
     pass
+
+
+def require_budget(value, limit, label):
+    if value > limit:
+        raise RfbError(f"{label} exceeds the probe budget ({value} > {limit})")
 
 
 class RfbClient:
@@ -88,6 +99,7 @@ class RfbClient:
         count = self._recv_exact(1)[0]
         if count == 0:
             reason_len = struct.unpack(">I", self._recv_exact(4))[0]
+            require_budget(reason_len, MAX_TEXT_BYTES, "refusal reason")
             reason = self._recv_exact(reason_len).decode("utf-8", "replace")
             raise RfbError(f"server refused connection: {reason}")
         types = list(self._recv_exact(count))
@@ -101,7 +113,9 @@ class RfbClient:
         self.sock.sendall(bytes([1 if shared else 0]))
         init = self._recv_exact(24)
         self.width, self.height = struct.unpack(">HH", init[0:4])
+        require_budget(self.width * self.height, MAX_FRAMEBUFFER_PIXELS, "framebuffer")
         name_len = struct.unpack(">I", init[20:24])[0]
+        require_budget(name_len, MAX_TEXT_BYTES, "server name")
         self.name = self._recv_exact(name_len).decode("utf-8", "replace") if name_len else ""
         self._set_pixel_format()
         # Raw only (no lossy or cached path to reason about) plus DesktopSize so a
@@ -143,12 +157,15 @@ class RfbClient:
                 x, y, w, h = struct.unpack(">HHHH", self._recv_exact(8))
                 (encoding,) = struct.unpack(">i", self._recv_exact(4))
                 if encoding == 0:
+                    require_budget(w * h * 4, MAX_RAW_RECT_BYTES, "raw rectangle")
                     data = self._recv_exact(w * h * 4)
                     rects.append((x, y, w, h, data))
                 elif encoding == -223:  # DesktopSize pseudo-encoding
+                    require_budget(w * h, MAX_FRAMEBUFFER_PIXELS, "resized framebuffer")
                     self.width, self.height = w, h
                     rects.append((x, y, w, h, None))
                 elif encoding == -239:  # Cursor pseudo-encoding
+                    require_budget(w * h * 4, MAX_RAW_RECT_BYTES, "cursor shape")
                     self._recv_exact(w * h * 4)
                     self._recv_exact((w + 7) // 8 * h)
                 else:
@@ -164,6 +181,7 @@ class RfbClient:
         if kind == 3:
             self._recv_exact(3)
             (length,) = struct.unpack(">I", self._recv_exact(4))
+            require_budget(length, MAX_RAW_RECT_BYTES, "cut text")
             self._recv_exact(length)
             return "other", None
         raise RfbError(f"unknown server message type {kind}")
