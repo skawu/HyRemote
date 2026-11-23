@@ -140,13 +140,19 @@ std::optional<WatermarkPolicyRequest> loadWatermarkRequest(const HostPaths &path
         } else if (key == QStringLiteral("opacity")) {
             bool ok = false;
             request.opacity = value.trimmed().toDouble(&ok);
-            if (!ok)
-                request.opacity = std::nullopt;
+            if (!ok) {
+                if (error)
+                    *error = QStringLiteral("the stored watermark policy has an invalid opacity");
+                return std::nullopt;
+            }
         } else if (key == QStringLiteral("font-size")) {
             bool ok = false;
             request.fontPointSize = value.trimmed().toInt(&ok);
-            if (!ok)
-                request.fontPointSize = std::nullopt;
+            if (!ok) {
+                if (error)
+                    *error = QStringLiteral("the stored watermark policy has an invalid font size");
+                return std::nullopt;
+            }
         } else if (key == QStringLiteral("color")) {
             request.color = value.trimmed();
         }
