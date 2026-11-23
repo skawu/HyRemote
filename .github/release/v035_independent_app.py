@@ -215,19 +215,16 @@ def is_revocation_acked():
 
 
 def attempt_revocation_once():
-    """Durably queued one-way REVOKE; a temporary API error cannot erase it."""
+    """Reconcile this exact SHA forever after revocation, including after ACK.
+
+    A Checks POST may reach GitHub despite a client timeout and complete
+    AFTER a newer FAILURE. A one-time ACK cannot safely close that race.
+    """
     if not is_revoked():
         return 0
-    # An existing .revoked entry may have failed an earlier fsync. Do not
-    # attempt delivery (or consider an ACK) until both fsyncs succeed.
+    # Re-sync even an existing marker after an earlier fsync failure.
     mark_revoked()
-    if is_revocation_acked():
-        return 0
-    token = create_installation_token()
-    count = revoke_on_tag_push(token)
-    if count:
-        _durable_create(_state_file(".acked"))
-    return count
+    return revoke_on_tag_push(create_installation_token())
 
 
 def revocation_retry_loop():
@@ -235,15 +232,17 @@ def revocation_retry_loop():
     while True:
         try:
             with issuance_guard():
-                if is_revoked() and not is_revocation_acked():
+                if is_revoked():
+                    # Continue FOREVER, even after a previous failure was seen
+                    # and .acked exists. Late remote SUCCESS must be repaired.
                     delivered = attempt_revocation_once()
-                    delay = 20 if delivered else min(300, delay * 2)
+                    delay = 10 if delivered else 20
                 else:
                     delay = 30
         except Exception as error:
-            # Do not lose signed revocation or produce a success. Persisted
-            # marker survives process restarts and triggers the next attempt.
-            print("revocation retry pending:", type(error).__name__, flush=True)
+            # No permanent ACK: retry failures across process restarts.
+            print("revocation reconciliation pending:", type(error).__name__,
+                  flush=True)
             delay = min(300, delay * 2)
         time.sleep(delay)
 
@@ -333,6 +332,10 @@ def _check_pr_locked(pr_number, event_sha, token):
         conclusion, note = "failure", "release tag appeared before check publication"
     if conclusion == "success" and is_revoked():
         conclusion, note = "failure", "durable tag revocation forbids reauthorization"
+    if conclusion == "success":
+        # A timed-out POST may still complete remotely. Persist that an
+        # unresolved SUCCESS could exist before making any network request.
+        _durable_create(_state_file(".success-attempted"))
     gh("POST", root + "/check-runs", token, {
         "name": CONTEXT, "head_sha": current_sha,
         "status": "completed", "conclusion": conclusion,
@@ -374,34 +377,60 @@ def decide_tag_event(event_name, payload, configured_installation_id):
     return True
 
 
-def revoke_on_tag_push(token):
-    # Trust the signed push as an explicit REVOKE; do not rely on GitHub's
-    # eventually-consistent tag-ref lookup before posting FAILURE.
+def _latest_app_admission(token):
+    """Read the latest App-owned check on the immutable reviewed commit.
+
+    GitHub's Check Runs API filters by commit, app_id and check_name. We do
+    not trust unrelated ordinary status checks or a mutable PR's state.
+    """
+    app_id = int(os.environ["GITHUB_APP_ID"])
+    need(app_id > 0, "invalid expected GitHub App identity")
     query = urllib.parse.urlencode({
-        "state": "open", "base": BASE_REF,
-        "head": "skawu:" + HEAD_REF, "per_page": 100,
+        "check_name": CONTEXT, "app_id": app_id,
+        "filter": "latest", "per_page": 100,
     })
-    prs = gh("GET", "/repos/" + REPO + "/pulls?" + query, token)
-    count = 0
-    for pr in prs:
-        if ((pr.get("head") or {}).get("sha") != HEAD_SHA
-                or (pr.get("base") or {}).get("ref") != BASE_REF):
-            continue
-        fresh = gh("GET", "/repos/" + REPO + "/pulls/" + str(pr["number"]), token)
-        if (fresh.get("head") or {}).get("sha") != HEAD_SHA:
-            continue
-        gh("POST", "/repos/" + REPO + "/check-runs", token, {
-            "name": CONTEXT, "head_sha": HEAD_SHA, "status": "completed",
-            "conclusion": "failure",
-            "external_id": "v035-tag-revoked-" + HEAD_SHA[:12],
-            "output": {
-                "title": "V0.3.5.0 admission revoked by signed tag push",
-                "summary": "Tag mutation invalidates prior admission. "
-                           "Requalification requires an explicit source review.",
-            },
-        })
-        count += 1
-    return count
+    data = gh("GET", "/repos/" + REPO + "/commits/" + HEAD_SHA +
+              "/check-runs?" + query, token)
+    need(isinstance(data, dict) and isinstance(data.get("check_runs"), list)
+         and isinstance(data.get("total_count"), int),
+         "invalid remote Checks observation")
+    checks = data["check_runs"]
+    need(data["total_count"] == len(checks) and len(checks) <= 100,
+         "incomplete remote Checks observation")
+    for run in checks:
+        need(isinstance(run, dict) and isinstance(run.get("id"), int)
+             and run["id"] > 0 and run.get("head_sha") == HEAD_SHA
+             and run.get("name") == CONTEXT
+             and (run.get("app") or {}).get("id") == app_id,
+             "unexpected remote check source or identity")
+    return max(checks, key=lambda item: item["id"]) if checks else None
+
+
+def revoke_on_tag_push(token):
+    """Reconcile revoked HEAD_SHA, even if the PR is now closed or changed.
+
+    A previous observed FAILURE is not a terminal ACK: the background
+    worker repeatedly observes this exact SHA for late remote SUCCESS.
+    """
+    current = _latest_app_admission(token)
+    if current is not None and current.get("status") == "completed" and (
+            current.get("conclusion") == "failure"):
+        # Merely records a verified snapshot; never suppresses future scans.
+        _durable_create(_state_file(".acked"))
+        return 0
+    gh("POST", "/repos/" + REPO + "/check-runs", token, {
+        "name": CONTEXT, "head_sha": HEAD_SHA, "status": "completed",
+        "conclusion": "failure",
+        "external_id": "v035-tag-revoked-" + HEAD_SHA[:12],
+        "output": {
+            "title": "V0.3.5.0 admission revoked by signed tag push",
+            "summary": "Monotonic revoke of immutable candidate. "
+                       "An App-owned reconciler keeps checking for late writes.",
+        },
+    })
+    # Do not write ACK merely because our POST returned. GitHub's next
+    # observation must confirm FAILURE, and reconciliation never terminates.
+    return 1
 
 
 class Handler(BaseHTTPRequestHandler):
