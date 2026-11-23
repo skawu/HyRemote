@@ -207,6 +207,9 @@ def validate_v035_numeric_watermark(*, git, version, notes_name,
         raise SystemExit("V035 numeric correction denied: pending bilingual notes must be unchanged")
     if head_cmake != base_cmake:
         raise SystemExit("V035 numeric correction denied: VERSION/CMake must be unchanged")
+    # Pending candidate notes cannot override a previously published tag.
+    if git("tag", "--list", "v0.3.5.0").strip():
+        raise SystemExit("V035 numeric correction denied: version already tagged")
     expected = V035_NUMERIC_SOURCE_FILES | V035_NUMERIC_GOVERNANCE_FILES
     changed = set(git("diff", "--name-only", actual_base_sha, "HEAD").decode("utf-8").splitlines())
     if changed != expected:
@@ -469,7 +472,7 @@ def self_test() -> int:
     def v035_scenario(name, *, wrong_version=False, wrong_base=False,
                       wrong_head=False, wrong_notes=False, wrong_cmake=False,
                       extra_file=False, missing_file=False, bad_source=False,
-                      bad_governance=False, expect_error=None):
+                      bad_governance=False, tagged=False, expect_error=None):
         nonlocal failures, cases
         cases += 1
         changed = set(v035_files)
@@ -479,6 +482,8 @@ def self_test() -> int:
             changed.add("src/runtime/src/transport/rfb_transport.cpp")
 
         def git_fixture(*args):
+            if args == ("tag", "--list", "v0.3.5.0"):
+                return b"v0.3.5.0\n" if tagged else b""
             if args[:2] == ("diff", "--name-only"):
                 return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
             if args[0] == "show" and len(args) == 2:
@@ -538,6 +543,8 @@ def self_test() -> int:
                   expect_error="unreviewed source blob")
     v035_scenario("V035 altered gate blob denied", bad_governance=True,
                   expect_error="unreviewed governance blob")
+    v035_scenario("V035 already-tagged version denied", tagged=True,
+                  expect_error="version already tagged")
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")
