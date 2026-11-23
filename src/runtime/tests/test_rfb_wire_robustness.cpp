@@ -1488,12 +1488,20 @@ void testWatermarkSurvivesFramebufferResize()
     CHECK(sendUpdateRequest(socket, true, 0, 0, 96, 80));
     CHECK(readFramebufferUpdate(socket, frame, rectangles));
     CHECK(frame.width == 96 && frame.height == 80);
-    bool desktopSizeSeen = false;
-    for (const UpdateRect &rect : rectangles) {
-        if (rect.encoding == -223)
-            desktopSizeSeen = true;
+    CHECK(rectangles.size() == 1U);
+    if (rectangles.size() == 1U)
+        CHECK(rectangles.front().encoding == -223);
+
+    // DesktopSize is a separate update. Its delivery must leave the new
+    // framebuffer dirty until the viewer requests fresh pixels.
+    CHECK(sendUpdateRequest(socket, false, 0, 0, 96, 80));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(rectangles.size() == 1U);
+    if (rectangles.size() == 1U) {
+        CHECK(rectangles.front().encoding == 15);
+        CHECK(rectangles.front().x == 0 && rectangles.front().y == 0);
+        CHECK(rectangles.front().width == 96 && rectangles.front().height == 80);
     }
-    CHECK(desktopSizeSeen);
     CHECK(frame.get(95, 79) == kMarkColor);
     CHECK(frame.get(64, 64) == kMarkColor);
     CHECK(frame.get(63, 64) == 0x445566U);
