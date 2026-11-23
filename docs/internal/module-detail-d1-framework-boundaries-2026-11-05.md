@@ -253,7 +253,7 @@ C++ / QML / Generic / QPA 入口配置
                  └─> Host trusted DeploymentProfile/PolicyProvider
                        └─> F-06 DeploymentAdmission / Scope / Target checks
                              └─> F-02 prepare required endpoints → commit one RuntimeGeneration
-                                   └─> F-04 RFB and/or F-05 Native listeners
+                                   └─> F-04 Public RFB and/or Private F14 Native via Public HostPort
 ```
 
 - **归一化输入必须覆盖**：请求来源/入口类型、Target 身份与 Qt 存活令牌、`address` 或网络 interface 选择、端口、必需协议 profile、现有 public security intent、remoteInputEnabled、watermark 当前政策、Host trusted Profile 版本。普通 CLI/QML/C++ 可变参数不能直接变成 `AuthorizedTarget`、ListenerPermit 或 DeviceTLS 身份。
