@@ -424,12 +424,9 @@
       "notes": {
         "579": "Approved D/A Tool S1 design; parent design is referenced, not a substitute for functional acceptance.",
         "586": "Whole S1 clean-installed Windows acceptance is the candidate freeze authority; all six implementation children and actual acceptance must close.",
-        "587": "Advanced imported-host diagnostics remain post-GA.",
-        "588": "SDK integration guidance remains post-GA.",
-        "592": "Docker is a separate conditional outcome.",
-        "593": "Image watermark is outside S1."
+        "592": "Docker is a separate conditional outcome."
       },
-      "rule": "V0.3.6.0 is the next admitted Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. S2/S3 and new platform support remain outside this scope. V0.4 remains inactive qualification-only."
+      "rule": "V0.3.6.0 is the next admitted Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. The registered scope does not expand platform support. V0.4 remains inactive qualification-only."
     },
     "1.0.0.0": {
       "authority_parent": 33,

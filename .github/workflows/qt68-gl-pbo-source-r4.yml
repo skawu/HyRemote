@@ -14,6 +14,13 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+
+# #982: a repeated push to the same PR must not run two identical R4 builds, but an
+# in-flight formal evidence run must never be canceled as a "stale" result.
+concurrency:
+  group: r4-source-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   windows-runtime:
     name: Windows MSVC Qt6.8.3 Runtime+Generic flag=${{ matrix.arm }}
