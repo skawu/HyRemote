@@ -55,6 +55,10 @@ RFB_VERSION = b"RFB 003.008\n"
 # to make this probe allocate unbounded memory and corrupt the A/B measurement.
 MAX_TEXT_BYTES = 4096
 MAX_RAW_RECT_BYTES = 64 * 1024 * 1024
+# The budget is PER WHOLE UPDATE, not per rectangle. The on-wire count is 16-bit
+# and individual 64 MiB rectangles otherwise accumulate without bound.
+MAX_UPDATE_BYTES = 64 * 1024 * 1024
+MAX_UPDATE_RECTANGLES = 4096
 MAX_FRAMEBUFFER_PIXELS = 16 * 1024 * 1024
 
 
@@ -65,6 +69,18 @@ class RfbError(RuntimeError):
 def require_budget(value, limit, label):
     if value > limit:
         raise RfbError(f"{label} exceeds the probe budget ({value} > {limit})")
+
+
+def add_update_bytes(used, additional):
+    # Fail before receiving a newly advertised rectangle payload.
+    require_budget(used + additional, MAX_UPDATE_BYTES, "total update payload")
+    return used + additional
+
+
+def validate_raw_bounds(x, y, w, h, framebuffer_width, framebuffer_height):
+    if (w <= 0 or h <= 0 or x + w > framebuffer_width
+            or y + h > framebuffer_height):
+        raise RfbError("raw rectangle outside framebuffer")
 
 
 class RfbClient:
@@ -152,22 +168,32 @@ class RfbClient:
         if kind == 0:
             self._recv_exact(1)
             (count,) = struct.unpack(">H", self._recv_exact(2))
+            require_budget(count, MAX_UPDATE_RECTANGLES, "rectangle count")
             rects = []
+            update_bytes = 0
             for _ in range(count):
                 x, y, w, h = struct.unpack(">HHHH", self._recv_exact(8))
                 (encoding,) = struct.unpack(">i", self._recv_exact(4))
                 if encoding == 0:
-                    require_budget(w * h * 4, MAX_RAW_RECT_BYTES, "raw rectangle")
-                    data = self._recv_exact(w * h * 4)
+                    validate_raw_bounds(x, y, w, h, self.width, self.height)
+                    raw_size = w * h * 4
+                    require_budget(raw_size, MAX_RAW_RECT_BYTES, "raw rectangle")
+                    update_bytes = add_update_bytes(update_bytes, raw_size)
+                    data = self._recv_exact(raw_size)
                     rects.append((x, y, w, h, data))
                 elif encoding == -223:  # DesktopSize pseudo-encoding
+                    if w <= 0 or h <= 0:
+                        raise RfbError("invalid resized framebuffer")
                     require_budget(w * h, MAX_FRAMEBUFFER_PIXELS, "resized framebuffer")
                     self.width, self.height = w, h
                     rects.append((x, y, w, h, None))
                 elif encoding == -239:  # Cursor pseudo-encoding
-                    require_budget(w * h * 4, MAX_RAW_RECT_BYTES, "cursor shape")
-                    self._recv_exact(w * h * 4)
-                    self._recv_exact((w + 7) // 8 * h)
+                    cursor_size = w * h * 4
+                    mask_size = (w + 7) // 8 * h
+                    require_budget(cursor_size, MAX_RAW_RECT_BYTES, "cursor shape")
+                    update_bytes = add_update_bytes(update_bytes, cursor_size + mask_size)
+                    self._recv_exact(cursor_size)
+                    self._recv_exact(mask_size)
                 else:
                     raise RfbError(f"unsupported server encoding {encoding}")
             return "update", rects
@@ -356,8 +382,25 @@ def self_test():
     assert activity_wake_status(on_text, False) == "BLOCKED_ROUTE_NOT_SELECTED"
     assert activity_wake_status(off_text, False) == "SELECTED"
     assert activity_wake_status("no route line\n", True) == "BLOCKED_ROUTE_NOT_SELECTED"
+    # Aggregate budget is independent of a single rectangle's size.
+    assert add_update_bytes(0, 16) == 16
+    assert add_update_bytes(MAX_UPDATE_BYTES - 8, 8) == MAX_UPDATE_BYTES
+    for negative_case in (
+        lambda: add_update_bytes(MAX_UPDATE_BYTES - 8, 9),
+        lambda: require_budget(MAX_UPDATE_RECTANGLES + 1, MAX_UPDATE_RECTANGLES,
+                               "rectangle count"),
+        lambda: validate_raw_bounds(3, 3, 2, 1, 4, 4),
+        lambda: validate_raw_bounds(0, 0, 0, 1, 4, 4),
+    ):
+        try:
+            negative_case()
+        except RfbError:
+            pass
+        else:
+            raise AssertionError("malformed RFB update was not rejected")
+    validate_raw_bounds(0, 0, 4, 4, 4, 4)
     print("WIN949_SELF_TEST=PASS diagnostics=positive+negative framebuffer=logical+physical "
-          "wake=positive+negative")
+          "wake=positive+negative budget=aggregate+geometry")
     return 0
 
 
