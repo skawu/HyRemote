@@ -130,6 +130,7 @@ bool composeWatermark(const WatermarkPolicy &policy, const WatermarkFrameView &f
         return false;
 
     if (!frame.rgba || frame.width <= 0 || frame.height <= 0
+        || static_cast<qsizetype>(frame.width) > std::numeric_limits<qsizetype>::max() / 4
         || frame.stride < static_cast<qsizetype>(frame.width) * 4) {
         error = QStringLiteral("the frame view cannot be watermarked (missing or malformed RGBA plane)");
         return false;

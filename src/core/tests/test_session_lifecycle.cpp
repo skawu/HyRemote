@@ -1218,24 +1218,26 @@ HYR_TEST(source_stop_wakes_scheduler_blocked_in_request_frame)
 {
     auto source = std::make_unique<StopWakeCaptureSource>();
     auto *blocked = source.get();
-    Session session;
-    session.setCaptureSource(std::move(source));
-    session.setTransport(std::make_unique<FakeTransport>());
-    HYR_CHECK(session.start());
+    // The stopper owns its state so a timeout can detach without touching stack objects.
+    auto session = std::make_shared<Session>();
+    session->setCaptureSource(std::move(source));
+    session->setTransport(std::make_unique<FakeTransport>());
+    HYR_CHECK(session->start());
     HYR_CHECK(blocked->waitUntilEntered());
 
-    std::atomic<bool> returned{false};
-    std::thread stopper([&] {
-        session.stop();
-        returned.store(true);
+    auto returned = std::make_shared<std::atomic<bool>>(false);
+    std::thread stopper([session, returned] {
+        session->stop();
+        returned->store(true);
     });
-    const bool completed = waitFor([&] { return returned.load(); });
+    const bool completed = waitFor([returned] { return returned->load(); },
+                                   std::chrono::milliseconds(3000));
     if (completed)
         stopper.join();
     else
-        stopper.detach();
-    HYR_CHECK(completed); // join-before-stop would block here forever
-    HYR_CHECK(session.state() == SessionState::Stopped);
+        stopper.detach(); // safe: only shared_ptr state is captured
+    HYR_CHECK(completed); // join-before-stop would fail here within the bounded wait
+    HYR_CHECK(session->state() == SessionState::Stopped);
 }
 
 HYR_TEST_MAIN()
