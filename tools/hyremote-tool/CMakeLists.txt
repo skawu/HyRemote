@@ -213,7 +213,7 @@ if(HYREMOTE_BUILD_TESTS)
     set_tests_properties(hyremote-tool-client-ui-servername PROPERTIES
         TIMEOUT 20
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_TEST_SERVER_NAME_CASE=metadata"
-        PASS_REGULAR_EXPRESSION "TOOL_SERVERNAME_UI_PASS metadata=1 explicit-intent=1 revoked=1 reconnect-view-only=1"
+        PASS_REGULAR_EXPRESSION "TOOL_SERVERNAME_UI_PASS metadata=1 explicit-intent=1 revoked=1 reconnect-view-only=1 deactivation-view-only=1"
         FAIL_REGULAR_EXPRESSION "SERVERNAME_PRIVATE_MARKER"
     )
     if(COMMAND hyremote_label_test_family)

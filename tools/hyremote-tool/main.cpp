@@ -17,6 +17,7 @@
 #include <QCommandLineParser>
 #include <QFile>
 #include <QDateTime>
+#include <QEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -256,19 +257,8 @@ public:
             m_language = resolveToolLanguage(preference, QLocale::system());
             retranslateUi();
         });
-        connect(m_control, &QCheckBox::toggled, this, [this](bool enabled) {
-            m_diagnostics.setControlRequested(enabled);
-            if (enabled) {
-                m_client->setRemoteControlEnabled(true);
-                m_view->setInputEnabled(true);
-            } else {
-                // Release held keys/buttons while the wire is still permitted;
-                // disabling the client first would suppress the KeyUp/MouseUp.
-                m_view->setInputEnabled(false);
-                m_client->setRemoteControlEnabled(false);
-            }
-            retranslateUi(); // show local intent, not an invented Host grant
-        });
+        connect(m_control, &QCheckBox::toggled, this,
+                [this](bool enabled) { setLocalControlRequested(enabled); });
         connect(m_client, &RfbClient::stateChanged, this, [this](RfbClient::State state) {
             m_diagnostics.observeState(state);
             applyState(state);
@@ -375,6 +365,7 @@ public:
     bool verifyProfileUi();
     bool verifyDiagnosticsUi(const QString &testCase);
     bool verifyServerNameMetadata();
+    void setLocalControlRequested(bool requested);
 
     bool verifyUi() const
     {
@@ -399,8 +390,19 @@ public:
     }
 
 protected:
+    void changeEvent(QEvent *event) override
+    {
+        // FocusOut is delivered to the child frame view, not necessarily to this
+        // top-level widget. WindowDeactivate is the reliable signal that the user
+        // switched away from the Tool; never preserve a local input request then.
+        if (event && event->type() == QEvent::WindowDeactivate)
+            setLocalControlRequested(false);
+        QWidget::changeEvent(event);
+    }
+
     void closeEvent(QCloseEvent *event) override
     {
+        setLocalControlRequested(false);
         m_client->disconnectFromHost();
         QWidget::closeEvent(event);
     }
@@ -595,11 +597,8 @@ private:
         m_host->setEnabled(!busy && !connected);
         m_port->setEnabled(!busy && !connected);
         m_connect->setEnabled(true);
-        if (!connected) {
-            m_control->setChecked(false);
-            m_view->setInputEnabled(false);
-            m_client->setRemoteControlEnabled(false);
-        }
+        if (!connected)
+            setLocalControlRequested(false);
         if (state == RfbClient::State::Disconnected || state == RfbClient::State::Failed) {
             m_frameSize = QSize();
             m_view->clearFrame(placeholderText());
@@ -797,6 +796,25 @@ bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
 }
 
 
+void ClientWindow::setLocalControlRequested(bool requested)
+{
+    {
+        const QSignalBlocker blocked(m_control);
+        m_control->setChecked(requested);
+    }
+    m_diagnostics.setControlRequested(requested);
+    if (requested) {
+        m_client->setRemoteControlEnabled(true);
+        m_view->setInputEnabled(true);
+    } else {
+        // Release held keys/buttons while the wire is still permitted;
+        // disabling the client first would suppress the KeyUp/MouseUp.
+        m_view->setInputEnabled(false);
+        m_client->setRemoteControlEnabled(false);
+    }
+    retranslateUi(); // show local intent, not an invented Host grant
+}
+
 bool ClientWindow::verifyServerNameMetadata()
 {
     // Real production Qt signal connections, isolated from network and
@@ -836,13 +854,22 @@ bool ClientWindow::verifyServerNameMetadata()
                                    && !m_control->isChecked()
                                    && !m_view->inputEnabled()
                                    && !m_client->remoteControlEnabled();
+    setLocalControlRequested(true);
+    QEvent deactivated(QEvent::WindowDeactivate);
+    changeEvent(&deactivated);
+    const bool deactivationReadOnly = !m_control->isChecked()
+                                      && !m_view->inputEnabled()
+                                      && !m_client->remoteControlEnabled()
+                                      && !m_diagnostics.report().snapshot().remoteControlRequested;
     applyState(RfbClient::State::Disconnected);
-    const bool ok = metadataOnly && optedIn && withdrawn && reconnectReadOnly;
+    const bool ok = metadataOnly && optedIn && withdrawn && reconnectReadOnly
+                    && deactivationReadOnly;
     std::cout << (ok ? "TOOL_SERVERNAME_UI_PASS" : "TOOL_SERVERNAME_UI_FAIL")
               << " metadata=" << metadataOnly
               << " explicit-intent=" << optedIn
               << " revoked=" << withdrawn
               << " reconnect-view-only=" << reconnectReadOnly
+              << " deactivation-view-only=" << deactivationReadOnly
               << std::endl;
     return ok;
 }
