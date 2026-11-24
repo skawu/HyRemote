@@ -137,9 +137,9 @@ jobs:
             echo
             if [[ ! -s "$LOG" ]]; then
               # An empty transcript with a non-zero status on Windows almost always means the loader never reached
-              # main (missing DLL), so the exit code is reported rather than left to guesswork.
+              # main (missing DLL). Do not `exit` from this tee subshell: the required-line checks below are the
+              # single fail-closed verdict for both a missing and a partial transcript.
               echo "No harness transcript was produced, so the proof did not run. PREFLIGHT_EXIT_CODE=${PREFLIGHT_RC:-unknown}"
-              exit 0
             fi
             echo '```text'
             grep -E '^(QT_VERSION|AVAILABLE_TLS_BACKENDS|ACTIVE_TLS_BACKEND|OPENSSL_RUNTIME_VERSION|OPENSSL_BUILD_VERSION|BACKEND_SELECTION|BACKEND_FALLBACK|BEFORE_TLS_SOCKET_DESCRIPTOR|AFTER_TLS_SOCKET_DESCRIPTOR|PLAINTEXT_PHASE|SAME_SOCKET_TLS|TLS_PROTOCOL|TLS_MIN_1_2|TLS_BELOW_1_2_REFUSED|CERT_PREVALIDATION|HANDSHAKE_TIMEOUT|LISTENER_SURVIVES_TIMEOUT|FAILURE_NO_FALLBACK|RECONNECT|SHUTDOWN|SPIKE_RESULT|SPIKE_FAILURES)=' "$LOG" || true

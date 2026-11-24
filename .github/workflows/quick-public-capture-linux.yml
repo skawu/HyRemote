@@ -24,6 +24,12 @@ on:
 permissions:
   contents: read
 
+# #982: serialize repeated Linux Quick evidence runs per PR/ref; never cancel
+# a live qualification run because a newer commit arrived.
+concurrency:
+  group: quick-public-linux-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   linux-quick-public-grab:
     name: Linux x86_64 / Qt 6.8.3 / Quick / CPU probe ${{ matrix.cpu_probe }}

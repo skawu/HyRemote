@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# #982: keep one non-product R4 RFB evidence run per PR/ref without canceling
+# a running formal capture measurement.
+concurrency:
+  group: r4-generic-rfb-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   linux-generic-rfb:
     name: Qt6.8.3 Generic installed app to real RFB / ${{ matrix.arm }}

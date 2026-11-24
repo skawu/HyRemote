@@ -4,7 +4,8 @@ name: Branch hygiene
 # (docs/internal/branch-lifecycle.md). `delete_branch_on_merge` now covers merged PRs automatically, but a PR that is
 # closed without merging still leaves its head ref behind - which is how the 2026-09-20 audit found twenty-one refs
 # where six belonged. This workflow applies the documented deletion rule on a schedule instead of relying on somebody
-# remembering to run the prune script with a local PowerShell 7.
+# remembering to run the prune script with a local PowerShell 7. Scheduled runs only report
+# candidates; deletion is an explicit manual `execute=true` action.
 #
 # The rule it applies: delete a head ref only when it has no open pull request, its current HEAD equals the recorded
 # head of one of its closed/merged PRs, and a HEAD re-read immediately before DELETE still matches. Any API/JSON/ref
@@ -39,11 +40,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          # The scheduled run is the lane that actually prunes. Resolving execute from the input alone forced every
-          # scheduled run into a dry run, so nothing was ever deleted and the stale refs simply accumulated. A manual
-          # run stays a dry run unless the operator explicitly asks for execution, so the default manual action is
-          # never destructive.
-          EXECUTE: ${{ github.event_name == 'schedule' && 'true' || inputs.execute || 'false' }}
+          # #982 second phase: the scheduled lane only reports candidates. Deletion stays an explicit
+          # manual action so an unattended run cannot remove a ref between human reviews.
+          EXECUTE: ${{ github.event_name == 'workflow_dispatch' && inputs.execute || false }}
         run: |
           set -euo pipefail
 
@@ -57,6 +56,7 @@ jobs:
           }
 
           branches=$(gh api "repos/${REPO}/branches?per_page=100" --jq '.[].name')
+          candidates=0
           deleted=0
           kept=0
 
@@ -115,6 +115,7 @@ jobs:
             fi
 
             if printf '%s' "$prs" | jq -e 'any(.[]; .state == "closed")' >/dev/null; then
+              candidates=$((candidates + 1))
               if [ "$EXECUTE" = "true" ]; then
                 # Re-read immediately before DELETE. REST read + DELETE is not an
                 # atomic compare-and-swap, so a push can still race this window;
@@ -126,12 +127,16 @@ jobs:
                   kept=$((kept + 1))
                   continue
                 fi
-                gh api -X DELETE "repos/${REPO}/git/refs/heads/${branch}"
-                echo "delete ${branch}  (pull request merged or closed, head unchanged)"
+                if gh api -X DELETE "repos/${REPO}/git/refs/heads/${branch}"; then
+                  deleted=$((deleted + 1))
+                  echo "delete ${branch}  (pull request merged or closed, head unchanged)"
+                else
+                  echo "keep   ${branch}  (delete failed; fail closed)"
+                  kept=$((kept + 1))
+                fi
               else
                 echo "would  ${branch}  (pull request merged or closed, head unchanged; dry run)"
               fi
-              deleted=$((deleted + 1))
               continue
             fi
 
@@ -140,4 +145,4 @@ jobs:
           done
 
           echo "---"
-          echo "candidates=${deleted} kept=${kept} execute=${EXECUTE}"
+          echo "candidates=${candidates} deleted=${deleted} kept=${kept} execute=${EXECUTE}"
