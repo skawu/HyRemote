@@ -44,6 +44,8 @@
 namespace HyRemote::detail {
 namespace {
 
+std::function<void()> g_externalStopReclaimObserver;
+
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
 // #158/#603 physical acceptance: RealVNC Viewer 7.15.1 asks the user to dismiss an "Unencrypted Connection"
@@ -2228,40 +2230,43 @@ public:
     void stop() noexcept override
     {
         try {
-            // Serialize external reclaimers: a second stop() must not return before the first
-            // has joined the worker, and start() must not observe a free transport until then.
-            std::lock_guard<std::mutex> reclaimLock(m_reclaimMutex);
-            std::shared_ptr<QThread> thread;
-            RfbWorker *worker = nullptr;
             {
                 std::lock_guard<std::mutex> lock(m_lifecycleMutex);
                 if (!m_thread)
                     return;
                 if (QThread::currentThread() == m_thread.get()) {
-                    // An event callback runs on the worker thread and may synchronously stop
-                    // its owner. Never wait on or destroy our own QThread, and never clear the
-                    // std::function currently executing that callback. quit() plus the existing
-                    // finished()->deleteLater() releases the worker after the event loop stops;
-                    // the QThread handle stays until an external stop()/destructor reclaims it.
+                    // A worker event callback may synchronously stop its owner. Decide this before
+                    // touching the external reclaim lock: waiting for it here would wait for our
+                    // own event loop to finish. Never clear the std::function executing this call.
                     m_worker = nullptr;
                     m_thread->quit();
                     return;
                 }
-                thread = m_thread;
-                worker = m_worker;
-                // Invalidate callbacks and block start()/enqueueFrame() before joining. Keep
-                // m_thread set until wait() returns so quiescence is observable to other callers.
-                m_worker = nullptr;
             }
-            // Never block this thread on the worker: a callback that stops concurrently must be
-            // able to return, and a queued shutdown must not be stranded by that callback's quit().
-            const bool queued = worker
-                && QMetaObject::invokeMethod(worker, [worker, q = thread.get()] {
-                       worker->shutdown();
-                       q->quit();
-                   }, Qt::QueuedConnection);
-            if (!queued)
-                thread->quit();
+            // Serialize external reclaimers: a second stop() must not return before the first
+            // has joined the worker, and start() must not observe a free transport until then.
+            std::lock_guard<std::mutex> reclaimLock(m_reclaimMutex);
+            if (g_externalStopReclaimObserver)
+                g_externalStopReclaimObserver();
+            std::shared_ptr<QThread> thread;
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                if (!m_thread)
+                    return;
+                thread = m_thread;
+                // Publish shutdown before releasing the lifecycle lock. A worker-side reentry
+                // cannot clear/delete the receiver while the queued call is being posted.
+                if (m_worker) {
+                    QMetaObject::invokeMethod(m_worker, [worker = m_worker, q = thread.get()] {
+                        worker->shutdown();
+                        q->quit();
+                    }, Qt::QueuedConnection);
+                    m_worker = nullptr;
+                }
+            }
+            // No blocking call runs on the worker thread here; quit() is only a request and
+            // wait() belongs to the external owner.
+            thread->quit();
             thread->wait();
 
             {
@@ -2320,6 +2325,11 @@ private:
 };
 
 }  // namespace
+
+void setRfbExternalStopReclaimObserverForTest(std::function<void()> observer)
+{
+    g_externalStopReclaimObserver = std::move(observer);
+}
 
 bool runRfbNotificationPostFailureRegression()
 {

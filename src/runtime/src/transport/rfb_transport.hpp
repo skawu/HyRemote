@@ -89,6 +89,11 @@ struct RfbSecurityConfig
 // release the single-flight token; not installed as product API.
 HYREMOTE_REMOTEACCESS_EXPORT bool runRfbNotificationPostFailureRegression();
 
+// Private repository test rendezvous: invoked once after an external stop has acquired
+// the reclaim lock. Used to overlap that call with a worker-side stop in the existing
+// RFB lifecycle test; not installed as product API.
+HYREMOTE_REMOTEACCESS_EXPORT void setRfbExternalStopReclaimObserverForTest(std::function<void()> observer);
+
 HYREMOTE_REMOTEACCESS_EXPORT std::unique_ptr<hyremote::Transport> createRfbTransport(
     const QHostAddress &listenAddress,
     quint16 port,
