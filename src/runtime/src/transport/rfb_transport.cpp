@@ -583,6 +583,13 @@ public:
         return true;
     }
 
+    void beginStopping() noexcept
+    {
+        // Suppress further callbacks during a worker-side stop without clearing
+        // the installed handlers from inside one of those handlers.
+        m_stopping = true;
+    }
+
     void shutdown()
     {
         m_stopping = true;
@@ -2236,9 +2243,10 @@ public:
                 if (QThread::currentThread() == m_thread.get()) {
                     // An event callback runs on the worker thread and may synchronously stop
                     // its owner. Decide this before touching the external reclaim lock: waiting
-                    // for it here would wait for our own event loop to finish. Never wait on or
-                    // destroy our own QThread, and never clear the std::function executing now.
-                    m_worker = nullptr;
+                    // for it here would wait for our own event loop to finish. Suppress further
+                    // callbacks now, but never clear the std::function executing this call.
+                    if (m_worker)
+                        m_worker->beginStopping();
                     m_thread->quit();
                     return;
                 }
@@ -2261,13 +2269,13 @@ public:
                         worker->shutdown();
                         q->quit();
                     }, Qt::QueuedConnection);
-                    m_worker = nullptr;
                 }
             }
             thread->quit();
             thread->wait();
             {
                 std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                m_worker = nullptr;
                 m_thread.reset();
                 std::lock_guard<std::mutex> frameLock(m_frames->mutex);
                 m_frames->latest.reset();
