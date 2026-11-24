@@ -29,8 +29,6 @@
     567,
     569,
     576,
-    579,
-    590,
     609,
     611,
     641,
@@ -382,6 +380,53 @@
         "605": "Qt6.5/Qt6.12 stay strictly after V1 GA and cannot be marked Supported here."
       },
       "rule": "V0.3.5.0 is the ACTIVE DEVELOPMENT FEATURE on the released V0.3.4.0 lineage: operable host configuration (config file, writable state/data directory, protected secret references, one precedence order across all four integration routes, fail-closed on an invalid explicit selection) followed by a server-side static text watermark that a standard RFB viewer can see without changing the local Qt application's pixels. Activation assigns local development ownership, NOT a release/RC PASS: mandatory children and required evidence must close before a release/v0.3.5.0 candidate or tag, and the exact-candidate L2 plus maintained-viewer acceptance stay mandatory. V0.4.0.0 remains inactive qualification-only under #235."
+    },
+    "0.3.6.0": {
+      "authority_parent": 594,
+      "candidate_freeze_authority": 586,
+      "lineage_parent": "0.3.5.0",
+      "mandatory_children": [
+        581,
+        582,
+        583,
+        584,
+        585,
+        590,
+        586
+      ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.3.5.0-lineage",
+        "tool-task-first-workspace-and-bilingual-responsive-layout",
+        "single-session-explicit-view-only-control-input-release-and-reconnect",
+        "local-device-profile-persistence-and-no-secret-no-autoconnect",
+        "fit-native-pixel-scroll-fullscreen-and-input-mapping",
+        "client-observed-bounded-redacted-basic-diagnostics",
+        "local-auto-manual-language-and-cli-precedence",
+        "real-installed-windows-qt6.8.3-s1-acceptance-at-candidate-sha",
+        "current-head-ci-l2-and-independent-review"
+      ],
+      "cross_version_references": [
+        57,
+        95,
+        209,
+        579
+      ],
+      "conditional_items": [],
+      "non_blockers": [
+        170,
+        587,
+        588,
+        592,
+        593,
+        605
+      ],
+      "notes": {
+        "579": "Approved D/A Tool S1 design; parent design is referenced, not a substitute for functional acceptance.",
+        "586": "Whole S1 clean-installed Windows acceptance is the candidate freeze authority; all six implementation children and actual acceptance must close.",
+        "592": "Docker is a separate conditional outcome."
+      },
+      "rule": "V0.3.6.0 is the next admitted Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. The registered scope does not expand platform support. V0.4 remains inactive qualification-only."
     },
     "1.0.0.0": {
       "authority_parent": 33,

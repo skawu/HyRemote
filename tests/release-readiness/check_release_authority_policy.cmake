@@ -126,7 +126,7 @@ endif()
 # train must stay conditional: a version number existing never authorizes a release scope by itself. #333: the
 # pre-reserved technical slots (0.2.1.0/0.3.1.0/0.3.2.0), the qualification-only 0.4.0.0 and the post-GA fixed slot
 # 1.1.0.0 are no longer selectable trains and are asserted as refused/fail-closed further down.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 0.3.5.0 1.0.0.0)
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 0.3.5.0 0.3.6.0 1.0.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
