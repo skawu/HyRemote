@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -22,8 +23,9 @@ std::string validateSessionConfig(const SessionConfig &config)
         return "capture.maxInFlight must be at least 1";
 
     if (config.capture.targetFramesPerSecond.has_value()
-        && !(*config.capture.targetFramesPerSecond > 0.0))
-        return "capture.targetFramesPerSecond must be positive when set";
+        && (!(*config.capture.targetFramesPerSecond > 0.0)
+            || !std::isfinite(*config.capture.targetFramesPerSecond)))
+        return "capture.targetFramesPerSecond must be finite and positive when set";
 
     if (config.capture.rejectedRequestRetryDelay.count() < 0)
         return "capture.rejectedRequestRetryDelay must not be negative";
