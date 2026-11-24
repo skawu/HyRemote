@@ -211,6 +211,11 @@ public:
         m_languageWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_languageWarning->hide();
         connectLayout->addWidget(m_languageWarning);
+        m_connectionError = new QLabel(connectPage);
+        m_connectionError->setWordWrap(true);
+        m_connectionError->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_connectionError->setVisible(false);
+        connectLayout->addWidget(m_connectionError);
         connectLayout->addStretch(1);
         m_pages->addWidget(connectPage);
 
@@ -414,7 +419,8 @@ public:
                         && !QGuiApplication::windowIcon().isNull()
                         && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_languageBox && m_languageWarning
+                        && m_resolution && m_error && m_connectionError
+                        && m_languageBox && m_languageWarning
                         && m_profilesLabel && m_profilesBox && m_profileSave
                         && m_profileEdit && m_profileDelete && m_profileConnect
                         && m_profileRecover && m_profileWarning
@@ -586,6 +592,8 @@ private:
                                   : QStringLiteral("%1 × %2").arg(m_frameSize.width()).arg(m_frameSize.height()));
         m_error->setText(localizedError(m_lastErrorRaw));
         m_error->setVisible(!m_lastErrorRaw.isEmpty());
+        m_connectionError->setText(localizedError(m_lastErrorRaw));
+        m_connectionError->setVisible(!m_lastErrorRaw.isEmpty());
         if (m_view && m_view->hasFrame() == false)
             m_view->setPlaceholder(placeholderText());
     }
@@ -696,6 +704,7 @@ private:
     QLabel *m_status = nullptr;
     QComboBox *m_languageBox = nullptr;
     QLabel *m_languageWarning = nullptr;
+    QLabel *m_connectionError = nullptr;
     QLabel *m_profilesLabel = nullptr;
     QComboBox *m_profilesBox = nullptr;
     QPushButton *m_profileSave = nullptr;
