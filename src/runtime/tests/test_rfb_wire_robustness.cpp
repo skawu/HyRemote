@@ -5171,12 +5171,6 @@ int main(int argc, char **argv)
         return failures == 0 ? 0 : 1;
     }
 
-    const QByteArray largeProfilePath = qgetenv("HYREMOTE_RFB_LARGE_PROFILE_FILE");
-    if (!largeProfilePath.isEmpty()) {
-        runLargePageTransitionProfile(QString::fromLocal8Bit(largeProfilePath));
-        return failures == 0 ? 0 : 1;
-    }
-
     const QByteArray profilePath = qgetenv("HYREMOTE_RFB_PROFILE_FILE");
     if (!profilePath.isEmpty()) {
         runDeliveryProfile(QString::fromLocal8Bit(profilePath));

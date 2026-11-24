@@ -732,13 +732,6 @@ public:
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
-        // #790: ONLY the producer-backed Shared Runtime opts into dropping raw
-        // pixels at zero clients. Standalone RFB retains the exact old behavior,
-        // including its original observed frame baseline for tile-damage diff.
-        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
-            releaseIdleFrameCaches();
-            return;
-        }
         std::optional<RfbDamageRegion> damage;
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
@@ -756,11 +749,6 @@ public:
                                       && damage && damage->empty();
         if (hasNormalClient)
             HYREMOTE_P1_TRACE_FRAME(RfbCompared, *served, 0);
-
-        // Exact served-pixel equality is already computed for damage; feed it back to the
-        // producer's bounded idle gate without introducing a second full-frame comparison.
-        if (hasNormalClient && m_security.frameChangeObserver)
-            m_security.frameChangeObserver(geometryChanged || !damage || !damage->empty());
 
         // Exact served-pixel equality is already computed for damage; feed it back to the
         // producer's bounded idle gate without introducing a second full-frame comparison.
