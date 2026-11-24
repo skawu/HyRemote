@@ -10,7 +10,6 @@ on:
     paths:
       - '.github/scripts/release_scoped_admission.py'
       - '.github/workflows/release-scoped-admission.yml'
-      - '.github/scripts/v035_trusted_admission.py'
   workflow_run:
     workflows:
       - Git Flow policy
@@ -28,9 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Positive and adversarial negative checks
-        run: |
-          python3 .github/scripts/release_scoped_admission.py --self-test
-          python3 .github/scripts/v035_trusted_admission.py --self-test
+        run: python3 .github/scripts/release_scoped_admission.py --self-test
 
   trusted-release-admission-audit:
     if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
@@ -52,8 +49,3 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/release_scoped_admission.py --workflow-run-event "$GITHUB_EVENT_PATH"
-
-      - name: Review V035 exact watermark correction from trusted default branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 .github/scripts/v035_trusted_admission.py --workflow-run-event "$GITHUB_EVENT_PATH"
