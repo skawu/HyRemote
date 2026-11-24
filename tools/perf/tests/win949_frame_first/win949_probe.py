@@ -92,7 +92,10 @@ class RfbClient:
         self.width = 0
         self.height = 0
         self.name = ""
-        self.pixels = {}
+        # Bounded BGRX plane plus a one-byte-per-pixel validity mask. A Python
+        # dict of per-pixel tuples would be gigabytes at a legal 4K size.
+        self.pixels = bytearray()
+        self._known = bytearray()
         self._handshake(shared)
 
     # -- transport ---------------------------------------------------------- #
@@ -128,8 +131,8 @@ class RfbClient:
             raise RfbError(f"security handshake failed: {result}")
         self.sock.sendall(bytes([1 if shared else 0]))
         init = self._recv_exact(24)
-        self.width, self.height = struct.unpack(">HH", init[0:4])
-        require_budget(self.width * self.height, MAX_FRAMEBUFFER_PIXELS, "framebuffer")
+        width, height = struct.unpack(">HH", init[0:4])
+        self._reset_framebuffer(width, height)
         name_len = struct.unpack(">I", init[20:24])[0]
         require_budget(name_len, MAX_TEXT_BYTES, "server name")
         self.name = self._recv_exact(name_len).decode("utf-8", "replace") if name_len else ""
@@ -154,6 +157,19 @@ class RfbClient:
             self.sock.close()
         except OSError:
             pass
+
+    def _reset_framebuffer(self, width: int, height: int) -> None:
+        if width <= 0 or height <= 0:
+            raise RfbError("invalid framebuffer dimensions")
+        pixels = width * height
+        require_budget(pixels, MAX_FRAMEBUFFER_PIXELS, "framebuffer")
+        # Release the old plane BEFORE allocating the replacement so repeated
+        # DesktopSize events cannot retain old coordinates and stale marks.
+        self.pixels = bytearray()
+        self._known = bytearray()
+        self.width, self.height = width, height
+        self.pixels = bytearray(pixels * 4)
+        self._known = bytearray(pixels)
 
     # -- protocol ----------------------------------------------------------- #
     def request_update(self, incremental: bool, x: int, y: int, w: int, h: int) -> None:
@@ -185,7 +201,7 @@ class RfbClient:
                     if w <= 0 or h <= 0:
                         raise RfbError("invalid resized framebuffer")
                     require_budget(w * h, MAX_FRAMEBUFFER_PIXELS, "resized framebuffer")
-                    self.width, self.height = w, h
+                    self._reset_framebuffer(w, h)
                     rects.append((x, y, w, h, None))
                 elif encoding == -239:  # Cursor pseudo-encoding
                     cursor_size = w * h * 4
@@ -216,14 +232,19 @@ class RfbClient:
         for x, y, w, h, data in rects:
             if data is None:
                 continue
+            validate_raw_bounds(x, y, w, h, self.width, self.height)
+            if len(data) != w * h * 4:
+                raise RfbError("truncated raw rectangle")
+            # A compact plane is at most 64 MiB plus a 16 MiB validity map.
+            # Slice complete BGRX rows instead of creating millions of Python
+            # coordinate/RGB tuples, preserving exact pixel semantics.
+            known_row = b"\x01" * w
             for row in range(h):
-                base = row * w * 4
-                for col in range(w):
-                    offset = base + col * 4
-                    blue = data[offset]
-                    green = data[offset + 1]
-                    red = data[offset + 2]
-                    self.pixels[(x + col, y + row)] = (red, green, blue)
+                target_pixel = (y + row) * self.width + x
+                source_byte = row * w * 4
+                self.pixels[target_pixel * 4:(target_pixel + w) * 4] = (
+                    data[source_byte:source_byte + w * 4])
+                self._known[target_pixel:target_pixel + w] = known_row
 
     def poll(self, x: int, y: int, w: int, h: int):
         """One non-incremental sub-rectangle update. Returns (t_send, t_recv, rects)."""
@@ -240,7 +261,14 @@ class RfbClient:
         return t_send, t_recv, rects
 
     def pixel(self, x: int, y: int):
-        return self.pixels.get((x, y))
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return None
+        index = y * self.width + x
+        if not self._known[index]:
+            return None
+        byte = index * 4
+        blue, green, red = self.pixels[byte:byte + 3]
+        return (red, green, blue)
 
 
 # --------------------------------------------------------------------------- #
@@ -399,8 +427,20 @@ def self_test():
         else:
             raise AssertionError("malformed RFB update was not rejected")
     validate_raw_bounds(0, 0, 4, 4, 4, 4)
+    cache = RfbClient.__new__(RfbClient)
+    cache._reset_framebuffer(4, 4)
+    cache._absorb([(0, 0, 2, 1, bytes([3, 2, 1, 0, 6, 5, 4, 0]))])
+    assert cache.pixel(0, 0) == (1, 2, 3)
+    assert cache.pixel(1, 0) == (4, 5, 6)
+    assert cache.pixel(2, 0) is None  # Unknown pixels are not black.
+    cache._reset_framebuffer(1, 4)
+    assert cache.pixel(0, 0) is None  # No stale pixel after resize.
+    assert len(cache.pixels) == 4 * 4 and len(cache._known) == 4
+    cache._absorb([(0, 0, 1, 1, bytes([12, 11, 10, 0]))])
+    assert cache.pixel(0, 0) == (10, 11, 12)
+    assert cache.pixel(0, 1) is None
     print("WIN949_SELF_TEST=PASS diagnostics=positive+negative framebuffer=logical+physical "
-          "wake=positive+negative budget=aggregate+geometry")
+          "wake=positive+negative budget=aggregate+geometry cache=bounded+resize")
     return 0
 
 
