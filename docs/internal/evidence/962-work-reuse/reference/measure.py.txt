@@ -1,0 +1,401 @@
+"""Measure synthetic host changes to RealVNC desktop-visible color on Windows."""
+
+import argparse
+import ctypes as c
+from ctypes import wintypes as w
+import json
+import os
+from pathlib import Path
+import queue
+import subprocess
+import tempfile
+import threading
+import time
+
+
+user32 = c.WinDLL("user32")
+gdi32 = c.WinDLL("gdi32")
+kernel32 = c.WinDLL("kernel32")
+kernel32.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
+kernel32.OpenProcess.restype = w.HANDLE
+kernel32.GetProcessTimes.argtypes = [w.HANDLE] + [c.POINTER(w.FILETIME)] * 4
+kernel32.CloseHandle.argtypes = [w.HANDLE]
+user32.GetDC.argtypes = [w.HWND]
+user32.GetDC.restype = w.HDC
+user32.ReleaseDC.argtypes = [w.HWND, w.HDC]
+gdi32.CreateCompatibleDC.argtypes = [w.HDC]
+gdi32.CreateCompatibleDC.restype = w.HDC
+gdi32.DeleteDC.argtypes = [w.HDC]
+gdi32.SelectObject.argtypes = [w.HDC, w.HANDLE]
+gdi32.SelectObject.restype = w.HANDLE
+gdi32.DeleteObject.argtypes = [w.HANDLE]
+gdi32.BitBlt.argtypes = [
+    w.HDC, c.c_int, c.c_int, c.c_int, c.c_int, w.HDC, c.c_int, c.c_int, w.DWORD,
+]
+user32.GetWindowThreadProcessId.argtypes = [w.HWND, c.POINTER(w.DWORD)]
+user32.GetClientRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
+user32.ClientToScreen.argtypes = [w.HWND, c.POINTER(w.POINT)]
+user32.IsWindowVisible.argtypes = [w.HWND]
+user32.ShowWindow.argtypes = [w.HWND, c.c_int]
+user32.SetWindowPos.argtypes = [
+    w.HWND, w.HWND, c.c_int, c.c_int, c.c_int, c.c_int, w.UINT,
+]
+user32.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, c.c_int]
+user32.SendMessageTimeoutW.argtypes = [
+    w.HWND, w.UINT, w.WPARAM, w.LPARAM, w.UINT, w.UINT,
+    c.POINTER(c.c_size_t),
+]
+user32.SendMessageTimeoutW.restype = w.LPARAM
+user32.SetProcessDPIAware()
+callback_type = c.WINFUNCTYPE(w.BOOL, w.HWND, w.LPARAM)
+
+
+class BitmapHeader(c.Structure):
+    _fields_ = [
+        ("size", w.DWORD), ("width", w.LONG), ("height", w.LONG),
+        ("planes", w.WORD), ("bits", w.WORD), ("compression", w.DWORD),
+        ("image_size", w.DWORD), ("horizontal_dpi", w.LONG),
+        ("vertical_dpi", w.LONG), ("colors_used", w.DWORD),
+        ("important_colors", w.DWORD),
+    ]
+
+
+gdi32.CreateDIBSection.argtypes = [
+    w.HDC, c.POINTER(BitmapHeader), w.UINT, c.POINTER(c.c_void_p), w.HANDLE, w.DWORD,
+]
+gdi32.CreateDIBSection.restype = w.HANDLE
+
+
+class DesktopSample:
+    side = 12
+
+    def __init__(self):
+        self.screen = user32.GetDC(None)
+        self.memory = gdi32.CreateCompatibleDC(self.screen) if self.screen else None
+        address = c.c_void_p()
+        header = BitmapHeader(c.sizeof(BitmapHeader), self.side, -self.side, 1, 32)
+        self.bitmap = (
+            gdi32.CreateDIBSection(self.memory, c.byref(header), 0, c.byref(address), None, 0)
+            if self.memory else None
+        )
+        self.previous = gdi32.SelectObject(self.memory, self.bitmap) if self.bitmap else None
+        if not self.previous or self.previous == c.c_void_p(-1).value:
+            self.previous = None
+            self.close()
+            raise RuntimeError("Could not allocate desktop sample")
+        self.pixels = (c.c_uint32 * (self.side ** 2)).from_address(address.value)
+
+    def matches(self, point, color):
+        x, y = point
+        half = self.side // 2
+        if not gdi32.BitBlt(self.memory, 0, 0, self.side, self.side, self.screen,
+                           x - half, y - half, 0x00CC0020):  # SRCCOPY
+            return False
+        gdi32.GdiFlush()
+        return all(
+            self.pixels[row * self.side + col] & 0x00FFFFFF == color
+            for row, col in ((3, 3), (3, 8), (8, 3), (8, 8))
+        )
+
+    def close(self):
+        if self.previous:
+            gdi32.SelectObject(self.memory, self.previous)
+        if self.bitmap:
+            gdi32.DeleteObject(self.bitmap)
+        if self.memory:
+            gdi32.DeleteDC(self.memory)
+        if self.screen:
+            user32.ReleaseDC(None, self.screen)
+
+
+def qpc():
+    value = c.c_longlong()
+    kernel32.QueryPerformanceCounter(c.byref(value))
+    return value.value
+
+
+def process_cpu_seconds(pid):
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        fields = [w.FILETIME() for _ in range(4)]
+        if not kernel32.GetProcessTimes(handle, *(c.byref(field) for field in fields)):
+            return None
+        return sum((field.dwHighDateTime << 32) | field.dwLowDateTime
+                   for field in fields[2:]) / 10_000_000
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def viewer_points(pid):
+    windows = []
+
+    @callback_type
+    def collect(hwnd, _):
+        owner = w.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, c.byref(owner))
+        if owner.value != pid or not user32.IsWindowVisible(hwnd):
+            return True
+        rect = w.RECT()
+        title = c.create_unicode_buffer(256)
+        user32.GetWindowTextW(hwnd, title, len(title))
+        if title.value.lower().endswith("vncviewer.exe"):
+            messages = []
+
+            @callback_type
+            def read_dialog(child, _):
+                field = c.create_unicode_buffer(512)
+                size = c.c_size_t()
+                user32.SendMessageTimeoutW(child, 0x000D, len(field), c.addressof(field),
+                                           0x0002, 80, c.byref(size))
+                if field.value:
+                    messages.append(field.value)
+                return True
+
+            user32.EnumChildWindows(hwnd, read_dialog, 0)
+            windows.append((hwnd, " | ".join([title.value, *messages]), []))
+            return True
+        if user32.GetClientRect(hwnd, c.byref(rect)) and rect.right > 160 and rect.bottom > 100:
+            point = w.POINT(rect.right // 2, rect.bottom // 2)
+            if user32.ClientToScreen(hwnd, c.byref(point)):
+                windows.append((hwnd, title.value, (point.x, point.y)))
+        return True
+
+    user32.EnumWindows(collect, 0)
+    return windows
+
+
+def read_lines(process, output):
+    for line in process.stdout:
+        output.put(line.strip())
+
+
+def native_stop_fields(fields):
+    if len(fields) not in (5, 6) or fields[0] != "NATIVE_STOP":
+        return None
+    keys = ("contexts", "buffers", "submissions", "cleaned", "pending_at_stop")
+    return dict(zip(keys, map(int, fields[1:])))
+
+
+def run(args):
+    output = queue.Queue()
+    host_environment = os.environ.copy()
+    if args.graceful_host:
+        host_environment["HYREMOTE_RESEARCH_HOST_MS"] = str(args.seconds * 1000 - 500)
+    host = subprocess.Popen([args.host, str(args.port)], stdout=subprocess.PIPE,
+                            text=True, env=host_environment)
+    reader = threading.Thread(target=read_lines, args=(host, output), daemon=True)
+    reader.start()
+    viewer = None
+    screen = None
+    viewer_stderr = tempfile.TemporaryFile(mode="w+b")
+    try:
+        startup_deadline = time.monotonic() + 8
+        trace = []
+        native_requests = []
+        credit_observations = []
+        while True:
+            ready = output.get(timeout=max(0, startup_deadline - time.monotonic())).split()
+            if len(ready) == 3 and ready[0] == "READY":
+                break
+            if len(ready) == 5 and ready[0] == "TRACE":
+                trace.append(ready)
+            if len(ready) == 3 and ready[0] == "CREDIT":
+                credit_observations.append(tuple(map(int, ready[1:])))
+        frequency = int(ready[2])
+        time.sleep(args.viewer_delay)
+        viewer_launch_qpc = qpc()
+        viewer = subprocess.Popen(
+            [args.viewer, *args.viewer_flag, f"127.0.0.1::{args.port}"],
+            stdout=viewer_stderr, stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        screen = DesktopSample()
+        deadline = time.monotonic() + args.seconds
+        cpu_begin = None
+        cpu_warmup = time.monotonic() + 5
+        points = []
+        titles = []
+        next_window_query = 0
+        pending = None
+        last_negative_scan = None
+        scan_duration_ms = []
+        observations = []
+        changes = {}
+        missed = []
+        positioned = set()
+        native_stop = None
+        while time.monotonic() < deadline and host.poll() is None and viewer.poll() is None:
+            if cpu_begin is None and time.monotonic() >= cpu_warmup:
+                cpu_begin = (qpc(), process_cpu_seconds(host.pid), process_cpu_seconds(viewer.pid))
+            if time.monotonic() >= next_window_query:
+                windows = viewer_points(viewer.pid)
+                titles = [title for _, title, _ in windows]
+                points = []
+                for hwnd, title, sample in windows:
+                    if not sample or not (
+                        f"127.0.0.1::{args.port}" in title
+                        or title.startswith("HyRemote research RFB Viewer")
+                    ):
+                        continue
+                    if hwnd not in positioned:
+                        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                        if user32.SetWindowPos(hwnd, w.HWND(-1), 470, 70, 0, 0, 0x0011):
+                            positioned.add(hwnd)
+                        continue  # recompute the sample points after moving
+                    points.append(sample)
+                next_window_query = time.monotonic() + 0.25
+            while not output.empty():
+                fields = output.get_nowait().split()
+                if len(fields) == 5 and fields[0] == "TRACE":
+                    trace.append(fields)
+                if len(fields) == 2 and fields[0] == "NATIVE_FRAME":
+                    native_requests.append(int(fields[1]))
+                native_stop = native_stop_fields(fields) or native_stop
+                if len(fields) == 3 and fields[0] == "CREDIT":
+                    credit_observations.append(tuple(map(int, fields[1:])))
+                if len(fields) == 4 and fields[0] == "CHANGE":
+                    if pending:
+                        missed.append(pending[0])
+                    sequence, start = map(int, fields[1:3])
+                    pending = (sequence, start, int(fields[3][1:], 16))
+                    changes[sequence] = (start, pending[2])
+                    last_negative_scan = None
+            if pending:
+                scan_start = qpc()
+                for candidate in points:
+                    if screen.matches(candidate, pending[2]):
+                        seen = qpc()
+                        observations.append({
+                            "sequence": pending[0],
+                            "detected_qpc": seen,
+                            "detected_ms": (seen - pending[1]) * 1000 / frequency,
+                            "scan_interval_ms": (
+                                (seen - last_negative_scan) * 1000 / frequency
+                                if last_negative_scan is not None else None
+                            ),
+                        })
+                        pending = None
+                        break
+                else:
+                    if points:
+                        last_negative_scan = scan_start
+                if points:
+                    scan_duration_ms.append((qpc() - scan_start) * 1000 / frequency)
+            time.sleep(0.003)
+        host_exit = host.poll()
+        if host_exit is None and args.expect_native_stop_in_flight:
+            try:
+                host_exit = host.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+        if host_exit is not None:
+            reader.join(timeout=1)
+            while not output.empty():
+                fields = output.get_nowait().split()
+                native_stop = native_stop_fields(fields) or native_stop
+        cpu_end = (qpc(), process_cpu_seconds(host.pid), process_cpu_seconds(viewer.pid))
+        cpu = {}
+        if cpu_begin and cpu_end[0] > cpu_begin[0]:
+            elapsed = (cpu_end[0] - cpu_begin[0]) / frequency
+            cpu["window_seconds"] = elapsed
+            for i, role in enumerate(("host", "viewer"), 1):
+                if cpu_begin[i] is not None and cpu_end[i] is not None:
+                    cpu[role + "_pct_one_core"] = 100 * (cpu_end[i] - cpu_begin[i]) / elapsed
+        if pending:
+            missed.append(pending[0])
+        viewer_stderr.seek(0)
+        diagnostics = viewer_stderr.read().decode(errors="replace")
+        decoded = []
+        stages = {}
+        for _, stage, timestamp, request, rgb in trace:
+            stages.setdefault(int(request), {}).setdefault(stage, []).append(
+                (int(timestamp), int(rgb, 16))
+            )
+        for line in diagnostics.splitlines():
+            parts = line.split()
+            if len(parts) == 3 and parts[0] == "DECODE":
+                decoded.append((int(parts[1]), int(parts[2], 16)))
+        for sample in observations:
+            sequence = sample["sequence"]
+            start, color = changes[sequence]
+            next_start = changes.get(sequence + 1, (start + frequency, 0))[0]
+            matches = [timestamp for timestamp, rgb in decoded
+                       if rgb == color and start <= timestamp < next_start]
+            if len(matches) == 1:
+                sample["source_to_decode_ms"] = (matches[0] - start) * 1000 / frequency
+                sample["decode_to_detection_ms"] = (
+                    sample["detected_ms"] - sample["source_to_decode_ms"]
+                )
+            candidates = []
+            for request, events in stages.items():
+                ready_events = events.get("quick_ready", []) + events.get("native_ready", [])
+                for ready_tick, rgb in ready_events:
+                    if rgb != color or not start <= ready_tick < next_start:
+                        continue
+                    for queue_tick, _ in events.get("rfb_queued", []):
+                        if ready_tick <= queue_tick <= sample["detected_qpc"] and (
+                            not matches or queue_tick <= matches[0]
+                        ):
+                            candidates.append((queue_tick, ready_tick, request, events))
+            if candidates:
+                queue_tick, ready_tick, request, events = min(candidates, key=lambda item: item[0])
+                sample["request_id"] = request
+                sample["capture_route"] = "native" if "native_ready" in events else "public"
+                sample["source_to_quick_ready_ms"] = (ready_tick - start) * 1000 / frequency
+                sample["quick_ready_to_queue_ms"] = (queue_tick - ready_tick) * 1000 / frequency
+                if events.get("issued") and events.get("admitted"):
+                    issued = events["issued"][0][0]
+                    admitted = events["admitted"][0][0]
+                    sample["source_to_admission_ms"] = (admitted - start) * 1000 / frequency
+                    sample["request_gate_wait_ms"] = (admitted - issued) * 1000 / frequency
+                    sample["admission_to_quick_ready_ms"] = (ready_tick - admitted) * 1000 / frequency
+        return {"viewer_pid": viewer.pid, "window_titles": titles,
+                "samples": observations, "missed_sequences": missed,
+                "scan_duration_max_ms": max(scan_duration_ms, default=None),
+                "viewer_window_positioned": bool(positioned),
+                "host_trace_events": len(trace),
+                "native_requests": native_requests,
+                "host_exit_code": host_exit,
+                "native_stop": native_stop,
+                "credit_before_viewer": [token for tick, token in credit_observations
+                                          if tick < viewer_launch_qpc],
+                "credit_after_viewer": [token for tick, token in credit_observations
+                                         if tick >= viewer_launch_qpc],
+                "cpu": cpu,
+                "viewer_exit_code": viewer.poll(),
+                "viewer_diagnostic": diagnostics[:4096]}
+    finally:
+        if screen:
+            screen.close()
+        for process in (viewer, host):
+            if process is not None and process.poll() is None:
+                process.terminate()
+                process.wait(timeout=5)
+        viewer_stderr.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("host", type=Path)
+    parser.add_argument("viewer", type=Path)
+    parser.add_argument("--port", type=int, default=15921)
+    parser.add_argument("--seconds", type=int, default=20)
+    parser.add_argument("--viewer-delay", type=int, choices=range(0, 5), default=0)
+    parser.add_argument("--graceful-host", action="store_true")
+    parser.add_argument("--expect-native-stop-in-flight", action="store_true")
+    parser.add_argument("--viewer-flag", action="append", default=[])
+    args = parser.parse_args()
+    if os.name != "nt" or not 1 <= args.seconds <= 40:
+        parser.error("This probe requires Windows and a 1–40 second run.")
+    result = run(args)
+    print(json.dumps(result, indent=2))
+    if args.expect_native_stop_in_flight:
+        stop = result["native_stop"] or {}
+        passed = (result["host_exit_code"] == 0 and stop.get("pending_at_stop") == 1
+                  and stop.get("cleaned") == 1 and not result["native_requests"])
+    else:
+        passed = bool(result["samples"])
+    raise SystemExit(0 if passed else 4)
+

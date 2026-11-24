@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "rc8-hosted-l2-20261104",
+  "repository": "skawu/HyRemote",
+  "issue": 95,
+  "ref": "release/v0.3.5.0",
+  "sha": "b0680d5df4f76d8b84b02a1b950030a65a89ddca",
+  "task": "hosted-l2",
+  "kit": "win-qt683-msvc2022",
+  "expires_utc": "2026-11-30T00:00:00Z",
+  "state": "QUEUED",
+  "requires_physical_viewer": false
+}

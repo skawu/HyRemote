@@ -29,6 +29,12 @@ GitHub's repository setting **Automatically delete head branches** (`delete_bran
 - never deletes `main`, `develop`, `release/*`, `backmerge/*` or `hotfix/*`;
 - keeps any branch that is the head of an open PR;
 - fails closed when it cannot prove a branch belongs to a merged/closed PR;
+- keeps a branch whose current head is not exactly the head of one of its pull requests
+  (a commit added after the PR closed is preserved; the head identity is a deletion gate,
+  not a reason to delete);
+- re-reads the branch head immediately before `DELETE` and keeps the branch if that read fails
+  or returns a different commit; REST read + `DELETE` is not an atomic compare-and-swap, so a
+  residual race window is acknowledged rather than claimed closed;
 - deletes only when `execute=true` is explicitly requested for manual runs or when the workflow's configured execution policy permits it.
 
 The scheduled workflow complements, rather than replaces, the repository setting.
@@ -39,7 +45,12 @@ A short-lived branch should be deleted when its Pull Request is merged, supersed
 
 Deleting the branch ref does **not** rewrite the associated Issue/PR discussion or accepted repository history. Do not preserve stale refs merely as a substitute for audit records.
 
-Never delete or force-move a branch only because its commit IDs differ from a later squash/reimplementation line. Before pruning an old ref, use repository/PR facts to establish that it is no longer an execution line.
+The automated rule only treats a ref as a candidate when its current head equals the head of a closed
+or merged pull request recorded for that branch. A newer head means the branch advanced after the PR
+closed and may contain unmerged work; that ref is kept and must be reviewed separately. This check is
+repeated immediately before deletion, and any read failure or head change keeps the branch.
+
+Never delete or force-move a branch only because its commit IDs differ from a later squash/reimplementation line. Head equality is a safety gate for automated cleanup, not a licence to delete: a difference means keep and inspect.
 
 ## Historical V1 cleanup
 

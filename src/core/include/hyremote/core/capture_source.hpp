@@ -77,6 +77,27 @@ public:
     // Returning false means the request was rejected before any work was scheduled; Core counts
     // it, keeps the Session running and retries after a bounded delay.
     virtual bool requestFrame(const CaptureRequest &request) = 0;
+
+    // #790 idle-resource contract. One optional hook for EVERY capture technology, so a
+    // zero-viewer edge is not re-invented per backend:
+    //
+    //   - the Shared Runtime calls this on the capture scheduler thread after the last
+    //     Viewer disconnected, before the next `requestFrame()`, and only while the
+    //     source is still started;
+    //   - implementations release pixel/GPU storage that only exists to serve a capture
+    //     (framebuffers, staging textures, cached full-frame images/QImages) and keep
+    //     geometry, capabilities and the started state; the next `requestFrame()` must
+    //     allocate from scratch;
+    //   - this must not block on a GPU fence, a Qt render or a worker join. It may be
+    //     called while a previously requested callback is still in flight; in that case
+    //     defer the release until that work finishes instead of waiting;
+    //   - it is idempotent and may be called at any zero-viewer edge, including one with
+    //     nothing cached.
+    //
+    // Default is a no-op: a source with no retained pixel/GPU allocation is already
+    // compliant (#790 distinguishes SDK-owned retained bytes from an allocator high-water
+    // mark that the OS may keep after a real free).
+    virtual void releaseIdleResources() noexcept {}
 };
 
 }  // namespace hyremote

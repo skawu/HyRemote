@@ -1,0 +1,461 @@
+#!/usr/bin/env python3
+"""Analyze optional HyRemote host frame-step telemetry (schema=3 JSONL).
+
+Input: HYREMOTE_FRAME_TRACE_FILE with HYREMOTE_ENABLE_CPU_PROBE=ON.
+The legacy HYREMOTE_CPU_PROBE_FILE remains separate and schema=2 only.
+Times are monotonic HOST timestamps.
+The RFB socket-queued event is NOT a network ACK, Viewer decode, or present.
+A QQuickWindow afterAnimating event is a HINT, not content change.
+Never match request IDs across overlapping sessions/restarts in one process.
+"""
+import argparse
+import bisect
+import collections
+import json
+import math
+from pathlib import Path
+
+PAIRS = (
+    ("request_to_source", "capture_request", "source_completed"),
+    ("grab_submit_to_source", "quick_grab_submitted", "source_completed"),
+    # #967: split the public Qt grab chain at the two new GUI-thread points.
+    # The Qt render-thread toImage() body stays NOT_INSTRUMENTED; only the
+    # returned->ready wall is observable from public Qt callbacks.
+    ("grab_submit_to_returned", "quick_grab_submitted", "quick_grab_returned"),
+    ("grab_returned_to_ready", "quick_grab_returned", "quick_grab_ready"),
+    ("grab_ready_to_source", "quick_grab_ready", "source_completed"),
+    ("gpu_submit_to_ready", "gpu_readback_submitted", "gpu_readback_ready"),
+    ("gpu_ready_to_source", "gpu_readback_ready", "source_completed"),
+    ("source_to_core_dispatch", "source_completed", "core_frame_queued"),
+    ("core_to_rfb_worker", "core_frame_queued", "rfb_observed"),
+    ("rfb_compare_to_encode", "rfb_compared", "rfb_encoded"),
+    ("rfb_encode_to_socket_queue", "rfb_encoded", "rfb_socket_queued"),
+    ("capture_request_to_socket_queue", "capture_request", "rfb_socket_queued"),
+)
+
+# Same-request grab stages repeat when publishImage() rejects a ready image and
+# retryLater() runs the grab again. These pairs must use the nearest preceding
+# earlier event; the earliest-start rule would charge the retry gap to the
+# wrong stage.
+NEAREST_PAIRS = frozenset({
+    "grab_submit_to_returned",
+    "grab_returned_to_ready",
+    "grab_ready_to_source",
+})
+
+
+def percentile(values, p):
+    ordered = sorted(values)
+    x = (len(ordered) - 1) * p / 100.0
+    lo, hi = math.floor(x), math.ceil(x)
+    return ordered[lo] * (hi - x) + ordered[hi] * (x - lo) if lo != hi else ordered[lo]
+
+
+def describe(values):
+    return {
+        "n": len(values),
+        "p50_ms": round(percentile(values, 50), 3) if values else None,
+        "p95_ms": round(percentile(values, 95), 3) if values else None,
+        "p99_ms": round(percentile(values, 99), 3) if values else None,
+    }
+
+
+def analyze(records):
+    requests = collections.defaultdict(lambda: collections.defaultdict(list))
+    activity = collections.defaultdict(list)
+    totals = collections.Counter()
+    overflow = 0
+    for entry in records:
+        if entry.get("schema") != 3:
+            continue  # schema=2 aggregate CPU snapshots coexist in same file
+        if entry.get("type") == "frame_trace_overflow":
+            overflow += max(0, int(entry.get("dropped", 0)))
+            continue
+        if entry.get("type") != "frame_step":
+            continue
+        step = entry.get("step")
+        pid = int(entry.get("pid", 0))
+        request_id = int(entry.get("request_id", 0))
+        at_ns = int(entry.get("at_ns", 0))
+        if not step or pid <= 0 or at_ns <= 0:
+            continue
+        totals[step] += 1
+        if step == "qt_activity_hint":
+            activity[pid].append(at_ns)
+        elif request_id > 0:
+            requests[pid, request_id][step].append(entry)
+
+    out = collections.defaultdict(list)
+    request_collisions = 0
+    encode_collisions = 0
+    socket_collisions = 0
+    missing_wire_identity = 0
+    impossible = 0
+    for (pid, _req), steps in requests.items():
+        # Identity anomalies are properties of the raw request group, not
+        # of successfully paired latency endpoints. Count even partial traces.
+        encode_keys = collections.Counter()
+        socket_keys = collections.Counter()
+        for step_name, keys in (("rfb_encoded", encode_keys),
+                                ("rfb_socket_queued", socket_keys)):
+            for event in steps[step_name]:
+                key = (int(event.get("viewer_id", 0)),
+                       int(event.get("update_id", 0)))
+                if key[0] <= 0 or key[1] <= 0:
+                    missing_wire_identity += 1
+                else:
+                    keys[key] += 1
+        duplicate_encode_keys = {key for key, count in encode_keys.items()
+                                 if count > 1}
+        duplicate_socket_keys = {key for key, count in socket_keys.items()
+                                 if count > 1}
+        encode_collisions += len(duplicate_encode_keys)
+        socket_collisions += len(duplicate_socket_keys)
+
+        # One request identity cannot be reused by simultaneous sessions.
+        # Exclude its latency samples, but retain independently observed
+        # wire anomalies in the counters above.
+        if len(steps["capture_request"]) != 1:
+            request_collisions += 1
+            continue
+        # A duplicated socket identity is ambiguous for *every* metric whose
+        # endpoint is socket queued, not just encode-to-socket latency.
+        valid_socket_events = [
+            queued for queued in steps["rfb_socket_queued"]
+            if int(queued.get("viewer_id", 0)) > 0
+            and int(queued.get("update_id", 0)) > 0
+            and (int(queued["viewer_id"]), int(queued["update_id"]))
+                not in duplicate_socket_keys
+        ]
+        for metric, earlier, later in PAIRS:
+            starts = steps[earlier]
+            ends = valid_socket_events if later == "rfb_socket_queued" else steps[later]
+            if not starts or not ends:
+                if (metric == "grab_ready_to_source" and ends
+                        and steps["quick_grab_returned"] and not starts):
+                    impossible += len(ends)
+                continue
+            if metric in NEAREST_PAIRS:
+                # The same request can retry a grab after publishImage()
+                # rejects a ready image. Pair each later event with its
+                # nearest preceding earlier event so a retry gap is not
+                # charged to Qt rendering or image adoption.
+                start_times = sorted(int(x["at_ns"]) for x in starts)
+                attempts = sorted(int(x["at_ns"]) for x in steps["quick_grab_submitted"])
+                for event in ends:
+                    last = int(event["at_ns"])
+                    index = bisect.bisect_right(start_times, last) - 1
+                    attempt = bisect.bisect_right(attempts, last) - 1
+                    if (index < 0 or attempt < 0
+                            or start_times[index] < attempts[attempt]):
+                        impossible += 1
+                        continue
+                    out[metric].append(
+                        (last - start_times[index]) / 1_000_000.0)
+                continue
+            first = min(int(x["at_ns"]) for x in starts)
+            # A viewer/update identity must identify one encode event. A
+            # duplicate is ambiguous even if its timestamp happens to match:
+            # never silently overwrite it and report a fabricated latency.
+            per_viewer = {}
+            if earlier == "rfb_encoded":
+                for encoded in starts:
+                    key = (int(encoded.get("viewer_id", 0)),
+                           int(encoded.get("update_id", 0)))
+                    if key[0] <= 0 or key[1] <= 0 or key in duplicate_encode_keys:
+                        continue
+                    per_viewer[key] = int(encoded["at_ns"])
+            for event in ends:
+                # One frame may be encoded independently for 2+ viewers.
+                # Do not combine one viewer's encode with another's write.
+                if earlier == "rfb_encoded":
+                    key = (int(event.get("viewer_id", 0)),
+                           int(event.get("update_id", 0)))
+                    if (key[0] <= 0 or key[1] <= 0
+                            or key in duplicate_encode_keys
+                            or key in duplicate_socket_keys
+                            or key not in per_viewer):
+                        continue
+                    earlier_ns = per_viewer[key]
+                else:
+                    earlier_ns = first
+                last = int(event["at_ns"])
+                if last < earlier_ns:
+                    impossible += 1
+                    continue
+                out[metric].append((last - earlier_ns) / 1_000_000.0)
+
+        # Render-origin timestamps are meaningful ONLY if Core's PTS
+        # source is Render. Completion-origin PTS must never masquerade
+        # as render latency, even if the numeric values are plausible.
+        rendered = [x for x in steps["source_completed"]
+                    if int(x.get("pts_source", 0)) == 1
+                    and int(x.get("content_pts_ns", 0)) > 0]
+        for event in rendered:
+            pts = int(event["content_pts_ns"])
+            completed = int(event["at_ns"])
+            if completed >= pts:
+                out["render_pts_to_source"].append((completed - pts) / 1_000_000)
+            for sent in valid_socket_events:
+                at = int(sent["at_ns"])
+                if at >= pts:
+                    out["render_pts_to_socket_queue"].append((at - pts) / 1_000_000)
+
+        admission = steps["capture_request"][0]
+        initial = int(admission["at_ns"])
+        issue = int(admission.get("request_ns", 0))
+        # Core constructed its Request BEFORE Runtime::waitForViewer().
+        # Comparing the two host-monotonic instants measures actual time
+        # spent in demand gating plus scheduler-to-runtime call overhead.
+        # The older request_to_source metric starts AFTER that wait and
+        # consequently hides the time most relevant to activity wakeups.
+        if issue > 0:
+            if issue <= initial:
+                out["core_issue_to_runtime_admit"].append(
+                    (initial - issue) / 1_000_000.0)
+                for sent in valid_socket_events:
+                    queued = int(sent["at_ns"])
+                    if queued >= issue:
+                        out["core_issue_to_socket_queue"].append(
+                            (queued - issue) / 1_000_000.0)
+                    else:
+                        impossible += 1
+            else:
+                impossible += 1
+
+        hints = sorted(activity[pid])
+        index = bisect.bisect_right(hints, initial) - 1
+        if index >= 0 and 0 <= initial - hints[index] <= 250_000_000:
+            out["qt_activity_hint_to_request"].append(
+                (initial - hints[index]) / 1_000_000.0)
+
+    return {
+        "schema": 1,
+        "metric_type": "host_monotonic_wall_latency",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "content_change_to_present": "NOT_MEASURED",
+        "qt_activity_is_not_content_damage": True,
+        "hint_to_request_is_noncausal_nearest_sample": True,
+        "qt_activity_disposition": {
+            key: totals.get(key, 0)
+            for key in ("qt_activity_hint",
+                        "qt_activity_ignored_in_flight",
+                        "qt_activity_ignored_backpressure",
+                        "qt_activity_ignored_already_active",
+                        "qt_activity_ignored_no_viewer",
+                        "qt_activity_ignored_stopped")
+        },
+        "request_identity_collisions_skipped": request_collisions,
+        "encode_identity_collisions_skipped": encode_collisions,
+        "socket_identity_collisions_skipped": socket_collisions,
+        "missing_wire_identity_events_skipped": missing_wire_identity,
+        "negative_or_out_of_order_pairs_skipped": impossible,
+        "trace_events_dropped": overflow,
+        "steps": dict(sorted(totals.items())),
+        "intervals": {name: describe(out[name]) for name, _, _ in PAIRS}
+            | {"core_issue_to_runtime_admit":
+               describe(out["core_issue_to_runtime_admit"]),
+               "core_issue_to_socket_queue":
+               describe(out["core_issue_to_socket_queue"]),
+               "qt_activity_hint_to_request":
+               describe(out["qt_activity_hint_to_request"]),
+               "render_pts_to_source":
+               describe(out["render_pts_to_source"]),
+               "render_pts_to_socket_queue":
+               describe(out["render_pts_to_socket_queue"])},
+    }
+
+
+def self_test():
+    def point(step, ns, request=1, frame=8, viewer=0, update=0):
+        return {"schema": 3, "type": "frame_step", "pid": 42,
+                "request_id": request, "frame_id": frame, "viewer_id": viewer,
+                "update_id": update, "at_ns": ns, "step": step}
+    data = [
+        {"schema": 2, "stages": {}},
+        point("qt_activity_hint", 1_000_000, request=0),
+        {**point("capture_request", 2_000_000),
+         "request_ns": 1_500_000},
+        point("gpu_readback_submitted", 3_000_000),
+        point("gpu_readback_ready", 8_000_000),
+        {**point("source_completed", 10_000_000),
+         "pts_source": 1, "content_pts_ns": 9_000_000},
+        point("core_frame_queued", 11_000_000),
+        point("rfb_observed", 12_000_000),
+        point("rfb_compared", 13_000_000),
+        point("rfb_encoded", 14_000_000, viewer=1, update=1),
+        point("rfb_socket_queued", 16_000_000, viewer=1, update=1),
+        point("rfb_encoded", 14_500_000, viewer=2, update=1),
+        point("rfb_socket_queued", 17_000_000, viewer=2, update=1),
+        {"schema": 3, "type": "frame_trace_overflow", "pid": 42, "dropped": 3},
+        # #967 public grab chain on an independent request identity:
+        # submit 3.0, returned 3.5, ready 10.0, source 11.0 ms.
+        # No request_ns on purpose: it must not add a second
+        # core_issue_to_runtime_admit sample.
+        point("capture_request", 2_000_000, request=2),
+        point("quick_grab_submitted", 3_000_000, request=2),
+        point("quick_grab_returned", 3_500_000, request=2),
+        point("quick_grab_ready", 10_000_000, request=2),
+        point("source_completed", 11_000_000, request=2),
+    ]
+    result = analyze(data)
+    assert result["trace_events_dropped"] == 3
+    assert result["intervals"]["gpu_submit_to_ready"]["p50_ms"] == 5.0
+    assert result["intervals"]["gpu_ready_to_source"]["p50_ms"] == 2.0
+    assert result["intervals"]["grab_submit_to_returned"]["p50_ms"] == 0.5
+    assert result["intervals"]["grab_returned_to_ready"]["p50_ms"] == 6.5
+    assert result["intervals"]["grab_ready_to_source"]["p50_ms"] == 1.0
+    assert result["intervals"]["capture_request_to_socket_queue"]["n"] == 2
+    assert result["intervals"]["capture_request_to_socket_queue"]["p50_ms"] == 14.5
+    assert result["intervals"]["qt_activity_hint_to_request"]["p50_ms"] == 1.0
+    assert result["intervals"]["core_issue_to_runtime_admit"]["p50_ms"] == 0.5
+    assert result["intervals"]["core_issue_to_socket_queue"]["p50_ms"] == 15.0
+    assert result["hint_to_request_is_noncausal_nearest_sample"]
+    assert result["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 2.25
+    assert result["intervals"]["render_pts_to_source"]["p50_ms"] == 1.0
+    assert result["intervals"]["render_pts_to_socket_queue"]["p50_ms"] == 7.5
+    assert result["content_change_to_present"] == "NOT_MEASURED"
+    # Duplicate encode identity must not silently overwrite the first
+    # timestamp or report a misleading encode-to-socket interval.
+    duplicated = analyze([
+        point("capture_request", 1_000_000, request=5),
+        point("rfb_encoded", 2_000_000, request=5, viewer=1, update=9),
+        point("rfb_encoded", 4_000_000, request=5, viewer=1, update=9),
+        point("rfb_socket_queued", 7_000_000, request=5, viewer=1, update=9),
+        point("rfb_encoded", 3_000_000, request=5, viewer=2, update=9),
+        point("rfb_socket_queued", 8_000_000, request=5, viewer=2, update=9),
+    ])
+    assert duplicated["request_identity_collisions_skipped"] == 0
+    assert duplicated["encode_identity_collisions_skipped"] == 1
+    assert duplicated["intervals"]["rfb_encode_to_socket_queue"]["n"] == 1
+    assert duplicated["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+    # Duplicate socket events and missing identities cannot create a latency sample.
+    invalid_wire = analyze([
+        point("capture_request", 1_000_000, request=7),
+        point("rfb_encoded", 2_000_000, request=7, viewer=1, update=1),
+        point("rfb_socket_queued", 4_000_000, request=7, viewer=1, update=1),
+        point("rfb_socket_queued", 5_000_000, request=7, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=7, viewer=0, update=0),
+        point("rfb_socket_queued", 6_000_000, request=7, viewer=0, update=0),
+    ])
+    assert invalid_wire["socket_identity_collisions_skipped"] == 1
+    assert invalid_wire["missing_wire_identity_events_skipped"] == 2
+    assert invalid_wire["intervals"]["rfb_encode_to_socket_queue"]["n"] == 0
+    assert invalid_wire["intervals"]["capture_request_to_socket_queue"]["n"] == 0
+    assert invalid_wire["intervals"]["core_issue_to_socket_queue"]["n"] == 0
+    assert invalid_wire["intervals"]["render_pts_to_socket_queue"]["n"] == 0
+    # Partial traces must report identity anomalies even without a valid
+    # capture request or the opposite wire endpoint.
+    socket_only = analyze([
+        point("capture_request", 1_000_000, request=10),
+        point("rfb_socket_queued", 4_000_000, request=10, viewer=1, update=1),
+        point("rfb_socket_queued", 5_000_000, request=10, viewer=1, update=1),
+    ])
+    assert socket_only["socket_identity_collisions_skipped"] == 1
+    assert socket_only["intervals"]["capture_request_to_socket_queue"]["n"] == 0
+    encode_only = analyze([
+        point("capture_request", 1_000_000, request=11),
+        point("rfb_encoded", 2_000_000, request=11, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=11, viewer=1, update=1),
+    ])
+    assert encode_only["encode_identity_collisions_skipped"] == 1
+    missing_only = analyze([
+        point("capture_request", 1_000_000, request=12),
+        point("rfb_socket_queued", 4_000_000, request=12),
+    ])
+    assert missing_only["missing_wire_identity_events_skipped"] == 1
+    no_capture = analyze([
+        point("rfb_encoded", 2_000_000, request=13, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=13, viewer=1, update=1),
+        point("rfb_socket_queued", 4_000_000, request=13),
+    ])
+    assert no_capture["request_identity_collisions_skipped"] == 1
+    assert no_capture["encode_identity_collisions_skipped"] == 1
+    assert no_capture["missing_wire_identity_events_skipped"] == 1
+    # A valid viewer remains measurable when another viewer's wire key
+    # collides, and repeated events count as one ambiguous identity.
+    mixed = analyze([
+        point("capture_request", 1_000_000, request=14),
+        point("rfb_encoded", 2_000_000, request=14, viewer=1, update=1),
+        point("rfb_socket_queued", 4_000_000, request=14, viewer=1, update=1),
+        point("rfb_socket_queued", 5_000_000, request=14, viewer=1, update=1),
+        point("rfb_encoded", 3_000_000, request=14, viewer=2, update=1),
+        point("rfb_socket_queued", 8_000_000, request=14, viewer=2, update=1),
+    ])
+    assert mixed["socket_identity_collisions_skipped"] == 1
+    assert mixed["intervals"]["capture_request_to_socket_queue"]["n"] == 1
+    assert mixed["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+
+    # Reversed JSONL order cannot alter the unique viewer pairing.
+    reversed_order = analyze([
+        point("rfb_socket_queued", 8_000_000, request=6, viewer=2, update=9),
+        point("rfb_encoded", 3_000_000, request=6, viewer=2, update=9),
+        point("capture_request", 1_000_000, request=6),
+    ])
+    assert reversed_order["intervals"]["rfb_encode_to_socket_queue"]["p50_ms"] == 5.0
+
+    # Negative: without quick_grab_ready the returned->ready interval must be
+    # absent rather than inferred from a later stage.
+    without_ready = analyze([
+        point("capture_request", 1_000_000, request=3),
+        point("quick_grab_submitted", 2_000_000, request=3),
+        point("quick_grab_returned", 2_500_000, request=3),
+        point("source_completed", 10_000_000, request=3),
+    ])
+    assert without_ready["intervals"]["grab_returned_to_ready"]["n"] == 0
+    assert without_ready["intervals"]["grab_ready_to_source"]["n"] == 0
+    assert without_ready["intervals"]["grab_submit_to_returned"]["p50_ms"] == 0.5
+    # Retry: publishImage() rejected the first ready image, so the same request
+    # re-runs submitted/returned/ready. Nearest-preceding pairing must keep the
+    # 1 ms adoption and 5 ms render, not charge the 100 ms retry gap.
+    retried = analyze([
+        point("capture_request", 1_000_000, request=4),
+        point("quick_grab_submitted", 2_000_000, request=4),
+        point("quick_grab_returned", 3_000_000, request=4),
+        point("quick_grab_ready", 8_000_000, request=4),
+        point("quick_grab_submitted", 108_000_000, request=4),
+        point("quick_grab_returned", 109_000_000, request=4),
+        point("quick_grab_ready", 114_000_000, request=4),
+        point("source_completed", 115_000_000, request=4),
+    ])
+    assert retried["intervals"]["grab_submit_to_returned"]["p50_ms"] == 1.0
+    assert retried["intervals"]["grab_returned_to_ready"]["p50_ms"] == 5.0
+    assert retried["intervals"]["grab_ready_to_source"]["p50_ms"] == 1.0
+    missing_retry_ready = analyze([
+        point("capture_request", 1_000_000),
+        point("quick_grab_submitted", 2_000_000),
+        point("quick_grab_returned", 3_000_000),
+        point("quick_grab_ready", 8_000_000),
+        point("quick_grab_submitted", 108_000_000),
+        point("quick_grab_returned", 109_000_000),
+        point("source_completed", 115_000_000),
+    ])
+    if (missing_retry_ready["intervals"]["grab_ready_to_source"]["n"] != 0
+            or missing_retry_ready["negative_or_out_of_order_pairs_skipped"] != 1):
+        raise AssertionError("a retry completion must not use the previous attempt's ready")
+    print("PASS frame trace analyzer self-test")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, help="HYREMOTE_FRAME_TRACE_FILE JSONL")
+    parser.add_argument("--output", type=Path, help="optional summary JSON")
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    if not args.input:
+        parser.error("--input is required unless --self-test")
+    with args.input.open("r", encoding="utf-8") as stream:
+        records = (json.loads(line) for line in stream if line.strip())
+        result = analyze(records)
+    output = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(output + "\n", encoding="utf-8")
+    print(output)
+
+
+if __name__ == "__main__":
+    main()

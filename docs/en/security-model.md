@@ -8,6 +8,10 @@ HyRemote is remote-access infrastructure. A working viewer connection does not m
 
 Capabilities marked as later work are not current product claims.
 
+## 2026-11-04 Stage 02 approved future security design (NOT IMPLEMENTED)
+
+Human approved H-02a: in future RFB-only, Native-only and Dual new-architecture runtimes, a trusted DeploymentAdmission policy must validate the app instance, allowed targets, actual network endpoint, security mode, initial view-only policy and trusted policy provenance **before opening any listener**. The old RFB configuration default stays `0.0.0.0:5921`, but a future new-architecture `start()` without admission must fail closed, without address/port fallback or security downgrade. Standard RFB remains independent; Native sessions, target grants, TLS username/password and no-downgrade are **future design requirements**. This section does **not** modify the presently shipped facts below, or imply Native/TLS/admission has been implemented. See [ADR-0008](adr/0008-stage02-human-approved-architecture-decisions.md).
+
 ## 1. Current security baseline
 
 The current product uses a bounded RFB 3.8 transport across the C++, QML, Generic, and QPA frontends.

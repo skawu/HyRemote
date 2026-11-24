@@ -12,6 +12,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <utility>
 
 #include "detail/component_factories.hpp"
 #include "detail/cursor_mapping.hpp"
@@ -29,6 +30,41 @@ int failures = 0;
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
+
+// The C++ std::function implementation is allowed to copy a target while
+// installing the callback at start() (notably MSVC). Record any copy only *after* start returns: callback publication must
+// not copy its function, regardless of whether that copy would allocate.
+template <typename Fn>
+struct CountPostStartCopiesCallback {
+    CountPostStartCopiesCallback(Fn fn, const bool *armed, int *postStartCopies)
+        : fn(std::move(fn)), armed(armed), postStartCopies(postStartCopies) {}
+    CountPostStartCopiesCallback(const CountPostStartCopiesCallback &other)
+        : fn(other.fn), armed(other.armed), postStartCopies(other.postStartCopies)
+    {
+        // Keep Qt's GUI event loop alive even if a copy occurs so a test
+        // failure reports the *count*, not an opaque MSVC 0xC0000409 abort.
+        // Copying after start is forbidden even when the callable is cheap.
+        if (*armed)
+            ++*postStartCopies;
+    }
+    CountPostStartCopiesCallback(CountPostStartCopiesCallback &&) noexcept = default;
+
+    template <typename... Args>
+    void operator()(Args &&...args) const
+    {
+        fn(std::forward<Args>(args)...);
+    }
+
+    Fn fn;
+    const bool *armed;
+    int *postStartCopies;
+};
+
+template <typename Fn>
+CountPostStartCopiesCallback<Fn> countPostStartCopies(Fn fn, const bool *armed, int *postStartCopies)
+{
+    return CountPostStartCopiesCallback<Fn>(std::move(fn), armed, postStartCopies);
+}
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 100)
 {
@@ -147,9 +183,14 @@ void testWidgetsFactoryAndOwnedFrame()
 
     std::optional<hyremote::RemoteFrame> received;
     int events = 0;
+    bool rejectPostStartCopy = false;
+    int postStartCopies = 0;
     CHECK(components.capture->start(
-        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
-        [&](const hyremote::CaptureEvent &) { ++events; }));
+        countPostStartCopies([&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+                    &rejectPostStartCopy, &postStartCopies),
+        countPostStartCopies([&](const hyremote::CaptureEvent &) { ++events; },
+                    &rejectPostStartCopy, &postStartCopies)));
+    rejectPostStartCopy = true;
 
     hyremote::CaptureRequest request;
     request.id = 7;
@@ -251,6 +292,7 @@ void testWidgetsFactoryAndOwnedFrame()
     probe.close();
 
     components.capture->stop();
+    CHECK(postStartCopies == 0);
 }
 
 void testOwnedTransientSurfaceCaptureInputAndIsolation()
@@ -413,9 +455,14 @@ void testDestroyedTargetReportsTargetLost()
 
     int frames = 0;
     std::optional<hyremote::CaptureEvent> lastEvent;
+    bool rejectPostStartCopy = false;
+    int postStartCopies = 0;
     CHECK(components.capture->start(
-        [&](hyremote::RemoteFrame) { ++frames; },
-        [&](const hyremote::CaptureEvent &event) { lastEvent = event; }));
+        countPostStartCopies([&](hyremote::RemoteFrame) { ++frames; },
+                    &rejectPostStartCopy, &postStartCopies),
+        countPostStartCopies([&](const hyremote::CaptureEvent &event) { lastEvent = event; },
+                    &rejectPostStartCopy, &postStartCopies)));
+    rejectPostStartCopy = true;
 
     hyremote::CaptureRequest request{11, hyremote::Clock::now()};
     CHECK(components.capture->requestFrame(request));
@@ -429,6 +476,7 @@ void testDestroyedTargetReportsTargetLost()
         CHECK(!lastEvent->recoverable);
     }
     components.capture->stop();
+    CHECK(postStartCopies == 0);
 }
 
 void testNormalizedInputIsQueuedAndDeliveredToChild()

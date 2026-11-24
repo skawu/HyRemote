@@ -1,10 +1,13 @@
 #include "rfb_client.h"
+#include "tool_diagnostic_session.hpp"
 
 #include <QColor>
 #include <QCoreApplication>
 #include <QEventLoop>
 #include <QHostAddress>
 #include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -101,10 +104,12 @@ QByteArray cursorMessage()
 class FakeRfbServer final : public QObject
 {
 public:
-    explicit FakeRfbServer(int width = 4, int height = 2, quint8 bitsPerPixel = 32)
+    explicit FakeRfbServer(int width = 4, int height = 2, quint8 bitsPerPixel = 32,
+                           QByteArray serverName = QByteArray("fake-rfb"))
         : m_width(width)
         , m_height(height)
         , m_bitsPerPixel(bitsPerPixel)
+        , m_serverName(serverName)
     {
     }
 
@@ -126,6 +131,8 @@ public:
     }
 
     quint16 port() const { return m_server.serverPort(); }
+    bool sawPointer() const { return m_pointer; }
+    bool sawKey() const { return m_key; }
 
 private:
     void readClient()
@@ -227,9 +234,8 @@ private:
         init.append(char(8));   // green shift
         init.append(char(16));  // blue shift
         init.append("\0\0\0", 3);
-        const QByteArray name("fake-rfb");
-        appendS32(init, name.size());
-        init += name;
+        appendS32(init, m_serverName.size());
+        init += m_serverName;
         m_socket->write(init);
         m_socket->flush();
     }
@@ -246,7 +252,275 @@ private:
     int m_width = 4;
     int m_height = 2;
     quint8 m_bitsPerPixel = 32;
+    QByteArray m_serverName;
 };
+
+
+// A malicious but protocol-shaped RFB peer. Its text is not a local error
+// string and must never be replayed into the Tool's UI, stderr or reports.
+class RejectingRfbServer final : public QObject
+{
+public:
+    enum class Kind {
+        SecurityTypes, SecurityResult, OversizedAuthReason,
+        OversizedRefusalReason, OversizedServerName
+    };
+
+    explicit RejectingRfbServer(Kind kind) : m_kind(kind) {}
+
+    bool listen()
+    {
+        if (!m_server.listen(QHostAddress::LocalHost, 0))
+            return false;
+        QObject::connect(&m_server, &QTcpServer::newConnection, this, [this] {
+            m_socket = m_server.nextPendingConnection();
+            if (!m_socket)
+                return;
+            QObject::connect(m_socket, &QTcpSocket::readyRead, this,
+                             [this] { onReadyRead(); });
+            m_socket->write("RFB 003.008\n", 12);
+            m_socket->flush();
+        });
+        return true;
+    }
+
+    quint16 port() const { return m_server.serverPort(); }
+
+private:
+    void onReadyRead()
+    {
+        if (!m_socket)
+            return;
+        m_in += m_socket->readAll();
+        if (m_stage == 0 && m_in.size() >= 12) {
+            m_in.remove(0, 12); // Client RFB 3.8 version
+            if (m_kind == Kind::SecurityTypes
+                || m_kind == Kind::OversizedRefusalReason) {
+                QByteArray refusal(1, char(0)); // SecurityTypes count=0
+                if (m_kind == Kind::OversizedRefusalReason) {
+                    appendS32(refusal, 4097);
+                    // Keep socket open, proving no body wait for a bad length.
+                } else {
+                    appendS32(refusal, maliciousReason().size());
+                    refusal += maliciousReason();
+                }
+                m_socket->write(refusal);
+                m_socket->flush();
+                m_stage = 2;
+            } else {
+                m_socket->write(QByteArray::fromHex("0101"));
+                m_socket->flush();
+                m_stage = 1;
+            }
+        }
+        if (m_stage == 1 && m_in.size() >= 1) {
+            m_in.remove(0, 1); // Client selects SecurityType None
+            QByteArray failure = QByteArray::fromHex("00000001");
+            if (m_kind == Kind::OversizedServerName) {
+                m_socket->write(QByteArray::fromHex("00000000"));
+                m_socket->flush();
+                m_stage = 3;
+                return; // wait for ClientInit, then send malformed ServerInit
+            }
+            if (m_kind == Kind::OversizedAuthReason) {
+                appendS32(failure, 4097);
+                // Deliberately keep the socket open without a body: the
+                // client must fail on the oversized length alone.
+            } else {
+                appendS32(failure, maliciousReason().size());
+                failure += maliciousReason();
+            }
+            m_socket->write(failure);
+            m_socket->flush();
+            m_stage = 2;
+        }
+        if (m_stage == 3 && m_in.size() >= 1) {
+            m_in.remove(0, 1); // ClientInit: shared session
+            QByteArray init;
+            appendU16(init, 4);
+            appendU16(init, 2);
+            init.append(char(32)); // bits per pixel
+            init.append(char(24)); // depth
+            init.append(char(0));  // little endian
+            init.append(char(1));  // true color
+            appendU16(init, 255);
+            appendU16(init, 255);
+            appendU16(init, 255);
+            init.append(char(0));
+            init.append(char(8));
+            init.append(char(16));
+            init.append("\0\0\0", 3);
+            appendS32(init, 4097); // illegal nameLength, body intentionally absent
+            m_socket->write(init);
+            m_socket->flush();
+            m_stage = 2;
+        }
+    }
+
+    static QByteArray maliciousReason()
+    {
+        QByteArray reason("secrets=remote-should-not-log");
+        reason.append("\nTOOL_CLIENT_STATE Connected");
+        reason.append(char(27));
+        reason.append("[31m");
+        return reason;
+    }
+
+    Kind m_kind;
+    QTcpServer m_server;
+    QTcpSocket *m_socket = nullptr;
+    QByteArray m_in;
+    int m_stage = 0;
+};
+
+
+void verifyServerNameIsNotControlGrant()
+{
+    const QByteArray names[] = {
+        QByteArray("view-only"),
+        QByteArray("control-enabled"),
+        QByteArray("operator\nTOOL_CLIENT_STATE Connected\nSERVERNAME_PRIVATE_MARKER\x1b[31m")
+    };
+    for (const QByteArray &remoteName : names) {
+        FakeRfbServer server(4, 2, 32, remoteName);
+        if (!server.listen()) {
+            CHECK(false && "fake metadata server could not listen");
+            continue;
+        }
+        RfbClient client;
+        QString seenName;
+        bool connected = false;
+        QEventLoop handshake;
+        QObject::connect(&client, &RfbClient::serverNameChanged, &handshake,
+                         [&](const QString &name) { seenName = name; });
+        QObject::connect(&client, &RfbClient::stateChanged, &handshake,
+                         [&](RfbClient::State state) {
+                             if (state == RfbClient::State::Connected) {
+                                 connected = true;
+                                 handshake.quit();
+                             }
+                         });
+        QTimer::singleShot(2000, &handshake, &QEventLoop::quit);
+        client.connectToHost(QStringLiteral("127.0.0.1"), server.port());
+        handshake.exec();
+        CHECK(connected);
+        CHECK(seenName == QString::fromUtf8(remoteName));
+        CHECK(!client.remoteControlEnabled());
+
+        client.sendPointer(1, 1, 1);
+        client.sendKey(0x41, true);
+        QEventLoop observe;
+        QTimer::singleShot(100, &observe, &QEventLoop::quit);
+        observe.exec();
+        CHECK(!server.sawPointer());
+        CHECK(!server.sawKey());
+
+        bool inputDelivered = false;
+        QEventLoop control;
+        server.onInputComplete = [&] {
+            inputDelivered = true;
+            control.quit();
+        };
+        client.setRemoteControlEnabled(true); // explicit local request
+        client.sendPointer(1, 1, 1);
+        client.sendKey(0x41, true);
+        QTimer::singleShot(2000, &control, &QEventLoop::quit);
+        control.exec();
+        CHECK(inputDelivered);
+        CHECK(server.sawPointer() && server.sawKey());
+        client.disconnectFromHost();
+        CHECK(!client.remoteControlEnabled());
+    }
+
+    RfbClient recycled;
+    recycled.setRemoteControlEnabled(true);
+    recycled.disconnectFromHost();
+    CHECK(!recycled.remoteControlEnabled());
+    recycled.setRemoteControlEnabled(true);
+    recycled.connectToHost(QStringLiteral("127.0.0.1"), 1);
+    CHECK(!recycled.remoteControlEnabled());
+    recycled.disconnectFromHost();
+}
+
+void verifyUntrustedRefusalReasons()
+{
+    struct Case {
+        RejectingRfbServer::Kind kind;
+        const char *expected;
+    };
+    const Case cases[] = {
+        {RejectingRfbServer::Kind::SecurityTypes,
+         "the remote endpoint refused the connection"},
+        {RejectingRfbServer::Kind::SecurityResult,
+         "remote authentication failed"},
+        {RejectingRfbServer::Kind::OversizedAuthReason,
+         "remote endpoint sent an oversized authentication reason"},
+        {RejectingRfbServer::Kind::OversizedRefusalReason,
+         "remote endpoint sent an oversized refusal reason"},
+        {RejectingRfbServer::Kind::OversizedServerName,
+         "remote endpoint sent an oversized server name"}
+    };
+    for (const auto &test : cases) {
+        RejectingRfbServer server(test.kind);
+        if (!server.listen()) {
+            CHECK(false && "refusing fake server could not listen");
+            continue;
+        }
+        RfbClient client;
+        ToolDiagnosticSession evidence;
+        evidence.beginAttempt(QStringLiteral("127.0.0.1"), server.port());
+        QString reported;
+        bool failed = false;
+        QEventLoop loop;
+        QObject::connect(&client, &RfbClient::errorOccurred, &loop,
+                         [&](const QString &message) {
+                             reported = message;
+                             evidence.observeError(message);
+                         });
+        QObject::connect(&client, &RfbClient::socketErrorObserved, &loop,
+                         [&](QAbstractSocket::SocketError error) {
+                             evidence.observeSocketError(error);
+                         });
+        QObject::connect(&client, &RfbClient::stateChanged, &loop,
+                         [&](RfbClient::State state) {
+                             evidence.observeState(state);
+                             if (state == RfbClient::State::Failed) {
+                                 failed = true;
+                                 loop.quit();
+                             }
+                         });
+        QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+        client.connectToHost(QStringLiteral("127.0.0.1"), server.port());
+        loop.exec();
+        CHECK(failed);
+        CHECK(client.state() == RfbClient::State::Failed);
+        CHECK(reported == QString::fromLatin1(test.expected));
+        CHECK(client.lastError() == reported);
+        CHECK(!reported.contains(QStringLiteral("secrets=")));
+        CHECK(!reported.contains(QStringLiteral("TOOL_CLIENT_STATE")));
+        CHECK(!reported.contains(QLatin1Char('\n')));
+        CHECK(!reported.contains(QChar(27)));
+        const QByteArray report = evidence.previewJson();
+        const auto diagnostic = QJsonDocument::fromJson(report).object();
+        CHECK(diagnostic.value(QStringLiteral("state")).toString()
+              == QStringLiteral("failed"));
+        CHECK(diagnostic.value(QStringLiteral("endpoint")).toString()
+              == QStringLiteral("[redacted]"));
+        CHECK(!report.contains("secrets="));
+        CHECK(!report.contains("TOOL_CLIENT_STATE"));
+        if (test.kind == RejectingRfbServer::Kind::OversizedAuthReason
+            || test.kind == RejectingRfbServer::Kind::OversizedRefusalReason
+            || test.kind == RejectingRfbServer::Kind::OversizedServerName) {
+            // True RFB 3.8 wire: an advertised 4097 length violates the
+            // protocol field budget, regardless of which handshake stage.
+            CHECK(diagnostic.value(QStringLiteral("lastFailure")).toString()
+                  == QStringLiteral("malformed-wire"));
+        } else if (test.kind == RejectingRfbServer::Kind::SecurityResult) {
+            CHECK(diagnostic.value(QStringLiteral("lastFailure")).toString()
+                  == QStringLiteral("security-mismatch"));
+        }
+    }
+}
 
 }  // namespace
 
@@ -256,6 +530,9 @@ int main(int argc, char **argv)
 
     CHECK(rfbWheelMaskForDelta(120) == 0x08);
     CHECK(rfbWheelMaskForDelta(-120) == 0x10);
+
+    verifyServerNameIsNotControlGrant();
+    verifyUntrustedRefusalReasons();
 
     {
         FakeRfbServer oversized(65535, 65535);

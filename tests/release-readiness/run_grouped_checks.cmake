@@ -18,6 +18,7 @@ if(HYREMOTE_READINESS_GROUP STREQUAL "facts-layout")
         check_documentation_paths.cmake
         check_licensing_boundary.cmake
         check_ci_environment_baseline.cmake
+        check_script_discipline.cmake
     )
 elseif(HYREMOTE_READINESS_GROUP STREQUAL "product-claims")
     set(_readiness_cases

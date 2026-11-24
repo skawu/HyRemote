@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "detail/mailbox.hpp"
 
@@ -21,8 +23,9 @@ std::string validateSessionConfig(const SessionConfig &config)
         return "capture.maxInFlight must be at least 1";
 
     if (config.capture.targetFramesPerSecond.has_value()
-        && !(*config.capture.targetFramesPerSecond > 0.0))
-        return "capture.targetFramesPerSecond must be positive when set";
+        && (!(*config.capture.targetFramesPerSecond > 0.0)
+            || !std::isfinite(*config.capture.targetFramesPerSecond)))
+        return "capture.targetFramesPerSecond must be finite and positive when set";
 
     if (config.capture.rejectedRequestRetryDelay.count() < 0)
         return "capture.rejectedRequestRetryDelay must not be negative";
@@ -221,12 +224,35 @@ struct Session::Impl
     bool transportStarted = false;
     bool workersCreated = false;
     std::size_t inFlight = 0;
+    // Preallocated once at start(maxInFlight). Each accepted request owns
+    // exactly one ID until its terminal FrameReady or rejection. A vector
+    // scan is O(maxInFlight), normally 2, with zero hot-path allocation.
+    std::vector<CaptureRequestId> outstandingIds;
     CaptureRequestId nextRequestId = 1;
     SessionStats stats;
     std::unique_ptr<detail::Mailbox> mailbox;
     std::thread schedulerThread;
     std::thread dispatcherThread;
     std::optional<TimePoint> nextIssueTime;  // pacing bookkeeping
+
+    // Requires Impl::mutex. An identified completion cannot release
+    // another request's credit, even when the provider repeats an old frame.
+    // Legacy SDK adapters may omit requestId. This retires the oldest
+    // available slot; when there is none, the caller still accepts valid
+    // no-ID frames to preserve the existing unscheduled-frame behavior.
+    static bool retireRequestLocked(Impl &impl,
+                                    std::optional<CaptureRequestId> requestId) noexcept
+    {
+        auto &ids = impl.outstandingIds;
+        const auto it = requestId
+            ? std::find(ids.begin(), ids.end(), *requestId) : ids.begin();
+        if (it == ids.end())
+            return false;
+        ids.erase(it); // CaptureRequestId is an integer; no allocation
+        impl.inFlight = ids.size();
+        impl.stats.inFlight = impl.inFlight;
+        return true;
+    }
 
     static void setFaultedLocked(Impl &impl, SessionErrorCode code, const std::string &message)
     {
@@ -317,22 +343,56 @@ struct Session::Impl
     // bookkeeping/enqueue work only and never touches the transport.
     static void onFrameReady(Impl &impl, RemoteFrame frame)
     {
-        const FrameValidationResult validation = validateFrame(frame);
-
+        FrameValidationResult validation;
         std::string timingReason;
         bool timingOk = false;
-        if (validation.ok)
-            timingOk = normalizeFrameTiming(frame, &timingReason);
+        try {
+            validation = validateFrame(frame);
+            if (validation.ok)
+                timingOk = normalizeFrameTiming(frame, &timingReason);
+        } catch (...) {
+            // Validation of an intentionally empty terminal completion can
+            // allocate a rejection string and throw under memory pressure.
+            // The adapter has ALREADY completed the request, so swallowing
+            // this exception at the outer callback boundary without retiring
+            // its credit would permanently exhaust maxInFlight after a few
+            // canceled Composite/Quick captures. Keep the normal validated
+            // frame's atomic debit+mailbox push below unchanged; only this
+            // exceptional path must settle its credit before returning.
+            {
+                std::lock_guard<std::mutex> lock(impl.mutex);
+                const bool matched = retireRequestLocked(impl, frame.requestId);
+                // A missing ID is a documented legacy source shape. Core
+                // historically accepted even unsolicited no-ID frames; keep
+                // that compatibility while enforcing IDs when supplied.
+                if (!matched && frame.requestId
+                    && impl.state == SessionState::Running && impl.mailbox) {
+                    // This branch is already handling allocation failure:
+                    // never allocate a second long diagnostic string here.
+                    // reportCallbackFailure below records the best-effort error.
+                    ++impl.stats.framesRejectedInvalid;
+                } else if (impl.state != SessionState::Running || !impl.mailbox)
+                    ++impl.stats.framesArrivedAfterStop;
+                else
+                    ++impl.stats.framesRejectedInvalid;
+            }
+            impl.cv.notify_all();
+            reportCallbackFailure(impl, "capture frame validation failed");
+            return;
+        }
 
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
 
-            // Every completion releases its in-flight slot, valid or not.
-            if (impl.inFlight > 0)
-                --impl.inFlight;
-            impl.stats.inFlight = impl.inFlight;
-
-            if (impl.state != SessionState::Running || !impl.mailbox) {
+            // A duplicate or unrelated RequestId is NOT a completion of
+            // some other outstanding capture request. Preserve that credit.
+            const bool matched = retireRequestLocked(impl, frame.requestId);
+            if (!matched && frame.requestId
+                && impl.state == SessionState::Running && impl.mailbox) {
+                ++impl.stats.framesRejectedInvalid;
+                impl.stats.lastFrameRejection =
+                    "duplicate or unknown capture RequestId";
+            } else if (impl.state != SessionState::Running || !impl.mailbox) {
                 ++impl.stats.framesArrivedAfterStop;
             } else if (!validation.ok) {
                 ++impl.stats.framesRejectedInvalid;
@@ -516,6 +576,9 @@ struct Session::Impl
             request.id = impl.nextRequestId++;
             request.requestTime = Clock::now();
 
+            // Invariant: admission already checked inFlight<maxInFlight and
+            // outstandingIds reserved that capacity before Running.
+            impl.outstandingIds.push_back(request.id);
             ++impl.inFlight;
             ++impl.stats.captureRequestsIssued;
             impl.stats.inFlight = impl.inFlight;
@@ -541,9 +604,9 @@ struct Session::Impl
             // The backend refused the request before scheduling any work: release the slot, count
             // it and retry after a bounded delay so a permanently unavailable target cannot spin.
             std::unique_lock<std::mutex> relock(impl.mutex);
-            if (impl.inFlight > 0)
-                --impl.inFlight;
-            impl.stats.inFlight = impl.inFlight;
+            // A synchronous source callback may already have completed this
+            // ID before requestFrame returned false. Never debit a peer.
+            retireRequestLocked(impl, request.id);
             ++impl.stats.captureRequestsRejected;
             if (threw) {
                 setFaultedLocked(impl, SessionErrorCode::ComponentFailure,
@@ -659,6 +722,9 @@ struct Session::Impl
         if (gate)
             gate->closeAndDrain();
 
+        // Stop the source before joining the scheduler. Shared Runtime's ObservedCaptureSource
+        // wakes a scheduler blocked inside requestFrame() from this stop() (ViewerCaptureDemand
+        // stop -> notify_all); joining first would wait for a wake we have not yet delivered.
         stopComponentQuietly(source);
 
         if (mailbox != nullptr)
@@ -692,6 +758,7 @@ struct Session::Impl
                 // historical facts about the run that just ended.
             }
             impl.mailbox.reset();
+            impl.outstandingIds.clear();
             impl.inFlight = 0;
             impl.stats.inFlight = 0;
             impl.teardownStarted = false;  // release the claim for the next claimant or start()
@@ -873,6 +940,17 @@ bool Session::start()
         }
 
         // Reset per-run observability so repeated start/stop cycles stay comparable.
+        // Allocate only during start(), not per frame. A failed reservation
+        // leaves the Session Stopped and all components untouched.
+        try {
+            impl.outstandingIds.clear();
+            impl.outstandingIds.reserve(impl.config.capture.maxInFlight);
+        } catch (...) {
+            impl.lastError = SessionError{
+                SessionErrorCode::ComponentFailure,
+                "could not reserve bounded Core capture request ledger", false};
+            return false;
+        }
         impl.stats = SessionStats{};
         impl.inFlight = 0;
         impl.nextRequestId = 1;
@@ -1157,22 +1235,28 @@ void Session::stop() noexcept
     }
 
     // Take the teardown claim atomically. A concurrent stop() (or an in-progress start() that is
-    // being cancelled) waits here until the current teardown has finished, and then either finds the
-    // run already `Stopped` or completes the transition of a faulted run. The claim also invalidates
-    // the run generation, which is how a concurrent start() learns that its run was cancelled.
+    // being cancelled) waits here until the current teardown has finished. A failed start already
+    // performed the only ordered teardown of that run; this caller only publishes Stopped.
     Impl::claimTeardown(impl);
 
-    bool alreadyStopped = false;
+    bool finished = false;
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
         if (impl.state == SessionState::Stopped) {
             // Another caller completed the teardown while we waited for the claim. Release it so
             // further waiting callers can finish as well, and touch nothing else.
             impl.teardownStarted = false;
-            alreadyStopped = true;
+            finished = true;
+        } else if (impl.state == SessionState::Faulted && !impl.sourceStarted
+                   && !impl.transportStarted && !impl.workersCreated) {
+            // Preserve the start-failure diagnostic and do not count a second ordered teardown
+            // for a run whose committed resources were already torn down.
+            impl.state = SessionState::Stopped;
+            impl.teardownStarted = false;
+            finished = true;
         }
     }
-    if (alreadyStopped) {
+    if (finished) {
         impl.cv.notify_all();
         return;
     }

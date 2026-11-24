@@ -77,7 +77,9 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
 
     for (int position = firstCallbackAllocation; position < allocationPositions; ++position) {
         RunningSession run;
-        run.prepare();
+        SessionConfig config;
+        config.capture.maxInFlight = 1; // one unambiguous admitted credit
+        run.prepare(config);
         if (!run.start()) {
             const std::optional<SessionError> startError = run.session->lastError();
             HYR_CHECK_MSG(false, "session did not start: "
@@ -89,6 +91,9 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
         // rejection reason turned out to be short enough for the small-string buffer, so this path may
         // allocate nothing at all and every position may pass without the injection landing anywhere - which
         // is why the reporting half of the contract is asserted by the capture-event case, not here.
+        // A Core callback for an unrequested frame is not a valid terminal.
+        // Wait until the source actually accepts request #1 before injecting.
+        HYR_CHECK(waitFor([&] { return run.source->requestCalls() >= 1; }));
         RemoteFrame frame;
 
         bool escaped = false;
@@ -118,14 +123,89 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
             HYR_CHECK(error->recoverable);
         }
 
-        // Frame delivery keeps working after a contained callback failure.
+        // New exact-ID accounting correctly requires an outstanding Core
+        // request even for a legacy unidentified frame. The old test sent a
+        // second frame immediately without synchronizing on a new admission,
+        // so it could accidentally assert success for unsolicited frames.
+        HYR_CHECK(waitFor([&] { return run.source->requestCalls() >= 2; }));
+        HYR_CHECK(waitFor([&] { return run.source->outstanding() > 0; }));
+
+        // The independent callback-exception regression must deliver a
+        // completion for a currently issued ID, not an unsolicited frame.
+        // The explicit legacy no-ID compatibility is tested separately.
+        const auto issued = run.source->requests();
+        HYR_CHECK(!issued.empty());
         RemoteFrame next = makeFrame();
+        next.requestId = issued.back().id;
+        const auto sentId = *next.requestId;
         const bool delivered = run.source->deliver(std::move(next));
         const hyremote::SessionStats stats = run.session->stats();
 
         HYR_CHECK(delivered);
-        HYR_CHECK(stats.framesAccepted >= 1);
+        HYR_CHECK_MSG(stats.framesAccepted >= 1,
+                      "position=" + std::to_string(position)
+                          + " inFlight=" + std::to_string(stats.inFlight)
+                          + " rejectedInvalid=" + std::to_string(stats.framesRejectedInvalid)
+                          + " rejectedTiming=" + std::to_string(stats.framesRejectedTiming)
+                          + " accepted=" + std::to_string(stats.framesAccepted)
+                          + " lastFrameRejection=" + stats.lastFrameRejection
+                          + " sourceOutstanding="
+                          + std::to_string(run.source->outstanding())
+                          + " sentId=" + std::to_string(sentId));
     }
+}
+
+// #790: an intentionally empty terminal from Composite/Quick is a valid
+// completion of an admitted capture request, even though its image is invalid.
+// validateFrame() forms a long rejection reason and can allocate/throw before
+// Core's ordinary in-flight debit. Inject precisely that first allocation and
+// prove the credit still returns and the next capture is admitted.
+HYR_TEST(coreInvalidTerminalValidationFailureRetiresCaptureCredit)
+{
+    RunningSession run;
+    SessionConfig config;
+    config.capture.maxInFlight = 1;
+    config.capture.targetFramesPerSecond = 2.0; // pace the next admission
+    // The fixture applies configuration when it CONSTRUCTS Session in
+    // prepare(), not in start(); otherwise the default maxInFlight=2 can
+    // mask precisely the credit-starvation regression tested below.
+    run.prepare(config);
+    HYR_CHECK(run.start());
+    // Core increments its credit before calling the source. Synchronize on
+    // the fake actually ACCEPTING request #1, not just Core's inFlight gauge,
+    // or OS thread scheduling can make the injection race an unissued request.
+    HYR_CHECK(waitFor([&] { return run.source->requestCalls() == 1; }));
+    HYR_CHECK_EQ(run.session->stats().inFlight, std::size_t{1});
+
+    RemoteFrame emptyTerminal;
+    // Test the *identified* path as well as the separate legacy no-ID
+    // completion test: an allocation exception still retires this ID.
+    emptyTerminal.requestId = run.source->requests().front().id;
+    bool escaped = false;
+    bool delivered = false;
+    t_remainingAllocations = 0;
+    try {
+        // Keep assertions OUTSIDE the injection window. The fake's delivery
+        // only acquires a shared callback pointer and does not allocate.
+        delivered = run.source->deliver(std::move(emptyTerminal));
+    } catch (...) {
+        escaped = true;
+    }
+    const bool validationActuallyAllocated = t_remainingAllocations == -1;
+    t_remainingAllocations = -1;
+
+    HYR_CHECK(delivered);
+    HYR_CHECK(!escaped);
+    HYR_CHECK(validationActuallyAllocated);
+    HYR_CHECK(run.session->state() == SessionState::Running);
+    HYR_CHECK_EQ(run.session->stats().framesRejectedInvalid, std::uint64_t{1});
+    // Without the credit-on-exception fix, the scheduler remains stuck at
+    // maxInFlight=1 and can never issue the next request.
+    HYR_CHECK(waitFor([&] { return run.source->requestCalls() >= 2; }));
+    HYR_CHECK_EQ(run.session->stats().maxInFlightObserved, std::size_t{1});
+
+    HYR_CHECK(run.source->deliver(makeFrame()));
+    HYR_CHECK(waitFor([&] { return run.session->stats().framesAccepted >= 1; }));
 }
 
 HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
@@ -194,8 +274,9 @@ HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 // away entirely, which is how an earlier revision of this case passed without ever allocating.
 HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
 {
+    // Parent and worker each use a local constant; no captured variable is
+    // required by either MSVC or Clang, and both still allocate 64 bytes.
     constexpr std::size_t probeBytes = 64;
-
     RunningSession run;
     run.prepare();
     HYR_CHECK(run.start());
@@ -203,7 +284,10 @@ HYR_TEST(coreAllocationInjectionIsScopedToTheArmingThread)
     std::atomic<bool> startWorker{false};
     std::atomic<bool> workerDone{false};
     std::atomic<bool> workerAllocated{false};
-    std::thread worker([&startWorker, &workerDone, &workerAllocated, probeBytes] {
+    std::thread worker([&startWorker, &workerDone, &workerAllocated] {
+        // Local constant works under both MSVC and Clang: no implicit or
+        // unused lambda capture, and the allocation remains real.
+        constexpr std::size_t probeBytes = 64;
         while (!startWorker.load(std::memory_order_acquire))
             std::this_thread::yield();
         try {

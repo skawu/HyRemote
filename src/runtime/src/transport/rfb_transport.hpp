@@ -68,12 +68,27 @@ struct RfbSecurityConfig
     // Private #789 feedback: whether the pixels actually served to an authenticated/normal
     // viewer changed since the previous observed frame, after watermark compositing.
     std::function<void(bool changed)> frameChangeObserver;
+    // Private feedback from the RFB worker to the producer-backed Runtime:
+    // true when no Normal viewer can consume another source frame: either
+    // every viewer has no outstanding FBU/ContinuousUpdates demand, or all
+    // viewers with demand are currently encoding / draining queued bytes.
+    // Qt queued bytes are NOT a kernel ACK, network rate or Viewer paint.
+    // Standalone/custom transports leave this unset and retain their pacing.
+    std::function<void(bool blocked, bool noViewerUpdateDemand)> frameBackpressureObserver;
+    // A Normal viewer's explicit non-incremental FBU request may warrant a
+    // fresh source capture even if its previous network output is still queued.
+    // This remains Runtime-private; standalone transports need no callback.
+    std::function<void()> frameFullRefreshObserver;
 };
 
 // Creates the product's bounded, dependency-light RFB correctness transport. The concrete type is
 // deliberately private to RemoteAccess: applications and hyremote-core only see hyremote::Transport.
 // The private source-tree declaration is exported only so repository tests can link against the
 // shared RemoteAccess DLL on Windows; it is not installed as part of the public SDK surface.
+// Private repository test: queued-notification rejection and exception must
+// release the single-flight token; not installed as product API.
+HYREMOTE_REMOTEACCESS_EXPORT bool runRfbNotificationPostFailureRegression();
+
 HYREMOTE_REMOTEACCESS_EXPORT std::unique_ptr<hyremote::Transport> createRfbTransport(
     const QHostAddress &listenAddress,
     quint16 port,

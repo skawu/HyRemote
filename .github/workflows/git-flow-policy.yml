@@ -523,6 +523,9 @@ jobs:
             requested="${requested#backmerge/v}"
           fi
           echo "requested release version: ${requested}"
+          # Apply the same fail-closed selector used by the tag audit before exporting lifecycle fields.
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_RELEASE_VERSION="${requested}" \
+            -P tests/release-readiness/release_scope.cmake
           python - "${authority_file}" "${requested}" <<'PY'
           import json, re, sys
           authority_path, requested = sys.argv[1], sys.argv[2]

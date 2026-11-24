@@ -39,7 +39,8 @@ struct CompositeRoutedPoint
 class CompositeTarget : public QObject, public ::HyRemote::detail::TargetComponentProvider
 {
 public:
-    using SurfaceUnavailableHandler = std::function<void(SurfaceId)>;
+    enum class SurfaceLoss { Hidden, IdentityChanged };
+    using SurfaceUnavailableHandler = std::function<void(SurfaceId, SurfaceLoss)>;
 
     explicit CompositeTarget(QObject *parent = nullptr);
 
@@ -52,6 +53,7 @@ public:
     void clearActiveSurface();
 
     CompositeTargetSnapshot captureSnapshot() const;
+    QSize initialFramebufferPixelSize() const override;
     std::optional<CompositeSurfaceSnapshot> surfaceById(SurfaceId id) const;
     std::optional<CompositeSurfaceSnapshot> activeSurface() const;
     std::optional<CompositeRoutedPoint> routeCanvasPoint(const QPoint &canvasPosition) const;
@@ -64,7 +66,7 @@ public:
         const ::HyRemote::detail::BuiltinTargetResolver &resolveBuiltinTarget) override;
 
 private:
-    void notifySurfaceUnavailable(SurfaceId id);
+    void notifySurfaceUnavailable(SurfaceId id, SurfaceLoss loss);
 
     ApplicationSurfaceModel m_model;
     QHash<SurfaceId, QPointer<QObject>> m_targets;

@@ -1,0 +1,88 @@
+#pragma once
+
+#include "detail/natural_snapshot_source.hpp"
+#include "detail/target_component_provider.hpp"
+#include "detail/viewer_capture_demand.hpp"
+
+#include <QQuickWindow>
+#include <windows.h>
+#include <cstdio>
+
+// Reuses the actual public Quick fallback. The observer verifies that the
+// target's render thread can obtain real RFB Viewer credit through the DLL.
+class CreditObserver final : public hyremote::CaptureSource,
+                             public HyRemote::detail::NaturalSnapshotSource
+{
+public:
+    CreditObserver(QQuickWindow &window, std::unique_ptr<hyremote::CaptureSource> fallback)
+        : m_window(window), m_fallback(std::move(fallback)) {}
+
+    void bindViewerDemand(std::weak_ptr<HyRemote::detail::ViewerCaptureDemand> demand) override
+    {
+        m_demand = std::move(demand);
+    }
+
+    bool tryPublishNaturalSnapshot(const hyremote::CaptureRequest &) override
+    {
+        return false; // This observer does not offer snapshots.
+    }
+
+    hyremote::CaptureCapabilities capabilities() const override
+    {
+        return m_fallback->capabilities();
+    }
+
+    bool start(hyremote::FrameReadyHandler frame, hyremote::CaptureEventHandler event) override
+    {
+        if (!m_fallback->start(std::move(frame), std::move(event)))
+            return false;
+        m_connection = QObject::connect(
+            &m_window, &QQuickWindow::frameSwapped, &m_window, [demand = m_demand] {
+                if (const auto gate = demand.lock()) {
+                    const auto credit = gate->tryNaturalFrameCredit();
+                    LARGE_INTEGER now;
+                    QueryPerformanceCounter(&now);
+                    std::fprintf(stdout, "CREDIT %lld %llu\n", now.QuadPart,
+                                 static_cast<unsigned long long>(credit));
+                    std::fflush(stdout);
+                }
+            }, Qt::DirectConnection);
+        return true;
+    }
+
+    void stop() noexcept override
+    {
+        QObject::disconnect(m_connection);
+        m_fallback->stop();
+    }
+
+    bool requestFrame(const hyremote::CaptureRequest &request) override
+    {
+        return m_fallback->requestFrame(request);
+    }
+
+private:
+    QQuickWindow &m_window;
+    std::unique_ptr<hyremote::CaptureSource> m_fallback;
+    std::weak_ptr<HyRemote::detail::ViewerCaptureDemand> m_demand;
+    QMetaObject::Connection m_connection;
+};
+
+class CreditObserverTarget final : public QObject, public HyRemote::detail::TargetComponentProvider
+{
+public:
+    explicit CreditObserverTarget(QQuickWindow &window) : m_window(window) {}
+
+    HyRemote::detail::TargetComponents createTargetComponents(
+        bool remoteInputEnabled, const HyRemote::detail::BuiltinTargetResolver &resolve) override
+    {
+        auto result = resolve(&m_window, remoteInputEnabled);
+        if (result.capture)
+            result.capture = std::make_unique<CreditObserver>(m_window, std::move(result.capture));
+        return result;
+    }
+
+private:
+    QQuickWindow &m_window;
+};
+

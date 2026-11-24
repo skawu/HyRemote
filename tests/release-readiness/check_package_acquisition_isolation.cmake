@@ -121,12 +121,24 @@ function(run_configure name source_text expect_success expected_fragment)
         list(APPEND configure_toolchain "-DCMAKE_CXX_COMPILER=${HYREMOTE_GATE_CXX_COMPILER}")
     endif()
 
+    # This isolated negative/positive package fixture can run concurrently
+    # with other CTests on Windows. MSVC's default vc140.pdb is shared by
+    # nested compiler probes; /FS serializes *writes* to that PDB and avoids
+    # C1041 without making all CTests serial or modifying product flags.
+    # Scope the environment strictly to this child configure.
+    if(CMAKE_HOST_WIN32)
+        set(_saved_msvc_cl "$ENV{CL}")
+        set(ENV{CL} "${_saved_msvc_cl} /FS")
+    endif()
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -S "${source_dir}" -B "${binary_dir}" ${configure_toolchain}
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr
     )
+    if(CMAKE_HOST_WIN32)
+        set(ENV{CL} "${_saved_msvc_cl}")
+    endif()
     set(output "${stdout}\n${stderr}")
 
     if(expect_success)

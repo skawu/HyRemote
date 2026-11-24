@@ -1,5 +1,7 @@
 # HyRemote 产品版本路线图：Qt 5.15 + Qt 6.8 首轮 GA，Qt 6.5 + Qt 6.12 后置
 
+> **2026-11-22 Human 再澄清：HyRemote 完整独立、View 只做源码版本消费**（[View #16](https://github.com/skawu/HyRemoteView/issues/16) / [View PR #17](https://github.com/skawu/HyRemoteView/pull/17) / [HyRemote #594](https://github.com/skawu/HyRemote/issues/594)）：HyRemote Runtime/SDK 和 HyRemoteView 属于同一 HyRemote 产品体系并联合开发，但**HyRemote 是独立研发、构建、维护、版本与发布的完整产品/SDK**；有自己的权威路线图、现行 machine train 和对外集成能力，不是 View 的附属。`skawu/HyRemoteView` 仅以 Git superproject 机制在 View 工作树中固定检出 `skawu/HyRemote` 子模块的一个 SHA，用于重现 View↔Runtime 集成配对；**源码嵌套不代表产品隶属/独立发布被取消**。HyRemote 自身版本不受 View 子模块更新、View 功能/G3/G4、共同 E2E 状态限制；View 对已声明的配对版本/组合须另外通过真实兼容性测试。既有发布和已排 SDK/Tool 任务不追改；G3/G4/Gate-D/Gate-I 和安全门槛无自动变更。
+
 
 > **2026-11-02 线下用户资源负担反馈 — 即时优先级调整（#609/#370/#374）：** 用户已反馈启用/使用 HyRemote 给原 Qt 应用带来明显资源负担，尚无足够可比的 CPU 增量、内存增量、GPU 或性能退化量化证据。**将 #609 提升为 P1 产品质量执行优先级，立即开展实测与有界优化**；它不是仅供 GA 后讨论的技术储备。该变更是跨版本维护任务优先级调整，**不新增 Feature 编号、不调整 V0.3.6.0 Tool S1 已规划目标、不修改 machine release train / mandatory / V0.4 RC 激活状态**。V0.3.5.0 已发现的 P2 发布阻断修复须经新的精确候选资格验证；性能专项可在隔离工作树中并行推进，须在大范围 V0.3.6 Tool S1 新功能开发前形成第一轮可审核的用户资源基线、瓶颈归因与最小改进或 NO-GO 结论。
 >
@@ -10,7 +12,7 @@
 
 > **Owner Decision 2026-10-27:** D1 popup visual is NOT_CONFIRMED and deferred to V0.4 qualification, not a V0.3.4 hard gate; D2 accepts bounded Qt5 C++/Widgets while Qt5 Quick/QML/Generic/QPA stay EXPERIMENTAL/UNSUPPORTED/REJECTED; D3 requires legal custom build.directory end-to-end; D4 makes --no-config internal diagnostic; D5 keeps --qt-prefix advanced; D6 makes existing build identity win over environment discovery and requires explicit switching; D7 makes RealVNC 7.15.1 the required maintained Viewer. Details and evidence links are recorded in #594/#603.
 
-> **唯一当前产品成果/版本规划事实源 / SINGLE CURRENT PRODUCT OUTCOME ROADMAP：** 本文件在 `develop` 上的已合并版本，决定已知用户成果的计划版本、顺序、依赖和条件状态。Issue #594 是 Owner 决策/变更台账，#605 是 Qt LTS 范围决策；它们不是第二份并行版本表。新 Owner 决策必须经审查 PR 同步本文件后才更新当前排程。`docs/versioning.md` / `docs/en/versioning.md` 只解释版本语义并提供摘要；`.github/release/release-trains.json` 独立决定机器登记的 train、mandatory children 和候选选择；`docs/compatibility.md` / `docs/en/compatibility.md` 只记录已有资格的实际支持单元。已发布发行说明/标签属于历史事实，不因新规划追改。旧路线图与本地分支副本不是权威。
+> **HyRemote 本仓产品成果/版本规划事实源 / HYREMOTE RUNTIME, SDK AND TOOL ROADMAP：** 本文件在 `develop` 上的已合并版本，决定本仓已知用户成果的计划版本、顺序、依赖和条件状态；不支配 HyRemoteView 独立客户端版本。Issue #594 是 Owner 决策/变更台账，#605 是 Qt LTS 范围决策；它们不是第二份并行版本表。新 Owner 决策必须经审查 PR 同步本文件后才更新当前排程。`docs/versioning.md` / `docs/en/versioning.md` 只解释版本语义并提供摘要；`.github/release/release-trains.json` 独立决定机器登记的 train、mandatory children 和候选选择；`docs/compatibility.md` / `docs/en/compatibility.md` 只记录已有资格的实际支持单元。已发布发行说明/标签属于历史事实，不因新规划追改。旧路线图与本地分支副本不是权威。
 
 > **按问题读取事实源：** 计划路线读本文件（`develop` 最新已合并版本）；当前 train/mandatory/RC 激活状态读 machine manifest 与 release gate；详细验收读责任 Issue 当前正文及其 PR/CI；已发布与 Supported 声明读 Release/tag、精确 SHA、兼容矩阵和实证。旧 Issue 段落、旧评论、旧 PR 分支不能单独推翻当前事实。
 
@@ -37,7 +39,7 @@
 
 | 要回答的问题 | 权威事实源 | 不可替代它的内容 |
 | --- | --- | --- |
-| **哪些用户成果排在何时、计划分配哪个版本？** | 本文件在 `develop` 上的最新已合并版本；本文件是唯一完整的跨版本产品成果/版本排序表 | Issue #594 的旧正文/评论、#605 的局部 Qt 决策、任何未合并 PR 或本地文件副本都不能形成另一张版本表 |
+| **哪些用户成果排在何时、计划分配哪个版本？** | 本文件在 `develop` 上的最新已合并版本；本文件是 HyRemote 本仓完整的跨版本成果/版本排序表；View 自己的版本由 View 仓库负责 | Issue #594 的旧正文/评论、#605 的局部 Qt 决策、任何未合并 PR 或本地文件副本都不能形成另一张版本表 |
 | **当前 train 是否登记、mandatory children 是什么、RC 能否激活/候选能否选择？** | `.github/release/release-trains.json` 与 release-scope gate；依 #24/#95 的机器准入和发布治理 | 本路线图里的 `PLANNED`、Issue 编号、PR 已合并或版本号本身都不构成激活/发布授权 |
 | **单个成果的需求、验收条件和实际进度是什么？** | 该成果的责任 Issue 当前正文/验收清单，加上关联 PR 的最新 HEAD、CI、独立 Review 和测试证据 | Issue 标题、历史评论、关闭状态本身或路线图摘要不能代替具体验收与实际状态 |
 | **功能是否已交付、某个 Qt/平台组合是否 Supported？** | 正式 Release/tag、不可变 release SHA、兼容矩阵及对应 exact-SHA 证据 | 规划文档、machine profile 存在、另一个 SHA 的测试通过都不能证明已发布或 Supported |
@@ -53,6 +55,15 @@
 5. 任何证据缺失都保留 `NOT_RUN` / `UNQUALIFIED`；不能从“有计划”“有 train”“CI 通过其他单元”推断产品支持。
 
 ## 产品北极星：让已有 Qt 应用轻松、可靠、安全地被远程使用
+
+### HyRemote 独立产品与 Viewer 受控兼容关系（2026-11-22 最新澄清）
+
+- **HyRemote 完整独立**：本仓负责 Runtime/SDK/设备端的代码、需求、公共 API、四条 Qt 接入路线、CI、SDK 安装包、版本计划、tag 与自身 release train；用户不安装 HyRemoteView 也应可正常使用。标准 RFB/VNC 兼容性、已发布支持矩阵和独立客户升级须保留。
+- **Viewer 不支配 Runtime**：HyRemoteView 在自己的 Git 工作树以 `components/HyRemote` 160000 gitlink 消费一个固定 HyRemote SHA。Git superproject 只是**依赖检出者**而非 HyRemote 产品 Owner、发行批准者或上层技术架构；View 的功能开发、测试或合并不得成为 HyRemote 独立研发/发布的强制前置条件。
+- **两条各自负责的版本计划**：本文件是 **HyRemote Runtime/SDK 与现有 HyRemoteTool 的权威版本计划**，不决定 HyRemoteView 独立客户端的版本号、激活或发布；View 自己维护客户端阶段与发布规划（View #1/#16）。**跨仓共享依赖**登记在 #594/#843 和相互关联的 Issue/PR 里，避免重复承诺或混淆已合格的 Runtime、View 和二者组合。
+- **跨仓联合开发**：需要改变协议/Server/Client 的功能，分别在各自仓库受审提交并遵循各自 CI；View 可选择更新 Gitlink + 锁文件固定一组源码，用于真实联合构建/测试。**HyRemote 组件迭代无需逐次等待 View 更新子模块**；既有 Tool S1 成果不自动迁移给 View。
+- **资格与发布**：HyRemote SDK/Runtime 依据本仓真实支持资格和机读发布规则独立发布；只有 View 对某 HyRemote 版本的兼容声明、View 配对或捆绑交付，才必须具备双 SHA、协议与安全正负例、Qt/OS/CPU 真机/真实环境 E2E、升级回滚证据。View tag 只标 View 交付和明确已验证的配对，不代替 HyRemote SDK tag；源 SHA 固定不是互通 PASS。G3 PoC-only、Gate-D NOT_FROZEN、Gate-I NOT_AUTHORIZED 均保持。
+- **正式设计独立性**：V15/V8 中已批准的独立 Runtime/Viewer 进程与信任/协议职责继续有效；旧“两个完全不协作产品”与本次“一套体系”之间只修订组织协作描述，不默默削弱 HyRemote 独立性。正式 DOCX 的受控勘误及技术 Gate 仍由 #843 单独审签。
 
 **产品优先级的来源是用户任务和真实现场反馈，而不是版本号或工程工作包。** HyRemote 的完整产品生态包括嵌入客户 Qt 程序的 SDK/Runtime、用于远程访问与诊断的 HyRemoteTool，以及通过独立契约协同的官方 Viewer 客户端；不把这些组件误当成各自封闭的技术项目。单一 Qt-free Core、单一 Shared Runtime 和四条对等接入路线，是为了持续降低用户使用成本，不是产品目的本身。
 
@@ -92,6 +103,30 @@
 | **V0.4.0.0** | **Release Candidate 资格验证，不是功能开发** | **#235/#343/#57/#370/#602/#269**；只冻结并证明已在 V0.3 家族实现的 Windows Qt5.15/6.8 真实适用单元和已交付 Tool/Host 功能，真实 Viewer、安装/安全/性能/回滚、CI、P1/P2；不承诺未实测 Docker/Linux | **CONDITIONAL_RC / NOT_ACTIVE**，`active:false` 保持；缺实现即退回相应 V0.3.x，不准由本地 Owner 以 V0.4 做功能开发 |
 | **V1.0.0.0** | **Windows 第一版 GA / 长期 SDK 和支持合同** | **#33/#95/#57**；只提升已认证的 RC 支持矩阵；公开 API、二语安装/安全限制、Qt Kit/ABI/维护窗口与制品 SHA；#602 已完成 V1 继承 26 项 machine mandatory 对账，V1 只保留 11 条可关闭 Windows GA 门禁（台账见 [GA 范围对账](v1-ga-scope-reconciliation-2026-10-28.md)） | **GA_PLANNED / NOT_RELEASED**；Qt6.5/6.12、Linux/ARM64 非首版 GA 门禁 |
 
+### A.1 已批准 V15/V8 产品设计 → 现有版本任务的执行追溯（2026-11-22，#1024）
+
+> **这是对既有路线图的来源与责任校准，不是新增发行计划或 Gate-I 授权。** Human 在 [#827](https://github.com/skawu/HyRemote/issues/827#issuecomment-6631295645) 已正式批准 **`HYR-PD-001/V15`** / **`HYR-ARCH-001/V8`**，高于 2026-10-23 版早期产品职责叙述；版本成果的编号、排期、激活状态仍只以**本文件 A/B 总表**为准，机器状态仍以 `.github/release/release-trains.json` 为准。详细责任与缺口总控 [#1024](https://github.com/skawu/HyRemote/issues/1024)，全产品模块设计 [#843](https://github.com/skawu/HyRemote/issues/843)。
+>
+> **正式来源追踪不重建**：[V15 56/56 条行为/负例设计索引](module-detail-w00-v15-behavior-trace-2026-11-05.md)、[V8 99/99 节与 C/E/F 附录要求索引](module-detail-w00-v8-architecture-contract-index-2026-11-05.md)、[V15 表6 31/31 场景→XP 测试设计](module-detail-w00-v15-table6-xp-coverage-2026-11-05.md)、[14 模块 D1–D5 / Gate-D/Gate-I 依赖](module-detail-d5-unified-plan-human-decision-2026-11-05.md)。索引 `MAPPED_NOT_TESTED` / `INDEXED_CONTRACT_REVIEW_PENDING` 不等于正式 DOCX 全文原子审签或产品测试 PASS；批准的正式 DOCX 以 #827 的文件 SHA 识别，本仓库未保存二进制，不能将本 MD 当其替身。
+
+| 需求源和模块责任（不另造模块） | 目前产品用户成果 / 版本归属 | 现有责任 Issue 与强制分解入口 | 开发/验收 Gate 与当前状态 |
+| --- | --- | --- | --- |
+| V15 §3.1–3.4、§13.1/13.6；V8 §4；F-03、X-01 | 四 Qt 前端共享 Runtime，V0.3.4.0 已发布适用 Kit 单元；V0.4 仅证据资格 | #603/#265/#57；正式 Kit、ABI、source/installed consumer 和四入口实际支持清单 | 只维护已合格 Qt5.15/Qt6.8 cells，未测不得作为 Supported |
+| V15 §3/§10/§11；F-03、F-06、X-01 | **V0.3.5.0** 宿主配置/状态/密钥路径与静态文字水印，`#591 → #589` | #591/#589 均已关闭实施任务；维护/验收 #95/#922，不能重开重写已有功能 | 最终同 SHA 真实 Viewer 的文本、配置权限、重启、Raw/TRLE/Resize、多观众和本地画面不变；**发布尚未准入** |
+| V15 §4.3/§11.4/§13.4/§14；V8 §6；F-02、X-02 | 现行用户可用性修复 **跨版本维护 P1**，不延后成 V1.2 ARM 专属功能 | #609/#789/#567/#790/#922/#1016；已合并 [PR 1021](https://github.com/skawu/HyRemote/pull/1021)、[PR 1023](https://github.com/skawu/HyRemote/pull/1023)、[PR 1017](https://github.com/skawu/HyRemote/pull/1017)、[PR 1019](https://github.com/skawu/HyRemote/pull/1019) 的源码修复 | 源码与 Qt CI 已验 ≠ 0/1/2 Viewer 同 SHA 可见 P95/CPU/内存以及 ARM64 现场 PASS；V0.3.5.0 HOLD 直到 #95 裁决 |
+| V15 §8.1–8.5/§11.3；V8 §11；V-01..V-03、T-01 | **V0.3.6.0** 既有 Tool S1 交付仍按本表计划，**官方 HyRemoteView** 与独立 Runtime 属于同一产品体系，但各自拥有自主研发/交付资格；并与现有 HyRemoteTool 代码及交付范围明确区分 | Tool #579/#581–#586/#590；[HyRemoteView G3 issue 5](https://github.com/skawu/HyRemoteView/issues/5) / [issue 9](https://github.com/skawu/HyRemoteView/issues/9)、设计 #843 D2/D4 | **独立性和联合协作已由 Human 明确；实际 Tool→View 任务迁移仍需 #594 旧→新成果审定，不静默删减已排 Tool 成果**；G3 未通过、Gate-D 未冻结、Gate-I 未授权，不提前开发 Native/Managed 官方客户端 |
+| V15 §5–7/§9–10；V8 §5–9/附录 A–C；F-04/F-05/F-06、V-01/V-02/V-03 | 既有 RFB 维护随已发产品；Native 1.0/设备 TLS/Grant/隐私是完整产品的设计/未来独立资格，**不得擅自放入 V0.3.5 或 V1 GA** | #843 D1/D2 + #246 + [D5 技术实施 DAG](module-detail-d5-unified-plan-human-decision-2026-11-05.md) | Gate-D 合同/协议与负例审签 → 实证 G3/安全 PoC → Human Gate-I 适用范围准入 → RFB/Native 各自真实产品验收；当前未获实现批准 |
+| V15 §8.6/8.7/13.8/13.9；V8 §3.6/8.7/9.7/10.6/11.6/16.6；E-01/G-01 | **V1.1.0.0 战略条件计划**：同一 **HyRemoteView 内置工厂 Edge** 与可选 Gateway；Direct 永久离线 | #190、#843 D3、[Stage05 S05-A..I](stage05-managed-edge-implementation-dag-2026-11-04.md)；Edge 12 个场景 | #190 NOT_ACTIVATED；Gate-D/G3/安全/独立 Gate-I 后才可执行产品代码。禁止独立工厂 Sidecar/Support Bridge、任意内网代理、明文 RFB 公网伪安全、云代替设备 Grant |
+| V15 §3.4/§12/§14；V8 §4/§14–16；X-01/X-02 | V0.3.7 Docker 条件 / V0.4 RC 资格 / V1.0 Windows GA / V1.0.1 Qt6.5 + V1.0.2 Qt6.12 **仅 GA 后** | #592/#235/#33/#95/#605 | Docker 真实 Qt App、volume/recreate、权限证据；RC 不补功能；Qt6.5/6.12 未测不插入 GA |
+| V15 §11.4/§13.2；V8 Qt/资源合同；F-02/X-02 | V1.2.0.0 工业 ARM64/Qt Quick 与 V1.2.1 Wayland 仅独立合格后扩展；**已有用户缺陷仍立即维护** | #7/#236/#149/#203/#346、现行 #789/#567/#790 | Qt 后端能力选路+公共 Qt 安全回退，不按 RK3588/Windows 硬编码通用架构；真实 BSP/Kit/显示/触控/资源另行资格 |
+
+**特别冲突和下一步：**
+
+1. 本文件旧 V1.1.0.0 行中 `Edge Connector` 易被误读为工厂另装软件；已按 **#827 获批的 V15** 修正为“HyRemoteView 产品内部 Edge”，不改变 `V1.1.0.0 STRATEGIC_CONDITIONAL` / #190 activation 和原 Gateway 技术 Gate。历史 Sidecar 方案只作为 #190 的历史记录。
+2. V15 Human H-T01=A 已明确 Tool/HyRemoteView 产品边界，而早期 #579 的 D+A Tool S1 包含远程会话交互。**历史排程未自动废止**；Human 已指定 View 使用 Git 子模块固定 HyRemote 源码版本，同时 HyRemote 仍独立研发和发布，如要移动、缩减、调整已排 HyRemoteTool 功能，须先在 #594 作本仓产品影响决议并走受审路线图 PR；View 自己决定其版本计划，涉及 HyRemote 端接口/功能依赖时通过相互关联的跨仓 Issue/PR 协商，不反向支配 HyRemote 版本。
+3. 需求追踪统一使用 `V15 §/表6 场景 → V8 §/附录 → D1–D5 模块/合同 → 责任 Issue → 本仓 HyRemote 版本／View 自主版本及协议组合 → 适用 Gate-D/G3/I → 实际 PR/CTest/Viewer/设备记录 → Gate-R`。无证据填 `NOT_RUN`，现发维护不等待尚未获授权的全产品 Gate-I。
+4. V15/V8 正式 Word 二进制及逐原子技术签收的受控审查仍归 #843；本表只引用已审结构索引和获批事实，不把本次 GitHub 校准当作 56/99 全条技术审查完成。
+
 ### B. GA 后具体版本目标（规划号可调整，默认均未激活）
 
 | 计划版本 | 已知独立用户成果 | 责任 / 前置依赖 | 当前规划态 |
@@ -103,7 +138,7 @@
 | **V1.0.5.0** | **Logo/图片水印**：与已合格文字水印共用服务器端远端帧输出；尺寸、透明、资产安全处理 | #593，必须 **在 V1 GA 与 V0.3.5 文字水印完成之后**；具体格式/组合方式需 Owner 确认 | **PLANNED / POST_GA** |
 | **V1.0.6.0** | **受限工作站的免安装远程 Viewer 方案**：便携客户端或有证据的无安装方案 | #204；先明确许可、安全、浏览器/便携平台限制，再选真实形态，不能预称已有 Web Viewer | **CONDITIONAL / POST_GA** |
 | **V1.0.7.0** | **经授权的文本剪贴板同步**：操作员显式授权、只传文本、隐私/安全边界可测 | #171；需 Threat Model、权限与 Viewer 双向兼容测试，未准入不得默认开放 | **CONDITIONAL / POST_GA** |
-| **V1.1.0.0** | **非可信网络远程访问产品阶段**：外向 Edge Connector + 可自托管 Gateway，在 LAN 产品之外独立提供安全可运维通路 | #190；独立安全架构、认证/证书/Threat Model、连接稳定性、运维与真实现场接受 | **STRATEGIC_CONDITIONAL**；不能用现有明文 RFB 冒称公网安全 |
+| **V1.1.0.0** | **非可信网络远程访问产品阶段**：工厂 **HyRemoteView 内置 Edge（同产品安装/升级、默认不共享）** + 可选云端或自托管 Gateway，在 LAN Direct 之外提供受管安全通路 | #190；独立安全架构、认证/证书/Threat Model、连接稳定性、运维与真实现场接受 | **STRATEGIC_CONDITIONAL**；不能用现有明文 RFB 冒称公网安全 |
 | **V1.1.1.0** | **受认证 Session Operations**：会话标识/准入/操作/终止等真正可用公共能力 | #170；先建立身份和权限模型/并发场景、公开 API/兼容策略、用户场景，避免虚构已存在的会话管理 | **STRATEGIC_CONDITIONAL** |
 | **V1.2.0.0** | **真实工业 Qt Quick/ARM64 低侵入交付**：将现有 HMI 应用低成本启用远控，Quick-only 不额外加载 Qt Widgets，保留本地触控/显示 | **#149/#203/#7/#236/#18/#154**；准确 RK3588/Buildroot/EGLFS 参考 Kit 与性能/依赖正反例；QtPrivate/QPA-EGLFS #148 单元只能依 GO/NO-GO 判定真实支持范围 | **CONDITIONAL / POST_GA**；有硬件和可复现实机证据后才准入，不重启 Windows GA 物理门禁 |
 | **V1.2.1.0** | **Linux Wayland 原生平台可用性**：原生 Qt 程序在明确的 Wayland Kit 上看/控/部署，保持桌面输入与正确平台身份 | **#346/#148/#563**；先 Linux x86_64 Qt6.8 真实 Wayland 用户场景，按 C++/QML/Generic/QPA 逐单元验收，XWayland 不能冒充 native | **CONDITIONAL / POST_GA**；真实环境和平台兼容证据门槛 |
@@ -136,7 +171,7 @@
 4. **版本目标变更**：新的 Owner 决定先在 #594 提交“旧版号→新版号、为什么、谁受影响、依赖、机器是否激活、CI/用户影响”，再走独立路线图 PR 同步本表、中英文 `versioning`、对应 Issue/WBS；只有 **激活/发布** 才修改 `release-trains.json`；退休或重排的 *仅规划* 编号保留历史记录，不复用已发布 tag。
 5. **用户体验和产品闭环优先**：按上述五类角色/任务收集真实问题；开发从用户旅程的失败点设计可交付结果，分配版本号是为了排程，不是按版本号凑功能。公开版本完成后持续观察接入困难、远程交互成功率、实际画面刷新、控制安全、诊断可理解性和跨 Kit 回归；基线/量化指标由真实测量冻结，不造承诺。自 V1.0 往后继续覆盖嵌入式/Wayland/Touch/业务控制/文件/增强客户端，不在 V1.1 后停止规划。
 6. **每个已规划版本至少具备**：一个确切版本号、一个用户可验收结果、Owner Issues、前置依赖、明确不包含项、目标 Windows/Linux/Kit 范围、验收证据、状态。Issue 关闭 != Feature 已发布；FEATURE_PLANNED → ACTIVATED_DEV → IMPLEMENTED → QUALIFIED → RELEASED，候选和 RC 分开。
-7. **本地与云端责任**：云端 Owner 维护唯一全量版本表、版本冲突诊断与 release train 分类，Agent 执行代码/CI/PR/review，Human 只负责需真实 Windows/Viewer/设备或 GitHub 人工授权的节点。本地 Owner 只能使用本表的**当前明确开发版本**，不得自建平行 V0.4 功能计划或从“计划号”生成 release tag。
+7. **本地与云端责任**：HyRemote 云端 Owner 维护本仓权威版本表、版本冲突诊断与本仓 release train 分类，Agent 执行代码/CI/PR/review，Human 只负责需真实 Windows/Viewer/设备或 GitHub 人工授权的节点。本地 Owner 只能使用本表的**当前明确开发版本**，不得自建平行 V0.4 功能计划或从“计划号”生成 release tag。
 
 ## 一、交付对象与版本定义
 

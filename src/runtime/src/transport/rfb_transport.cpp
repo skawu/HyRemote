@@ -2,6 +2,7 @@
 
 #include <QAbstractSocket>
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QMetaObject>
 #include <QObject>
@@ -16,16 +17,20 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "hyremote/core/storage.hpp"
+#include "detail/perf_probe.hpp"
 #include "rfb_delivery_state.hpp"
 #include "rfb_trle.hpp"
 
@@ -209,11 +214,11 @@ std::uint32_t scaleChannel(std::uint8_t value, std::uint16_t max)
     return (static_cast<std::uint32_t>(value) * static_cast<std::uint32_t>(max) + 127U) / 255U;
 }
 
-void appendEncodedPixel(QByteArray &out,
-                        std::uint8_t r,
-                        std::uint8_t g,
-                        std::uint8_t b,
-                        const PixelSpec &spec)
+void packEncodedPixel(std::uint8_t *out,
+                      std::uint8_t r,
+                      std::uint8_t g,
+                      std::uint8_t b,
+                      const PixelSpec &spec)
 {
     const std::uint32_t value = (scaleChannel(r, spec.redMax) << spec.redShift)
                                 | (scaleChannel(g, spec.greenMax) << spec.greenShift)
@@ -221,11 +226,24 @@ void appendEncodedPixel(QByteArray &out,
     const int bytesPerPixel = spec.bitsPerPixel / 8;
     if (spec.bigEndian) {
         for (int i = bytesPerPixel - 1; i >= 0; --i)
-            out.append(static_cast<char>((value >> (i * 8)) & 0xffU));
+            *out++ = static_cast<std::uint8_t>((value >> (i * 8)) & 0xffU);
     } else {
         for (int i = 0; i < bytesPerPixel; ++i)
-            out.append(static_cast<char>((value >> (i * 8)) & 0xffU));
+            *out++ = static_cast<std::uint8_t>((value >> (i * 8)) & 0xffU);
     }
+}
+
+// Cursor pixels use the same RFB channel scaling/byte order, but their
+// payloads are tiny and retain the existing append-style framing.
+void appendEncodedPixel(QByteArray &out,
+                        std::uint8_t r,
+                        std::uint8_t g,
+                        std::uint8_t b,
+                        const PixelSpec &spec)
+{
+    std::uint8_t bytes[4]{};
+    packEncodedPixel(bytes, r, g, b, spec);
+    out.append(reinterpret_cast<const char *>(bytes), spec.bitsPerPixel / 8);
 }
 
 hyremote::KeyCode keyCodeFromKeysym(std::uint32_t keysym)
@@ -399,6 +417,23 @@ struct SharedFrameState
     bool notificationPending = false;
 };
 
+// The producer has already set notificationPending=true. Returning false
+// from the Qt queued invoke without rolling it back leaves all subsequent
+// frames unnotified, because only frameAvailable() normally clears the flag.
+// On either rejection or allocation exception, release the one-shot token
+// and let the caller escalate through Core's transport failure boundary.
+template<typename Post>
+bool postFrameNotification(SharedFrameState &frames, Post &&post) noexcept
+{
+    try {
+        if (std::forward<Post>(post)())
+            return true;
+    } catch (...) {}
+    std::lock_guard<std::mutex> lock(frames.mutex);
+    frames.notificationPending = false;
+    return false;
+}
+
 enum class ClientPhase {
     AwaitVersion,
     AwaitSecurityChoice,
@@ -413,9 +448,57 @@ enum class ClientEncoding {
     Trle,
 };
 
+// #967: one FramebufferUpdate can be shared by Viewers whose wire contract is
+// byte-for-byte identical. Fixed-SHA CPU evidence (docs/internal/evidence/
+// 962-realvnc-matrix-4eb45ec) shows 1 Viewer = 41 encodes / 15.1 MiB and
+// 2 Viewers = 82 encodes / 30.2 MiB over the same 40 s window at essentially
+// the same capture count: each extra Viewer repeats the whole-frame pixel
+// conversion, TRLE palette work and the multi-MiB QByteArray allocation for
+// the SAME served frame. The key below covers every input that can change a
+// wire byte; the cache never crosses a served frame or a zero-viewer edge.
+inline bool sameRfbPixelSpec(const PixelSpec &a, const PixelSpec &b) noexcept
+{
+    return a.bitsPerPixel == b.bitsPerPixel && a.depth == b.depth
+           && a.bigEndian == b.bigEndian && a.trueColor == b.trueColor
+           && a.redMax == b.redMax && a.greenMax == b.greenMax
+           && a.blueMax == b.blueMax && a.redShift == b.redShift
+           && a.greenShift == b.greenShift && a.blueShift == b.blueShift;
+}
+
+struct SharedFramebufferUpdate
+{
+    // Strong reference: a bare pointer can be recycled by a newer frame (ABA)
+    // and make an old encoded FBU look valid for new pixels.
+    std::shared_ptr<const hyremote::FrameStorage> storage;
+    PixelSpec pixels{};
+    ClientEncoding encoding = ClientEncoding::Raw;
+    bool resized = false;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    hyremote::PixelFormat pixelFormat = hyremote::PixelFormat::Unknown;
+    hyremote::AlphaMode alphaMode = hyremote::AlphaMode::Opaque;
+    std::vector<RfbRect> rects;
+    QByteArray bytes;
+
+    bool matches(const std::shared_ptr<const hyremote::FrameStorage> &source,
+                 const PixelSpec &spec, ClientEncoding preferred, bool isResized,
+                 std::uint16_t frameWidth, std::uint16_t frameHeight,
+                 hyremote::PixelFormat format, hyremote::AlphaMode alpha,
+                 const std::vector<RfbRect> &damageRects) const noexcept
+    {
+        return storage == source && sameRfbPixelSpec(pixels, spec)
+               && encoding == preferred && resized == isResized
+               && width == frameWidth && height == frameHeight
+               && pixelFormat == format && alphaMode == alpha
+               && rects == damageRects && !bytes.isEmpty();
+    }
+};
+
 struct ClientState
 {
     QPointer<QTcpSocket> socket;
+    std::uint64_t traceViewerId = 0; // local per-listener connection identity
+    std::uint64_t traceUpdateSeq = 0; // local sequence, never transmitted
     ClientPhase phase = ClientPhase::AwaitVersion;
     QByteArray input;
     // The fresh random challenge this connection was given, kept only until its response is verified.
@@ -429,6 +512,8 @@ struct ClientState
     qint64 lastCursorPollMs = -1;
     bool continuousEnabled = false;
     bool continuousRequestArmed = false;
+    // After DesktopSize, only a fresh explicit full request can resume pixels.
+    bool awaitingResizeRefresh = false;
     RfbRect continuousRegion;
     ClientEncoding preferredEncoding = ClientEncoding::Raw;
     RfbUpdateState delivery;
@@ -512,13 +597,54 @@ public:
             socket->deleteLater();
         }
         m_clients.clear();
+        publishCaptureBackpressure();
         m_observedFrame.reset();
-        m_servedFrame.reset();
+        m_sharedUpdate.reset();
+        m_lastComparedFrameUnchanged = false;
         m_decorationFailed = false;
         m_keyHolderCounts.fill(0);
         m_buttonHolderCounts.fill(0);
         m_onInput = {};
         m_onEvent = {};
+    }
+
+    void publishCaptureBackpressure()
+    {
+        if (!m_security.frameBackpressureObserver)
+            return;
+        bool haveNormalViewer = false;
+        bool anyReadyForFreshFrame = false;
+        bool allNoDemandAndDrained = true;
+        for (const auto &entry : m_clients) {
+            const ClientState &client = *entry.second;
+            if (client.phase != ClientPhase::Normal || !client.socket)
+                continue;
+            haveNormalViewer = true;
+            const bool readyToConsume =
+                client.socket != m_encodingSocket && client.socket->bytesToWrite() == 0;
+            const bool requested = client.delivery.hasOutstandingRequest();
+            if (requested || !readyToConsume)
+                allNoDemandAndDrained = false;
+            // One fast requesting viewer keeps shared capture active even if
+            // other viewers are still decoding/receiving their prior update.
+            if (requested && readyToConsume)
+                anyReadyForFreshFrame = true;
+        }
+        const bool blocked = haveNormalViewer && !anyReadyForFreshFrame;
+        const bool noDemand = blocked && allNoDemandAndDrained;
+        if (blocked == m_backpressureReported && noDemand == m_noDemandReported)
+            return;
+        m_backpressureReported = blocked;
+        m_noDemandReported = noDemand;
+        m_security.frameBackpressureObserver(blocked, noDemand);
+    }
+
+    std::size_t normalViewerCount() const
+    {
+        return static_cast<std::size_t>(std::count_if(
+            m_clients.begin(), m_clients.end(), [](const auto &entry) {
+                return entry.second->phase == ClientPhase::Normal;
+            }));
     }
 
     void releaseIdleFrameCaches()
@@ -527,13 +653,17 @@ public:
         // their last observed/marked pixels for immediate first-FBU and exact
         // incremental damage, even when no Viewer is connected.
         m_observedFrame.reset();
-        m_servedFrame.reset();
+        m_sharedUpdate.reset();
+        m_lastComparedFrameUnchanged = false;
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         m_frames->latest.reset();
     }
 
     void frameAvailable()
     {
+        // A new served frame invalidates the shared encoded bytes. The cache
+        // never outlives one frame, one disconnect or one stop.
+        m_sharedUpdate.reset();
         {
             std::lock_guard<std::mutex> lock(m_frames->mutex);
             m_frames->notificationPending = false;
@@ -542,6 +672,7 @@ public:
         const auto frame = latestFrame();
         if (!frame)
             return;
+        HYREMOTE_P1_TRACE_FRAME(RfbObserved, *frame, 0);
         // Last valid frame geometry survives even if its raw pixel storage does not.
         if (frame->geometry.size.width > 0 && frame->geometry.size.height > 0
             && frame->geometry.size.width <= std::numeric_limits<std::uint16_t>::max()
@@ -550,6 +681,22 @@ public:
                 = static_cast<std::uint16_t>(frame->geometry.size.width);
             m_security.initialFramebufferHeight
                 = static_cast<std::uint16_t>(frame->geometry.size.height);
+        }
+
+        // #790/#609: producer-backed Runtime intentionally discards frame
+        // pixels when no Viewer is connected. Do that BEFORE allocating
+        // and painting the (possibly multi-MB) server-side watermark: the
+        // old ordering generated a complete decorated frame and dropped it
+        // immediately. Geometry above is retained for RFB ServerInit.
+        //
+        // Standalone transports are NOT opted in; they still retain a
+        // decorated bootstrap for immediate reconnect. Once a Viewer joins,
+        // the Runtime's capture-demand edge supplies a fresh frame and
+        // normal fail-closed watermark validation applies before any pixels
+        // reach RFB. Only the RFB worker thread owns m_clients.
+        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
+            releaseIdleFrameCaches();
+            return;
         }
 
         // #589: compose once per captured frame, on the transport thread, and let every viewer share the same
@@ -564,10 +711,16 @@ public:
                 return;
             }
             served = std::move(decorated);
-            m_servedFrame = served;
+            // The decorator is allowed to modify pixels OUTSIDE the source's
+            // Damage::Regions hint (for instance a watermark at the opposite
+            // corner or a DPR-driven overlay change). Adjacent FrameIds do
+            // not make source regions authoritative for composed pixels.
+            // Force a comparison of the actual served RGB without forcing a
+            // full-screen RFB transmission: changedRfbTiles() will still
+            // generate precise 64x64 visible-pixel damage.
+            served->damage = hyremote::Damage::fullFrame();
         } else {
             served = frame;
-            m_servedFrame.reset();
         }
 
         const bool geometryChanged = !m_observedFrame
@@ -590,8 +743,24 @@ public:
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
             // frame never reports "nothing changed" while the stream is missing an update.
-            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
+            {
+                HYREMOTE_P1_SCOPE(RfbCompare);
+                damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr,
+                                         *served, m_lastComparedFrameUnchanged);
+            }
         }
+        // Reset whenever there is no complete comparable frame (new client,
+        // resize, unavailable capture, or all viewers disconnected). This is
+        // a performance hint only, never a claim that Qt content is unchanged.
+        m_lastComparedFrameUnchanged = hasNormalClient && !geometryChanged
+                                      && damage && damage->empty();
+        if (hasNormalClient)
+            HYREMOTE_P1_TRACE_FRAME(RfbCompared, *served, 0);
+
+        // Exact served-pixel equality is already computed for damage; feed it back to the
+        // producer's bounded idle gate without introducing a second full-frame comparison.
+        if (hasNormalClient && m_security.frameChangeObserver)
+            m_security.frameChangeObserver(geometryChanged || !damage || !damage->empty());
 
         // Exact served-pixel equality is already computed for damage; feed it back to the
         // producer's bounded idle gate without introducing a second full-frame comparison.
@@ -609,7 +778,8 @@ public:
                 client.delivery.invalidateFull(served->geometry.size.width, served->geometry.size.height);
             else if (damage)
                 client.delivery.accumulate(*damage);
-            trySendUpdate(client);
+            // #567: encode the exact frame the damage was computed from.
+            trySendUpdate(client, &*served);
         }
         m_observedFrame = *served;
     }
@@ -621,8 +791,9 @@ public:
         if (m_decorationFailed)
             return;
         m_decorationFailed = true;
-        m_servedFrame.reset();
         m_observedFrame.reset();
+        m_sharedUpdate.reset();
+        m_lastComparedFrameUnchanged = false;
 
         // Drop the viewers with the same bookkeeping as an ordinary disconnect. Closing the sockets here without it
         // would skip releaseHeldInput() and the ClientDisconnected accounting, so a composition failure while a
@@ -686,13 +857,13 @@ private:
         return m_frames->latest;
     }
 
-    // #589: the only frame a viewer may ever be given. With a decorator installed this is the composed frame that
-    // frameAvailable() produced for the current capture; without one it is the capture frame, untouched.
+    // The producer mailbox advances before frameAvailable() has necessarily
+    // computed damage for the new frame. A Viewer request or socket drain must
+    // only send pixels from the frame with committed damage. Using latestFrame
+    // in this path could encode unprocessed pixels with older pending rects.
     std::optional<hyremote::RemoteFrame> servedFrame() const
     {
-        if (!m_security.frameDecorator)
-            return latestFrame();
-        return m_servedFrame;
+        return m_observedFrame;
     }
 
     hyremote::InputModifiers aggregateModifiers() const
@@ -731,14 +902,20 @@ private:
             socket->setReadBufferSize(kMaxClientInputBytes);
             auto client = std::make_unique<ClientState>();
             client->socket = socket;
+            client->traceViewerId = ++m_nextTraceViewerId;
             ClientState *clientPtr = client.get();
             m_clients.emplace(socket, std::move(client));
 
             connect(socket, &QTcpSocket::readyRead, this, [this, socket] { readClient(socket); });
             connect(socket, &QTcpSocket::bytesWritten, this, [this, socket](qint64) {
                 const auto it = m_clients.find(socket);
-                if (it != m_clients.end())
+                if (it != m_clients.end()) {
+                    // Notify the producer before a possible next FBU write:
+                    // this drain is the chance to capture a fresher frame.
+                    publishCaptureBackpressure();
                     trySendUpdate(*it->second);
+                    publishCaptureBackpressure();
+                }
             });
             connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
                 const auto it = m_clients.find(socket);
@@ -749,6 +926,15 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                // #967 review P2: the shared encoded framebuffer is useful only
+                // while at least two Normal Viewers can consume one frame.
+                // Standalone transports deliberately KEEP raw bootstrap pixels
+                // (releaseIdleFrameBuffers=false), so this cache must be dropped
+                // independently of that raw-frame policy, including 2->1 and
+                // 1->0 disconnects with no further published frames.
+                if (normalViewerCount() < 2)
+                    m_sharedUpdate.reset();
+                publishCaptureBackpressure();
                 if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
                     // 2→1 always retains, 1→0 releases true raw bytes only for
                     // a producer-backed Runtime which wakes on ClientConnected.
@@ -925,7 +1111,8 @@ private:
 
     void armContinuousRequest(ClientState &client)
     {
-        if (!client.continuousEnabled || client.delivery.hasOutstandingRequest())
+        if (!client.continuousEnabled || client.awaitingResizeRefresh
+            || client.delivery.hasOutstandingRequest())
             return;
         client.delivery.request(true, client.continuousRegion);
         client.continuousRequestArmed = true;
@@ -1188,11 +1375,13 @@ private:
                     // The latest enable message replaces the active area.
                     client.continuousRegion = region;
                     armContinuousRequest(client);
+                    publishCaptureBackpressure();
                     trySendUpdate(client);
                 } else if (!endContinuousUpdates(client)) {
                     // A disable acknowledgment is mandatory even if already disabled.
                     return;
                 }
+                publishCaptureBackpressure();
                 continue;
             }
 
@@ -1233,6 +1422,13 @@ private:
                     consumeClientMessage(client, 10);
                     continue;
                 }
+                // The size notification consumed the previous request. Do not
+                // send new-geometry pixels until the viewer explicitly refreshes.
+                if (client.awaitingResizeRefresh && incremental) {
+                    consumeClientMessage(client, 10);
+                    continue;
+                }
+                client.awaitingResizeRefresh = false;
                 client.continuousRequestArmed = false;
                 client.delivery.request(
                     incremental,
@@ -1241,6 +1437,13 @@ private:
                      static_cast<std::int32_t>(readU16(client.input, 6)),
                      static_cast<std::int32_t>(readU16(client.input, 8))});
                 consumeClientMessage(client, 10);
+                // This request is the transport's source-demand edge; wake a
+                // producer that was correctly sleeping while no client asked
+                // for a framebuffer update. A full request also gets a
+                // one-shot capture even when the previous FBU is backlogged.
+                publishCaptureBackpressure();
+                if (!incremental && m_security.frameFullRefreshObserver)
+                    m_security.frameFullRefreshObserver();
                 trySendUpdate(client);
                 continue;
             }
@@ -1291,7 +1494,11 @@ private:
     {
         if (!client.socket)
             return;
-        const auto frame = latestFrame();
+        // Align ServerInit dimensions with the processed framebuffer whenever
+        // one exists. The producer's newer queued resize is not yet a
+        // deliverable picture. Initial startup still accepts latest as a
+        // bootstrap geometry before the first frameAvailable() completes.
+        const auto frame = m_observedFrame ? m_observedFrame : latestFrame();
         const auto width = frame ? frame->geometry.size.width : m_security.initialFramebufferWidth;
         const auto height = frame ? frame->geometry.size.height : m_security.initialFramebufferHeight;
         if (width == 0 || height == 0 || width > std::numeric_limits<std::uint16_t>::max()
@@ -1318,6 +1525,7 @@ private:
         client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+        publishCaptureBackpressure();
 
 
     }
@@ -1582,13 +1790,14 @@ private:
         return true;
     }
 
-    hyremote::InputViewport currentViewport() const
+    hyremote::InputViewport currentViewport(const ClientState &client) const
     {
+        // RFB pointer coordinates are relative to the per-Viewer framebuffer
+        // already advertised by ServerInit/DesktopSize, not a newer producer
+        // frame that the Viewer has not requested/received.
         hyremote::InputViewport viewport;
-        if (const auto frame = latestFrame()) {
-            viewport.width = frame->geometry.size.width;
-            viewport.height = frame->geometry.size.height;
-        }
+        viewport.width = client.framebufferWidth;
+        viewport.height = client.framebufferHeight;
         viewport.devicePixelRatio = 1.0F;
         return viewport;
     }
@@ -1598,7 +1807,7 @@ private:
                         std::uint16_t x,
                         std::uint16_t y)
     {
-        const hyremote::InputViewport viewport = currentViewport();
+        const hyremote::InputViewport viewport = currentViewport(client);
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
@@ -1696,25 +1905,64 @@ private:
         const std::uint64_t pixelBytes = static_cast<std::uint64_t>(width) * height * bytesPerPixel;
         if (pixelBytes > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
             return false;
+        if (pixelBytes > static_cast<std::uint64_t>(
+                             std::numeric_limits<qsizetype>::max() - message.size()))
+            return false;
         message.reserve(message.size() + static_cast<qsizetype>(pixelBytes));
 
         const auto *base = reinterpret_cast<const std::uint8_t *>(plane->data);
+
+        // #609/#789: the most common Raw viewer (native 32bpp RGBA, little-endian
+        // R/G/B shifts 0/8/16) needs exactly R,G,B,0 on the wire. The existing
+        // encoder appended four QByteArray bytes per source pixel, i.e. >8M
+        // append calls for a single 1080p framebuffer. Copy each row once,
+        // then clear the protocol's unused high byte. Premultiplied colours
+        // already encode the project's black-matte policy; straight-alpha,
+        // reduced-bpp, big-endian, and nonnative formats retain the exact old
+        // conversion path. No Qt, OS, or CPU endian assumptions are required.
+        if (nativeTrlePixelSpec(pixels)
+            && frame.geometry.alphaMode != hyremote::AlphaMode::Straight) {
+            const qsizetype offset = message.size();
+            message.resize(offset + static_cast<qsizetype>(pixelBytes));
+            auto *destination = reinterpret_cast<std::uint8_t *>(message.data() + offset);
+            const std::size_t rowBytes = static_cast<std::size_t>(width) * 4U;
+            for (std::uint32_t row = 0; row < height; ++row) {
+                const std::uint8_t *source =
+                    base + (static_cast<std::size_t>(y) + row) * plane->stride
+                         + static_cast<std::size_t>(x) * 4U;
+                std::uint8_t *target = destination + static_cast<std::size_t>(row) * rowBytes;
+                std::memcpy(target, source, rowBytes);
+                for (std::uint32_t col = 0; col < width; ++col)
+                    target[static_cast<std::size_t>(col) * 4U + 3U] = 0U;
+            }
+            return true;
+        }
+
+        // Non-native 8/16/32bpp and straight-alpha Raw must not append one
+        // QByteArray byte at a time. The pixel count and full payload size
+        // were bounded above; allocate once and write the exact old channel
+        // scaling/byte order into the reserved protocol rectangle payload.
+        const qsizetype offset = message.size();
+        message.resize(offset + static_cast<qsizetype>(pixelBytes));
+        auto *packed = reinterpret_cast<std::uint8_t *>(message.data() + offset);
+        const std::size_t outputStride = static_cast<std::size_t>(width) * bytesPerPixel;
         for (std::uint32_t row = 0; row < height; ++row) {
             const std::uint8_t *source = base + (static_cast<std::size_t>(y) + row) * plane->stride
                                          + static_cast<std::size_t>(x) * 4U;
+            std::uint8_t *target = packed + static_cast<std::size_t>(row) * outputStride;
             for (std::uint32_t col = 0; col < width; ++col) {
                 const std::uint8_t alpha = source[col * 4U + 3U];
-                appendEncodedPixel(message,
-                                   rfbOpaqueChannel(source[col * 4U],
-                                                    alpha,
-                                                    frame.geometry.alphaMode),
-                                   rfbOpaqueChannel(source[col * 4U + 1U],
-                                                    alpha,
-                                                    frame.geometry.alphaMode),
-                                   rfbOpaqueChannel(source[col * 4U + 2U],
-                                                    alpha,
-                                                    frame.geometry.alphaMode),
-                                   pixels);
+                packEncodedPixel(target + static_cast<std::size_t>(col) * bytesPerPixel,
+                                 rfbOpaqueChannel(source[col * 4U],
+                                                  alpha,
+                                                  frame.geometry.alphaMode),
+                                 rfbOpaqueChannel(source[col * 4U + 1U],
+                                                  alpha,
+                                                  frame.geometry.alphaMode),
+                                 rfbOpaqueChannel(source[col * 4U + 2U],
+                                                  alpha,
+                                                  frame.geometry.alphaMode),
+                                 pixels);
             }
         }
         return true;
@@ -1755,11 +2003,14 @@ private:
         return appendRawRectangle(message, frame, client.pixels, x, y, width, height);
     }
 
-    void trySendUpdate(ClientState &client)
+    void trySendUpdate(ClientState &client,
+                       const hyremote::RemoteFrame *frameSnapshot = nullptr)
     {
         if (!client.socket || client.phase != ClientPhase::Normal)
             return;
         refreshCursor(client);
+        if (client.awaitingResizeRefresh)
+            return;
         armContinuousRequest(client);
         if (!client.delivery.hasOutstandingRequest())
             return;
@@ -1767,7 +2018,11 @@ private:
             return;
 
         // #589: encode only what viewers may see; with a watermark installed the raw capture is never sent.
-        const auto frame = servedFrame();
+        // #567: use the caller's snapshot when provided so damage and pixels
+        // come from the same frame version.
+        std::optional<hyremote::RemoteFrame> frame =
+            frameSnapshot ? std::optional<hyremote::RemoteFrame>(*frameSnapshot)
+                          : servedFrame();
         if (!frame)
             return;
         if (frame->geometry.size.width == 0 || frame->geometry.size.height == 0
@@ -1806,41 +2061,106 @@ private:
             client.continuousRequestArmed = false;
             return;
         }
-        if (selected.size() + (resized ? 1U : 0U) > std::numeric_limits<std::uint16_t>::max()) {
+        if (!resized && selected.size() > std::numeric_limits<std::uint16_t>::max()) {
             protocolFailure(client, "RFB update rectangle count exceeds the protocol baseline");
             return;
         }
 
+        // A viewer can request the same Core FrameId multiple times. Trace
+        // each FBU separately; do not mispair one encode with another write.
+        const std::uint64_t traceUpdateId = client.traceUpdateSeq + 1;
+        // Keep the GUI/Core capture scheduler out of an already saturated
+        // single-viewer encoding interval; the worker itself is non-reentrant.
+        m_encodingSocket = client.socket;
+        publishCaptureBackpressure();
+
+        // #967: only a multi-Viewer frame can save a second whole-frame
+        // encode. A single Viewer keeps the exact old path and never retains
+        // an extra encoded framebuffer, so #790/#996 live-byte bounds hold.
+        const bool canShare = !resized && frame->storage && normalViewerCount() >= 2;
+        const bool reused = canShare && m_sharedUpdate
+            && m_sharedUpdate->matches(
+                frame->storage, client.pixels, client.preferredEncoding,
+                resized, width, height, frame->geometry.pixelFormat,
+                frame->geometry.alphaMode, selected.rects());
+
         QByteArray update;
-        update.append(char(0));
-        update.append(char(0));
-        appendU16(update, static_cast<std::uint16_t>(selected.size() + (resized ? 1U : 0U)));
-        if (resized) {
-            appendU16(update, 0);
-            appendU16(update, 0);
-            appendU16(update, width);
-            appendU16(update, height);
-            appendS32(update, kEncodingDesktopSize);
-        }
-        for (const RfbRect &rect : selected.rects()) {
-            if (!appendFramebufferRectangle(update, *frame, client, rect)) {
-                protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
-                return;
+        if (reused) {
+            update = m_sharedUpdate->bytes; // Qt implicit sharing: no re-encode
+        } else {
+            update.append(char(0));
+            update.append(char(0));
+            appendU16(update, static_cast<std::uint16_t>(resized ? 1U : selected.size()));
+            if (resized) {
+                appendU16(update, 0);
+                appendU16(update, 0);
+                appendU16(update, width);
+                appendU16(update, height);
+                appendS32(update, kEncodingDesktopSize);
+            } else {
+                HYREMOTE_P1_SCOPE(RfbEncode);
+                for (const RfbRect &rect : selected.rects()) {
+                    if (!appendFramebufferRectangle(update, *frame, client, rect)) {
+                        m_encodingSocket = nullptr;
+                        publishCaptureBackpressure();
+                        protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
+                        return;
+                    }
+                }
+            }
+            if (canShare) {
+                SharedFramebufferUpdate cached;
+                cached.storage = frame->storage;
+                cached.pixels = client.pixels;
+                cached.encoding = client.preferredEncoding;
+                cached.resized = resized;
+                cached.width = width;
+                cached.height = height;
+                cached.pixelFormat = frame->geometry.pixelFormat;
+                cached.alphaMode = frame->geometry.alphaMode;
+                cached.rects = selected.rects();
+                cached.bytes = update;
+                m_sharedUpdate = std::move(cached);
             }
         }
+        HYREMOTE_P1_BYTES(RfbEncode, update.size());
+        HYREMOTE_P1_TRACE_VIEWER_UPDATE(
+            RfbEncoded, *frame, client.traceViewerId, traceUpdateId);
 
-        const qint64 queued = client.socket->write(update);
+        qint64 queued = 0;
+        {
+            HYREMOTE_P1_SCOPE(RfbWrite);
+            queued = client.socket->write(update);
+        }
+        HYREMOTE_P1_BYTES(RfbWrite, update.size());
+        // From this point any remaining pressure belongs to Qt's outbound
+        // queue, not to CPU encoding. Release the producer once both clear.
+        m_encodingSocket = nullptr;
+        publishCaptureBackpressure();
         if (queued != update.size()) {
             protocolFailure(client, "RFB socket write failed");
             return;
         }
-        client.delivery.commitDelivered(selected);
+        // socket->write only queues local Qt bytes. This is not a network
+        // receipt, viewer decode or physical present timestamp.
+        HYREMOTE_P1_TRACE_VIEWER_UPDATE(
+            RfbSocketQueued, *frame, client.traceViewerId, traceUpdateId);
+        client.traceUpdateSeq = traceUpdateId;
+        if (resized) {
+            // DesktopSize consumes the request but does not deliver any pixels.
+            // Keep forced full damage for the viewer's next full request.
+            client.delivery.cancelRequest();
+            client.awaitingResizeRefresh = true;
+        } else {
+            client.delivery.commitDelivered(selected);
+        }
         client.continuousRequestArmed = false;
         // A continuously enabled viewer keeps one outstanding incremental
         // demand, but only one framebuffer may queue per socket at a time.
         armContinuousRequest(client);
         client.framebufferWidth = width;
         client.framebufferHeight = height;
+        publishCaptureBackpressure();
     }
 
     QHostAddress m_address;
@@ -1852,14 +2172,21 @@ private:
     QTcpServer *m_server = nullptr;
     QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
+    std::uint64_t m_nextTraceViewerId = 0;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
-    // #589: the composed frame currently shared by every viewer, and the one-shot latch that stops the transport
-    // from ever falling back to undecorated pixels after a composition failure.
-    std::optional<hyremote::RemoteFrame> m_servedFrame;
+    // Worker-thread-only. Valid for at most one served frame; cleared on every
+    // frameAvailable(), zero-viewer edge, decoration failure and shutdown.
+    std::optional<SharedFramebufferUpdate> m_sharedUpdate;
+    bool m_lastComparedFrameUnchanged = false; // worker-thread-only static hint
+    // #589: a decoration failure must remain fail-closed. The processed
+    // m_observedFrame is also the sole immutable source for Viewer delivery.
     bool m_decorationFailed = false;
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
+    bool m_backpressureReported = false;
+    bool m_noDemandReported = false;
+    QTcpSocket *m_encodingSocket = nullptr; // RFB worker-thread only, never retained
 };
 
 class RfbTransport final : public hyremote::Transport
@@ -1936,6 +2263,9 @@ public:
         std::lock_guard<std::mutex> lifecycleLock(m_lifecycleMutex);
         if (!m_worker || !m_thread)
             return;
+        // Only trace a genuinely live transport submission, not the frame
+        // discarded after stop(). Core assigned FrameId before this call.
+        HYREMOTE_P1_TRACE_FRAME(CoreFrameQueued, frame, 0);
 
         bool notify = false;
         {
@@ -1948,7 +2278,16 @@ public:
         }
         if (notify) {
             RfbWorker *worker = m_worker;
-            QMetaObject::invokeMethod(worker, [worker] { worker->frameAvailable(); }, Qt::QueuedConnection);
+            if (!postFrameNotification(*m_frames, [worker] {
+                    return QMetaObject::invokeMethod(
+                        worker, [worker] { worker->frameAvailable(); },
+                        Qt::QueuedConnection);
+                })) {
+                // Core::runDispatcher catches transport enqueue exceptions,
+                // records a visible ComponentFailure and stops scheduling.
+                // Never pretend that an unqueued frame was served.
+                throw std::runtime_error("failed to queue RFB frame notification");
+            }
         }
     }
 
@@ -1963,6 +2302,47 @@ private:
 };
 
 }  // namespace
+
+bool runRfbNotificationPostFailureRegression()
+{
+    SharedFrameState frames;
+    frames.notificationPending = true;
+    const bool rejectsFalse = !postFrameNotification(frames, [] { return false; })
+        && !frames.notificationPending;
+    frames.notificationPending = true;
+    const bool rejectsThrow = !postFrameNotification(frames, []() -> bool {
+        throw std::bad_alloc{};
+    }) && !frames.notificationPending;
+    frames.notificationPending = true;
+    const bool postsOnce = postFrameNotification(frames, [] { return true; })
+        && frames.notificationPending;
+
+    // Exercise Qt's ACTUAL queued-invoke return path, not just a synthetic
+    // boolean functor. A destroyed QObject becomes null through QPointer;
+    // invoking it must fail and free the notificationPending token.
+    auto *doomed = new QObject;
+    QPointer<QObject> deadTarget(doomed);
+    delete doomed;
+    frames.notificationPending = true;
+    const bool actualQtRejectsDeadTarget = !postFrameNotification(
+        frames, [deadTarget] {
+            return QMetaObject::invokeMethod(
+                deadTarget.data(), [] {}, Qt::QueuedConnection);
+        }) && !frames.notificationPending;
+
+    // Also prove Qt's real QUEUED success is not misclassified as failure.
+    // The callback cannot run until this test explicitly pumps events.
+    QObject live;
+    bool invoked = false;
+    frames.notificationPending = true;
+    const bool realQtQueuedSuccess = postFrameNotification(frames, [&] {
+        return QMetaObject::invokeMethod(
+            &live, [&] { invoked = true; }, Qt::QueuedConnection);
+    }) && frames.notificationPending && !invoked;
+    QCoreApplication::processEvents();
+    return rejectsFalse && rejectsThrow && postsOnce
+        && actualQtRejectsDeadTarget && realQtQueuedSuccess && invoked;
+}
 
 std::unique_ptr<hyremote::Transport> createRfbTransport(const QHostAddress &listenAddress,
                                                         quint16 port,

@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "detail/composition_support.hpp"
+#include "detail/perf_probe.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/storage.hpp"
@@ -61,35 +62,47 @@ public:
             return false;
 
         std::lock_guard<std::mutex> lock(m_state->mutex);
-        if (m_state->active || m_state->target.isNull())
+        // Stop may have released the state mutex while retiring child captures.
+        // A new start must not add children until that previous lifetime drains.
+        if (m_state->active || m_state->stopping || m_state->target.isNull())
             return false;
         if (m_state->target->thread() != application->thread())
             return false;
 
-        m_state->onFrame = std::move(onFrame);
+        // The accepted per-run handler is allocated once at start. Keeping a
+        // shared owner lets idle cancellation copy the handle without asking
+        // std::function to allocate under memory pressure, while stop() still
+        // drains all callbacks before releasing this per-run owner.
+        m_state->onFrame =
+            std::make_shared<const hyremote::FrameReadyHandler>(std::move(onFrame));
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
 
         const std::weak_ptr<State> weakState = m_state;
         m_state->surfaceUnavailableHandler = m_state->target->addSurfaceUnavailableHandler(
-            [weakState](SurfaceId id) {
+            [weakState](SurfaceId id, CompositeTarget::SurfaceLoss loss) {
                 if (const auto state = weakState.lock())
-                    markSurfaceUnavailable(state, id);
+                    markSurfaceUnavailable(state, id, loss);
             });
         return true;
     }
 
     void stop() noexcept override
     {
-        std::vector<std::shared_ptr<ChildRuntime>> children;
         QPointer<CompositeTarget> target;
         quint64 surfaceUnavailableHandler = 0;
         {
             std::unique_lock<std::mutex> lock(m_state->mutex);
+            if (m_state->stopping) {
+                m_state->cv.wait(lock, [state = m_state] { return !state->stopping; });
+                return; // a concurrent caller has already drained this lifetime
+            }
+            m_state->stopping = true;
             m_state->active = false;
             m_state->onFrame = {};
             m_state->onEvent = {};
             m_state->pending.clear();
+            m_state->lastCanvasSize = {};
             target = m_state->target;
             surfaceUnavailableHandler = m_state->surfaceUnavailableHandler;
             m_state->surfaceUnavailableHandler = 0;
@@ -97,19 +110,35 @@ public:
             m_state->cv.wait(lock, [state = m_state] {
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
             });
-
-            children.reserve(m_state->children.size());
-            for (auto &entry : m_state->children)
-                children.push_back(std::move(entry.second));
-            m_state->children.clear();
         }
 
         if (target && surfaceUnavailableHandler != 0)
             target->removeSurfaceUnavailableHandler(surfaceUnavailableHandler);
 
-        for (const auto &child : children) {
+        // #790: this is a noexcept shutdown path and can run with little
+        // available memory. Neither reserve() nor a temporary empty hash map
+        // is safe here (MSVC's empty map constructor itself may allocate).
+        // Move one existing shared_ptr out of the map and erase its node under
+        // State::mutex. No new capacity or container is allocated, and child
+        // stop/destruction remains OUTSIDE that lock so its callbacks cannot
+        // deadlock the composite.
+        for (;;) {
+            std::shared_ptr<ChildRuntime> child;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->children.empty())
+                    break;
+                auto it = m_state->children.begin();
+                child = std::move(it->second);
+                m_state->children.erase(it);
+            }
             if (child && child->capture)
                 child->capture->stop();
+        }
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->stopping = false;
+            m_state->cv.notify_all();
         }
     }
 
@@ -132,11 +161,81 @@ public:
             Qt::QueuedConnection);
     }
 
+    // #790: a composite can own CPU images even when each child has released
+    // its own caches: an already completed child is stored in PendingRequest
+    // while a sibling async Qt grab is still outstanding. On 1->0 Viewer
+    // release those *parent-owned* frames as well; otherwise the same pixels
+    // may remain pinned indefinitely if the sibling never completes.
+    //
+    // Every admitted parent request still needs exactly one terminal callback
+    // to return its Core in-flight credit. An empty completion is rejected as
+    // non-image by Core and cannot be mislabelled as newly captured pixels.
+    // Late child completions find no pending request and are discarded.
+    void releaseIdleResources() noexcept override
+    {
+        // Never allocate to drain outstanding parent requests in a noexcept
+        // idle cleanup path. Extract one existing map node at a time and
+        // destroy its owned frames outside State::mutex; child callbacks and
+        // parent callbacks may re-enter the state while cleanup progresses.
+        std::size_t remaining = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (!m_state->active)
+                return;
+            remaining = m_state->pending.size();
+        }
+        while (remaining-- > 0) {
+            decltype(m_state->pending)::node_type canceled;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active || m_state->pending.empty())
+                    break;
+                canceled = m_state->pending.extract(m_state->pending.begin());
+            }
+            const hyremote::CaptureRequest request = canceled.mapped().request;
+            canceled = {}; // release any completed child QImages before callback
+            hyremote::RemoteFrame terminal;
+            terminal.requestId = request.id;
+            terminal.timing.ptsSource = hyremote::PtsSource::Completion;
+            terminal.timing.requestTime = request.requestTime;
+            terminal.timing.completionTime = hyremote::Clock::now();
+            try {
+                publishFrame(m_state, std::move(terminal));
+            } catch (...) {
+                // A failing callback copy must never terminate the host in
+                // the noexcept idle path. The extracted pixels are gone.
+            }
+        }
+
+        // A child owns other idle pixel/GPU caches. Snapshot child handles
+        // under the lock but call backend hooks outside it: no allocation
+        // failure or reentrant callback may unwind through this noexcept API.
+        try {
+            std::vector<std::shared_ptr<ChildRuntime>> children;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active)
+                    return;
+                children.reserve(m_state->children.size());
+                for (const auto &entry : m_state->children)
+                    children.push_back(entry.second);
+            }
+            for (const auto &child : children) {
+                if (child && child->capture)
+                    child->capture->releaseIdleResources();
+            }
+        } catch (...) {
+            // Existing safe behavior: a failed child snapshot keeps those
+            // child-owned caches until the next edge or source stop().
+        }
+    }
+
 private:
     struct ChildRuntime
     {
         QPointer<QObject> target;
         std::unique_ptr<hyremote::CaptureSource> capture;
+        bool ownerRetired = false; // guarded by State::mutex
     };
 
     struct PendingRequest
@@ -155,14 +254,19 @@ private:
         QPointer<CompositeTarget> target;
         ::HyRemote::detail::BuiltinTargetResolver resolver;
         bool active = false;
+        bool stopping = false; // prevents start() from stealing a prior teardown's children
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
         quint64 surfaceUnavailableHandler = 0;
-        hyremote::FrameReadyHandler onFrame;
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         std::unordered_map<hyremote::CaptureRequestId, PendingRequest> pending;
-        std::optional<hyremote::RemoteFrame> lastFrame;
+        // #790: the previously published canvas SIZE, never its pixels. Keeping
+        // the last RemoteFrame pinned one full frame (8.29 MB at 1080p, and in
+        // the single-surface fast path the child's own grab QImage) for a value
+        // only used to preserve geometry while every surface is hidden.
+        QSize lastCanvasSize;
     };
 
     class ProcessingGuard
@@ -194,15 +298,26 @@ private:
         bool m_entered = false;
     };
 
+    static bool isCurrentChildLocked(const State &state, SurfaceId id,
+                                     const std::weak_ptr<ChildRuntime> &source)
+    {
+        const auto live = state.children.find(id);
+        return live != state.children.end() && live->second
+            && !live->second->ownerRetired && live->second == source.lock();
+    }
+
     static void publishEvent(const std::shared_ptr<State> &state,
                              hyremote::CaptureEventCode code,
                              std::string message,
-                             bool recoverable = true)
+                             bool recoverable = true,
+                             std::optional<SurfaceId> childId = std::nullopt,
+                             const std::weak_ptr<ChildRuntime> &source = {})
     {
         hyremote::CaptureEventHandler callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active || !state->onEvent)
+            if (!state->active || !state->onEvent
+                || (childId && !isCurrentChildLocked(*state, *childId, source)))
                 return;
             callback = state->onEvent;
             ++state->parentCallbacksInFlight;
@@ -229,18 +344,25 @@ private:
 
     static void publishFrame(const std::shared_ptr<State> &state, hyremote::RemoteFrame frame)
     {
-        hyremote::FrameReadyHandler callback;
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active || !state->onFrame)
+            if (!state->active || !state->onFrame || !*state->onFrame)
                 return;
-            state->lastFrame = frame;
-            callback = state->onFrame;
+            // An empty terminal completion is a cancellation, not a new
+            // framebuffer. Preserve the last valid canvas geometry so a
+            // reconnect does not inherit a spurious 0x0 ServerInit size.
+            if (frame.geometry.size.width > 0 && frame.geometry.size.height > 0) {
+                state->lastCanvasSize = QSize(static_cast<int>(frame.geometry.size.width),
+                                              static_cast<int>(frame.geometry.size.height));
+            }
+            callback = state->onFrame; // shared_ptr copy is noexcept
             ++state->parentCallbacksInFlight;
         }
 
+        HYREMOTE_P1_TRACE_FRAME(CompositeCompleted, frame, 0);
         try {
-            callback(std::move(frame));
+            (*callback)(std::move(frame));
         } catch (...) {
         }
 
@@ -283,46 +405,67 @@ private:
 
     static void composeAndPublish(const std::shared_ptr<State> &state, PendingRequest pending)
     {
+        HYREMOTE_P1_SCOPE(GenericCompose);
         if (pending.canvasBounds.isEmpty()) {
-            std::optional<hyremote::RemoteFrame> last;
+            // No visible source must not resurrect pixels from a previously
+            // visible/authorized composite. Preserve the last framebuffer
+            // geometry only, so a legacy RFB Viewer need not support a 1x1
+            // DesktopSize transition when the entire scene is hidden.
+            QSize clearSize(1, 1);
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame)
-                    last = *state->lastFrame;
+                if (!state->lastCanvasSize.isEmpty())
+                    clearSize = state->lastCanvasSize;
             }
-            if (last) {
-                last->timing.ptsSource = hyremote::PtsSource::Completion;
-                last->timing.requestTime = pending.request.requestTime;
-                last->timing.completionTime = hyremote::Clock::now();
-                last->requestId = pending.request.id;
-                last->damage = hyremote::Damage::fullFrame();
-                publishFrame(state, std::move(*last));
-                return;
-            }
-            publishFrame(state, transparentFrame(pending.request, QSize(1, 1)));
+            publishFrame(state, transparentFrame(pending.request, clearSize));
             return;
         }
 
         if (pending.frames.empty()) {
-            std::optional<hyremote::RemoteFrame> last;
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame
-                    && state->lastFrame->geometry.size.width
-                           == static_cast<std::uint32_t>(pending.canvasBounds.width())
-                    && state->lastFrame->geometry.size.height
-                           == static_cast<std::uint32_t>(pending.canvasBounds.height())) {
-                    last = *state->lastFrame;
+            // Every child failed/vanished: sending lastFrame with a new
+            // request ID, new completion timestamp, and full damage falsely
+            // advertises old pixels as fresh. Clear the actual canvas instead.
+            // Valid children automatically recover on a later request.
+            publishFrame(state, transparentFrame(pending.request, pending.canvasBounds.size()));
+            return;
+        }
+
+        // #609: exactly one already-premultiplied, full-canvas CPU frame needs
+        // neither a second 1080p allocation nor a transparent fill + drawImage.
+        // QPainter SourceOver onto transparent pixels preserves premultiplied
+        // samples exactly. Share the immutable frame's lifetime anchor instead.
+        // All scaling, mixed-DPR, clipping, multi-surface and format cases
+        // continue through the existing compositor unchanged.
+        if (pending.backToFront.size() == 1 && pending.frames.size() == 1) {
+            const SurfacePlacement &surface = pending.backToFront.front();
+            const auto it = pending.frames.find(surface.id);
+            if (it != pending.frames.end() && surface.globalGeometry == pending.canvasBounds) {
+                hyremote::RemoteFrame &child = it->second;
+                const auto &geometry = child.geometry;
+                const std::size_t width = static_cast<std::size_t>(pending.canvasBounds.width());
+                const std::size_t height = static_cast<std::size_t>(pending.canvasBounds.height());
+                if (geometry.pixelFormat == hyremote::PixelFormat::Rgba8888
+                    && geometry.alphaMode == hyremote::AlphaMode::Premultiplied
+                    && geometry.planeCount == 1 && geometry.devicePixelRatio == 1.0F
+                    && geometry.transform.rotation == hyremote::Rotation::Rotate0
+                    && !geometry.transform.mirrorX && !geometry.transform.mirrorY
+                    && geometry.size.width == width && geometry.size.height == height
+                    && child.storage && child.storage->kind() == hyremote::StorageKind::Cpu
+                    && child.storage->planeCount() == 1) {
+                    const auto plane = child.storage->mapRead(0);
+                    if (plane && plane->data && plane->stride >= width * 4U
+                        && height <= plane->bytes / plane->stride) {
+                        // Preserve the ordinary composite's per-request metadata,
+                        // including DPR=1 and full damage, without mutating pixels.
+                        child.timing.ptsSource = hyremote::PtsSource::Completion;
+                        child.timing.requestTime = pending.request.requestTime;
+                        child.timing.completionTime = hyremote::Clock::now();
+                        child.damage = hyremote::Damage::fullFrame();
+                        child.requestId = pending.request.id;
+                        publishFrame(state, std::move(child));
+                        return;
+                    }
                 }
-            }
-            if (last) {
-                last->timing.ptsSource = hyremote::PtsSource::Completion;
-                last->timing.requestTime = pending.request.requestTime;
-                last->timing.completionTime = hyremote::Clock::now();
-                last->requestId = pending.request.id;
-                last->damage = hyremote::Damage::fullFrame();
-                publishFrame(state, std::move(*last));
-                return;
             }
         }
 
@@ -342,7 +485,10 @@ private:
                       height,
                       bytesPerLine,
                       QImage::Format_RGBA8888_Premultiplied);
-        output.fill(Qt::transparent);
+        // transparentFrame() already zeroed this exact buffer: premultiplied
+        // transparent is all bytes 0, and QImage::fill() would write the whole
+        // 1080p canvas a second time before the first surface is drawn.
+        // SourceOver onto those zeros is byte-identical to the old path.
 
         QPainter painter(&output);
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
@@ -402,16 +548,30 @@ private:
         composeAndPublish(state, std::move(*completed));
     }
 
-    static void markSurfaceUnavailable(const std::shared_ptr<State> &state, SurfaceId id)
+    static void markSurfaceUnavailable(
+        const std::shared_ptr<State> &state, SurfaceId id,
+        CompositeTarget::SurfaceLoss loss = CompositeTarget::SurfaceLoss::Hidden,
+        const std::weak_ptr<ChildRuntime> *source = nullptr)
     {
         std::vector<hyremote::CaptureRequestId> mayComplete;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
+            if (!state->active || (source && !isCurrentChildLocked(*state, id, *source)))
                 return;
+            if (loss == CompositeTarget::SurfaceLoss::IdentityChanged) {
+                const auto child = state->children.find(id);
+                if (child != state->children.end() && child->second)
+                    child->second->ownerRetired = true;
+            }
             for (auto &entry : state->pending) {
-                if (entry.second.expected.erase(id) > 0)
+                if (entry.second.expected.erase(id) > 0) {
+                    // A surface removed/hidden while another async child is
+                    // pending may already have produced a frame. Dropping its
+                    // expected token alone is insufficient: the old frame
+                    // would still be composited under the current request ID.
+                    entry.second.frames.erase(id);
                     mayComplete.push_back(entry.first);
+                }
             }
         }
         for (hyremote::CaptureRequestId requestId : mayComplete)
@@ -420,6 +580,7 @@ private:
 
     static void onChildFrame(const std::shared_ptr<State> &state,
                              SurfaceId id,
+                             const std::weak_ptr<ChildRuntime> &source,
                              hyremote::RemoteFrame frame)
     {
         if (!frame.requestId)
@@ -427,7 +588,10 @@ private:
         const hyremote::CaptureRequestId requestId = *frame.requestId;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active)
+            // SurfaceId may be reused for a different QObject/adapter.
+            // A retiring adapter's callbacks cannot represent that source,
+            // even if the old request ID happens to be outstanding.
+            if (!state->active || !isCurrentChildLocked(*state, id, source))
                 return;
             auto pendingIt = state->pending.find(requestId);
             if (pendingIt == state->pending.end()
@@ -441,9 +605,10 @@ private:
 
     static void onChildEvent(const std::shared_ptr<State> &state,
                              SurfaceId id,
+                             const std::weak_ptr<ChildRuntime> &source,
                              const hyremote::CaptureEvent &event)
     {
-        markSurfaceUnavailable(state, id);
+        markSurfaceUnavailable(state, id, CompositeTarget::SurfaceLoss::Hidden, &source);
         // Propagate the child's own recoverability. Losing one application-owned surface is recoverable -
         // the composite continues with the remaining surfaces - but a child that reports an unrecoverable
         // failure (a destroyed target, a backend that cannot capture at all) must reach Core as
@@ -452,7 +617,7 @@ private:
         publishEvent(state,
                      event.code,
                      std::string("composite child surface: ") + event.message,
-                     event.recoverable);
+                     event.recoverable, id, source);
     }
 
     static std::shared_ptr<ChildRuntime> ensureChild(
@@ -463,7 +628,8 @@ private:
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             auto it = state->children.find(id);
-            if (it != state->children.end() && it->second && it->second->target.data() == target)
+            if (it != state->children.end() && it->second && !it->second->ownerRetired
+                && it->second->target.data() == target)
                 return it->second;
         }
 
@@ -479,12 +645,13 @@ private:
         auto runtime = std::make_shared<ChildRuntime>();
         runtime->target = target;
         runtime->capture = std::move(components.capture);
+        const std::weak_ptr<ChildRuntime> weakRuntime = runtime;
         if (!runtime->capture->start(
-                [state, id](hyremote::RemoteFrame frame) {
-                    onChildFrame(state, id, std::move(frame));
+                [state, id, weakRuntime](hyremote::RemoteFrame frame) {
+                    onChildFrame(state, id, weakRuntime, std::move(frame));
                 },
-                [state, id](const hyremote::CaptureEvent &event) {
-                    onChildEvent(state, id, event);
+                [state, id, weakRuntime](const hyremote::CaptureEvent &event) {
+                    onChildEvent(state, id, weakRuntime, event);
                 })) {
             publishEvent(state,
                          hyremote::CaptureEventCode::TemporarilyUnavailable,
@@ -603,7 +770,7 @@ void CompositeTarget::removeSurfaceUnavailableHandler(quint64 token)
         m_surfaceUnavailableHandlers.remove(token);
 }
 
-void CompositeTarget::notifySurfaceUnavailable(SurfaceId id)
+void CompositeTarget::notifySurfaceUnavailable(SurfaceId id, SurfaceLoss loss)
 {
     // Invoke a snapshot so a handler can unregister itself as part of capture teardown without
     // invalidating this iteration. Surface/model mutations and capture orchestration are GUI-thread
@@ -611,7 +778,7 @@ void CompositeTarget::notifySurfaceUnavailable(SurfaceId id)
     const auto handlers = m_surfaceUnavailableHandlers.values();
     for (const SurfaceUnavailableHandler &handler : handlers) {
         if (handler)
-            handler(id);
+            handler(id, loss);
     }
 }
 
@@ -620,27 +787,35 @@ void CompositeTarget::upsertSurface(SurfaceId id,
                                     const QRect &globalGeometry,
                                     bool visible)
 {
+    // A stable SurfaceId can be reassigned when the native/Qt object is
+    // replaced. Frames already accepted from the previous QObject may still
+    // be waiting for another child; invalidate them before the new identity
+    // becomes eligible, even if both windows are visible.
+    const bool targetReplaced = m_targets.contains(id)
+                                && m_targets.value(id).data() != target;
     if (target)
         m_targets[id] = target;
     else
         m_targets.remove(id);
     m_model.upsert(id, globalGeometry, visible);
-    if (!target || !visible)
-        notifySurfaceUnavailable(id);
+    if (targetReplaced || !target)
+        notifySurfaceUnavailable(id, SurfaceLoss::IdentityChanged);
+    else if (!visible)
+        notifySurfaceUnavailable(id, SurfaceLoss::Hidden);
 }
 
 void CompositeTarget::removeSurface(SurfaceId id)
 {
     m_targets.remove(id);
     m_model.remove(id);
-    notifySurfaceUnavailable(id);
+    notifySurfaceUnavailable(id, SurfaceLoss::IdentityChanged);
 }
 
 void CompositeTarget::setSurfaceVisible(SurfaceId id, bool visible)
 {
     m_model.setVisible(id, visible);
     if (!visible)
-        notifySurfaceUnavailable(id);
+        notifySurfaceUnavailable(id, SurfaceLoss::Hidden);
 }
 
 void CompositeTarget::setSurfaceGeometry(SurfaceId id, const QRect &globalGeometry)
@@ -676,6 +851,15 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     if (!haveBounds)
         snapshot.canvasBounds = QRect{};
     return snapshot;
+}
+
+QSize CompositeTarget::initialFramebufferPixelSize() const
+{
+    const CompositeTargetSnapshot snapshot = captureSnapshot();
+    // The composite owns a logical-DPR=1 canvas; use the union of visible
+    // surfaces, not any one child's physical DPR or absolute screen offset.
+    // An empty canvas cannot safely enable idle RFB pixel reclamation.
+    return snapshot.backToFront.isEmpty() ? QSize{} : snapshot.canvasBounds.size();
 }
 
 ::HyRemote::detail::TargetComponents CompositeTarget::createTargetComponents(
