@@ -846,6 +846,95 @@ void testRfbConsumerPressureAndFullRequestWake()
     transport->stop();
 }
 
+// Deterministic overlap: the external owner holds the reclaim lock while the worker event
+// callback reenters stop(). The worker path must return without waiting for that lock.
+void testWorkerStopReentryDoesNotWaitForExternalReclaim()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    struct Rendezvous
+    {
+        std::mutex mutex;
+        std::condition_variable changed;
+        bool reclaimHeld = false;
+        bool workerReturned = false;
+        bool externalReturned = false;
+    };
+    auto rendezvous = std::make_shared<Rendezvous>();
+    std::shared_ptr<hyremote::Transport> transport = HyRemote::detail::createRfbTransport(
+        QHostAddress::LocalHost, port, HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    auto stopRequested = std::make_shared<std::atomic<bool>>(false);
+    auto workerReturned = std::make_shared<std::atomic<bool>>(false);
+    const auto noopInput = [](const hyremote::InputEvent &) {};
+    const bool started = transport->start(
+        noopInput,
+        [transport, rendezvous, stopRequested, workerReturned](const hyremote::TransportEvent &event) {
+            if (event.code != hyremote::TransportEventCode::ClientDisconnected
+                || stopRequested->exchange(true))
+                return;
+            {
+                std::unique_lock<std::mutex> lock(rendezvous->mutex);
+                rendezvous->changed.wait(lock, [&] { return rendezvous->reclaimHeld; });
+            }
+            transport->stop();
+            workerReturned->store(true);
+            {
+                std::lock_guard<std::mutex> lock(rendezvous->mutex);
+                rendezvous->workerReturned = true;
+            }
+            rendezvous->changed.notify_all();
+        });
+    CHECK(started);
+    if (!started) {
+        transport->stop();
+        return;
+    }
+    transport->enqueueFrame(makeFrame(32, 24, 0x203040U));
+
+    QTcpSocket socket;
+    CHECK(connectRawRfb(socket, port, false));
+    socket.disconnectFromHost();
+    CHECK(waitForDisconnected(socket));
+
+    HyRemote::detail::setRfbExternalStopReclaimObserverForTest([rendezvous] {
+        {
+            std::lock_guard<std::mutex> lock(rendezvous->mutex);
+            rendezvous->reclaimHeld = true;
+        }
+        rendezvous->changed.notify_all();
+    });
+    std::thread externalStop([transport, rendezvous] {
+        transport->stop();
+        {
+            std::lock_guard<std::mutex> lock(rendezvous->mutex);
+            rendezvous->externalReturned = true;
+        }
+        rendezvous->changed.notify_all();
+    });
+
+    bool workerDone = false;
+    bool externalDone = false;
+    {
+        std::unique_lock<std::mutex> lock(rendezvous->mutex);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        workerDone = rendezvous->changed.wait_until(lock, deadline,
+                                                    [&] { return rendezvous->workerReturned; });
+        externalDone = rendezvous->externalReturned;
+    }
+    CHECK(workerDone); // a worker waiting for the reclaim lock never reaches this point
+    if (externalDone)
+        externalStop.join();
+    else
+        externalStop.detach(); // shared state only; a failure path cannot dangle
+}
+
 void testTrleRawAndIncrementalDelivery()
 {
     const quint16 port = freePort();
@@ -5180,6 +5269,7 @@ int main(int argc, char **argv)
     CHECK(HyRemote::detail::runRfbNotificationPostFailureRegression());
     testTrleRawAndIncrementalDelivery();
     testRfbConsumerPressureAndFullRequestWake();
+    testWorkerStopReentryDoesNotWaitForExternalReclaim();
     testDamageAndEncodedFrameShareSnapshot();
     testPointerViewportTracksAdvertisedFramebuffer();
     testDecoratedRegionsCannotHideWatermarkChanges();
