@@ -31,6 +31,8 @@
 #include <QMetaObject>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMainWindow>
+#include <QStackedWidget>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QPixmap>
@@ -89,13 +91,13 @@ QString stateText(RfbClient::State state, Language language)
     return zh ? QStringLiteral("未知") : QStringLiteral("Unknown");
 }
 
-class ClientWindow final : public QWidget
+class ClientWindow final : public QMainWindow
 {
 public:
     explicit ClientWindow(Language language, ToolLanguagePreference preference,
                           bool cliOverride, QSettings &settings,
                           QString profilePath = {}, QWidget *parent = nullptr)
-        : QWidget(parent)
+        : QMainWindow(parent)
         , m_client(new RfbClient(this))
         , m_view(new FramebufferView(this))
         , m_language(language)
@@ -105,10 +107,30 @@ public:
                   .filePath(QStringLiteral("connections.json"))
             : std::move(profilePath))
     {
-        auto *root = new QVBoxLayout(this);
-        root->setContentsMargins(10, 10, 10, 10);
-        root->setSpacing(8);
+        auto *central = new QWidget(this);
+        setCentralWidget(central);
+        auto *root = new QHBoxLayout(central);
+        root->setContentsMargins(6, 6, 6, 6);
+        root->setSpacing(6);
 
+        // S1 exposes only the three task entries that are actually usable.
+        auto *nav = new QVBoxLayout;
+        m_connectPageButton = new QPushButton(this);
+        m_sessionPageButton = new QPushButton(this);
+        m_diagnosticsPageButton = new QPushButton(this);
+        m_connectPageButton->setCheckable(true);
+        m_sessionPageButton->setCheckable(true);
+        m_diagnosticsPageButton->setCheckable(true);
+        m_connectPageButton->setMaximumWidth(40);
+        m_sessionPageButton->setMaximumWidth(40);
+        m_diagnosticsPageButton->setMaximumWidth(40);
+        nav->addWidget(m_connectPageButton);
+        nav->addWidget(m_sessionPageButton);
+        nav->addWidget(m_diagnosticsPageButton);
+        nav->addStretch(1);
+        root->addLayout(nav);
+
+        auto *right = new QVBoxLayout;
         auto *brandRow = new QHBoxLayout;
         m_brand = new QLabel(this);
         const QPixmap brandImage(QStringLiteral(":/hyremote/branding/huayan-logo-single.png"));
@@ -116,26 +138,28 @@ public:
             qFatal("BRANDING_ASSET_MISSING");
         m_brand->setPixmap(brandImage.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         brandRow->addWidget(m_brand);
-        auto *brandName = new QLabel(QStringLiteral("HyRemoteTool"), this);
-        brandRow->addWidget(brandName);
+        brandRow->addWidget(new QLabel(QStringLiteral("HyRemoteTool"), this));
         brandRow->addStretch(1);
-        m_diagnosticsAction = new QPushButton(this);
-        m_diagnosticsAction->setObjectName(QStringLiteral("tool-open-diagnostics"));
-        brandRow->addWidget(m_diagnosticsAction);
-        root->addLayout(brandRow);
+        right->addLayout(brandRow);
 
+        m_pages = new QStackedWidget(this);
+        right->addWidget(m_pages, 1);
+        root->addLayout(right, 1);
+
+        auto *connectPage = new QWidget(m_pages);
+        auto *connectLayout = new QVBoxLayout(connectPage);
         auto *connectionRow = new QHBoxLayout;
-        m_remoteLabel = new QLabel(this);
-        m_host = new QLineEdit(this);
+        m_remoteLabel = new QLabel(connectPage);
+        m_host = new QLineEdit(connectPage);
         m_host->setPlaceholderText(QStringLiteral("192.168.1.6"));
         m_host->setClearButtonEnabled(true);
-        m_portLabel = new QLabel(this);
-        m_port = new QSpinBox(this);
+        m_portLabel = new QLabel(connectPage);
+        m_port = new QSpinBox(connectPage);
         m_port->setRange(1, 65535);
         m_port->setValue(5921);
-        m_connect = new QPushButton(this);
-        m_status = new QLabel(this);
-        m_languageBox = new QComboBox(this);
+        m_connect = new QPushButton(connectPage);
+        m_status = new QLabel(connectPage);
+        m_languageBox = new QComboBox(connectPage);
         m_languageBox->addItem(QString()); // Auto follows the local OS
         m_languageBox->addItem(QStringLiteral("简体中文"));
         m_languageBox->addItem(QStringLiteral("English"));
@@ -153,21 +177,21 @@ public:
         connectionRow->addWidget(m_connect);
         connectionRow->addWidget(m_status);
         connectionRow->addWidget(m_languageBox);
-        root->addLayout(connectionRow);
+        connectLayout->addLayout(connectionRow);
 
         // Local non-secret bookmarks. Selection only fills host/port; a
         // network attempt requires a separate explicit Connect action.
         auto *profilesRow = new QHBoxLayout;
-        m_profilesLabel = new QLabel(this);
-        m_profilesBox = new QComboBox(this);
+        m_profilesLabel = new QLabel(connectPage);
+        m_profilesBox = new QComboBox(connectPage);
         m_profilesBox->setObjectName(QStringLiteral("tool-saved-connections"));
         m_profilesBox->setMinimumContentsLength(18);
         m_profilesBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        m_profileSave = new QPushButton(this);
-        m_profileEdit = new QPushButton(this);
-        m_profileDelete = new QPushButton(this);
-        m_profileConnect = new QPushButton(this);
-        m_profileRecover = new QPushButton(this);
+        m_profileSave = new QPushButton(connectPage);
+        m_profileEdit = new QPushButton(connectPage);
+        m_profileDelete = new QPushButton(connectPage);
+        m_profileConnect = new QPushButton(connectPage);
+        m_profileRecover = new QPushButton(connectPage);
         m_profileRecover->hide();
         profilesRow->addWidget(m_profilesLabel);
         profilesRow->addWidget(m_profilesBox, 1);
@@ -176,41 +200,52 @@ public:
         profilesRow->addWidget(m_profileDelete);
         profilesRow->addWidget(m_profileConnect);
         profilesRow->addWidget(m_profileRecover);
-        root->addLayout(profilesRow);
+        connectLayout->addLayout(profilesRow);
 
-        m_profileWarning = new QLabel(this);
+        m_profileWarning = new QLabel(connectPage);
         m_profileWarning->setWordWrap(true);
         m_profileWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_profileWarning->hide();
-        root->addWidget(m_profileWarning);
+        connectLayout->addWidget(m_profileWarning);
 
         // Persisted settings may fail (read-only profile, disk/permission
         // errors). Warn in the GUI instead of claiming the selection survived
         // a restart. The language still applies to this running process.
-        m_languageWarning = new QLabel(this);
+        m_languageWarning = new QLabel(connectPage);
         m_languageWarning->setWordWrap(true);
         m_languageWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_languageWarning->hide();
-        root->addWidget(m_languageWarning);
+        connectLayout->addWidget(m_languageWarning);
+        m_connectionError = new QLabel(connectPage);
+        m_connectionError->setWordWrap(true);
+        m_connectionError->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_connectionError->setVisible(false);
+        connectLayout->addWidget(m_connectionError);
+        connectLayout->addStretch(1);
+        m_pages->addWidget(connectPage);
 
-        m_viewScroll = new QScrollArea(this);
+        auto *sessionPage = new QWidget(m_pages);
+        auto *sessionLayout = new QVBoxLayout(sessionPage);
+        m_viewScroll = new QScrollArea(sessionPage);
         m_viewScroll->setWidgetResizable(true);
         m_viewScroll->setWidget(m_view);
-        root->addWidget(m_viewScroll, 1);
-
+        sessionLayout->addWidget(m_viewScroll, 1);
         auto *telemetryRow = new QHBoxLayout;
-        m_control = new QCheckBox(this);
-        m_fitButton = new QPushButton(this);
-        m_nativeButton = new QPushButton(this);
-        m_fullscreenButton = new QPushButton(this);
+        m_control = new QCheckBox(sessionPage);
+        m_fitButton = new QPushButton(sessionPage);
+        m_nativeButton = new QPushButton(sessionPage);
+        m_fullscreenButton = new QPushButton(sessionPage);
         m_fitButton->setCheckable(true);
         m_nativeButton->setCheckable(true);
         m_fitButton->setChecked(true);
-        m_fps = new QLabel(this);
-        m_mbps = new QLabel(this);
-        m_frames = new QLabel(this);
-        m_bytes = new QLabel(this);
-        m_resolution = new QLabel(this);
+        m_fitButton->setMaximumWidth(36);
+        m_nativeButton->setMaximumWidth(40);
+        m_fullscreenButton->setMaximumWidth(40);
+        m_fps = new QLabel(sessionPage);
+        m_mbps = new QLabel(sessionPage);
+        m_frames = new QLabel(sessionPage);
+        m_bytes = new QLabel(sessionPage);
+        m_resolution = new QLabel(sessionPage);
         telemetryRow->addWidget(m_control);
         telemetryRow->addWidget(m_fitButton);
         telemetryRow->addWidget(m_nativeButton);
@@ -221,13 +256,29 @@ public:
         telemetryRow->addWidget(m_bytes);
         telemetryRow->addWidget(m_resolution);
         telemetryRow->addStretch(1);
-        root->addLayout(telemetryRow);
-
-        m_error = new QLabel(this);
+        sessionLayout->addLayout(telemetryRow);
+        m_error = new QLabel(sessionPage);
         m_error->setWordWrap(true);
         m_error->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_error->setVisible(false);
-        root->addWidget(m_error);
+        sessionLayout->addWidget(m_error);
+        m_pages->addWidget(sessionPage);
+
+        auto *diagnosticsPage = new QWidget(m_pages);
+        auto *diagnosticsLayout = new QVBoxLayout(diagnosticsPage);
+        m_diagnosticsAction = new QPushButton(diagnosticsPage);
+        m_diagnosticsAction->setObjectName(QStringLiteral("tool-open-diagnostics"));
+        diagnosticsLayout->addWidget(m_diagnosticsAction);
+        diagnosticsLayout->addStretch(1);
+        m_pages->addWidget(diagnosticsPage);
+
+        m_connectPageButton->setChecked(true);
+        connect(m_connectPageButton, &QPushButton::clicked, this,
+                [this] { m_pages->setCurrentIndex(0); });
+        connect(m_sessionPageButton, &QPushButton::clicked, this,
+                [this] { m_pages->setCurrentIndex(1); });
+        connect(m_diagnosticsPageButton, &QPushButton::clicked, this,
+                [this] { m_pages->setCurrentIndex(2); });
 
         m_view->onPointer = [this](quint8 mask, quint16 x, quint16 y) {
             m_client->sendPointer(mask, x, y);
@@ -409,10 +460,13 @@ public:
                       && m_fitButton->isChecked()
                       && m_viewScroll->widgetResizable();
         }
-        const bool ok = m_brand && !QGuiApplication::windowIcon().isNull()
+        const bool ok = m_brand && m_pages && m_connectPageButton && m_sessionPageButton
+                        && m_diagnosticsPageButton && m_pages->count() == 3
+                        && !QGuiApplication::windowIcon().isNull()
                         && m_host && m_port && m_connect && m_view && m_status
                         && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_languageBox && m_languageWarning
+                        && m_resolution && m_error && m_connectionError
+                        && m_languageBox && m_languageWarning
                         && m_profilesLabel && m_profilesBox && m_profileSave
                         && m_profileEdit && m_profileDelete && m_profileConnect
                         && m_profileRecover && m_profileWarning
@@ -422,6 +476,7 @@ public:
                   << " port=" << (m_port != nullptr)
                   << " view=" << (m_view != nullptr)
                   << " view-modes=" << (nativeMode && fitMode)
+                  << " task-pages=" << (m_pages ? m_pages->count() : 0)
                   << " telemetry=" << (m_fps != nullptr && m_mbps != nullptr)
                   << " language=" << (m_languageBox != nullptr)
                   << " lang=" << (isChinese(m_language) ? "zh" : "en")
@@ -548,6 +603,9 @@ private:
     {
         setWindowTitle(text("HyRemoteTool - 远程访问客户端",
                             "HyRemoteTool - Remote access client"));
+        m_connectPageButton->setText(text("连接", "Connect"));
+        m_sessionPageButton->setText(text("会话", "Session"));
+        m_diagnosticsPageButton->setText(text("诊断", "Diag"));
         m_remoteLabel->setText(text("远程", "Remote"));
         m_portLabel->setText(text("端口", "Port"));
         m_connect->setText((m_state == RfbClient::State::Connected
@@ -601,6 +659,8 @@ private:
                                   : QStringLiteral("%1 × %2").arg(m_frameSize.width()).arg(m_frameSize.height()));
         m_error->setText(localizedError(m_lastErrorRaw));
         m_error->setVisible(!m_lastErrorRaw.isEmpty());
+        m_connectionError->setText(localizedError(m_lastErrorRaw));
+        m_connectionError->setVisible(!m_lastErrorRaw.isEmpty());
         if (m_view && m_view->hasFrame() == false)
             m_view->setPlaceholder(placeholderText());
     }
@@ -638,6 +698,13 @@ private:
         const bool busy = state == RfbClient::State::Connecting
                           || state == RfbClient::State::Handshaking;
         const bool connected = state == RfbClient::State::Connected;
+        if (connected) {
+            // A successful connection has a usable session task page; move there
+            // without implying that remote input was granted.
+            m_pages->setCurrentIndex(1);
+            m_sessionPageButton->setChecked(true);
+            m_connectPageButton->setChecked(false);
+        }
         if (connected && !m_pendingProfileId.isEmpty()) {
             QString error;
             const auto selectedId = m_pendingProfileId;
@@ -692,6 +759,10 @@ private:
     QString m_lastErrorRaw;
 
     QLabel *m_brand = nullptr;
+    QStackedWidget *m_pages = nullptr;
+    QPushButton *m_connectPageButton = nullptr;
+    QPushButton *m_sessionPageButton = nullptr;
+    QPushButton *m_diagnosticsPageButton = nullptr;
     QLabel *m_remoteLabel = nullptr;
     QLineEdit *m_host = nullptr;
     QLabel *m_portLabel = nullptr;
@@ -700,6 +771,7 @@ private:
     QLabel *m_status = nullptr;
     QComboBox *m_languageBox = nullptr;
     QLabel *m_languageWarning = nullptr;
+    QLabel *m_connectionError = nullptr;
     QLabel *m_profilesLabel = nullptr;
     QComboBox *m_profilesBox = nullptr;
     QPushButton *m_profileSave = nullptr;
@@ -741,10 +813,13 @@ void ClientWindow::openDiagnostics()
     m_diagDialog->activateWindow();
 }
 
-bool ClientWindow::verifyDiagnosticsUi(const QString &testCase)
+bool ClientWindow::verifyDiagnosticsUi(    const QString &testCase)
 {
     const bool compact = testCase == QStringLiteral("compact");
     resize(compact ? QSize(800, 600) : QSize(1366, 768));
+    m_pages->setCurrentIndex(2); // production navigation to the diagnostics task
+    m_diagnosticsPageButton->setChecked(true);
+
     const bool offline = m_client->state() == RfbClient::State::Disconnected
                          && !m_view->inputEnabled();
     m_diagnostics.beginAttempt(QStringLiteral("10.10.12.8"), 5921);
