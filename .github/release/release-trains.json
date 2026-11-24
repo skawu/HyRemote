@@ -429,7 +429,7 @@
         "592": "Docker is a separate conditional outcome.",
         "593": "Image watermark is outside S1."
       },
-      "rule": "V0.3.6.0 is the next admitted Public Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. No Native, Private View, P-EXT, Gateway, S2/S3 or new platform support is implied. View has independent version and compatibility gates. V0.4 remains inactive qualification-only."
+      "rule": "V0.3.6.0 is the next admitted Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. S2/S3 and new platform support remain outside this scope. V0.4 remains inactive qualification-only."
     },
     "1.0.0.0": {
       "authority_parent": 33,
