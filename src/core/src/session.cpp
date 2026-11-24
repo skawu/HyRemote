@@ -720,6 +720,11 @@ struct Session::Impl
         if (gate)
             gate->closeAndDrain();
 
+        // Stop the source before joining the scheduler. Shared Runtime's ObservedCaptureSource
+        // wakes a scheduler blocked inside requestFrame() from this stop() (ViewerCaptureDemand
+        // stop -> notify_all); joining first would wait for a wake we have not yet delivered.
+        stopComponentQuietly(source);
+
         if (mailbox != nullptr)
             mailbox->close();  // the dispatch worker drains what Core already accepted
 
@@ -730,9 +735,6 @@ struct Session::Impl
                 impl.dispatcherThread.join();
         }
 
-        // The scheduler may still have been inside requestFrame() when stop was requested. Join it
-        // first so stop() cannot race with an in-flight capture request on the same backend.
-        stopComponentQuietly(source);
         stopComponentQuietly(transport);
 
         {

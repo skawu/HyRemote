@@ -791,6 +791,50 @@ bool stopOnSeparateThreadAndWait(Session &session, std::thread &thread)
     return waitFor([&returned] { return returned.load(); });
 }
 
+// Models Shared Runtime's ObservedCaptureSource gate: requestFrame() blocks until this
+// source's stop() wakes it. Core must deliver that stop before joining its scheduler.
+class StopWakeCaptureSource final : public CaptureSource
+{
+public:
+    CaptureCapabilities capabilities() const override
+    {
+        CaptureCapabilities c;
+        c.asynchronous = true;
+        c.cpuReadable = true;
+        c.cpuFormats = {PixelFormat::Bgra8888};
+        return c;
+    }
+    bool start(FrameReadyHandler, CaptureEventHandler) override { return true; }
+    void stop() noexcept override
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stopped = true;
+        }
+        m_changed.notify_all();
+    }
+    bool requestFrame(const CaptureRequest &) override
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_entered = true;
+        m_enteredCv.notify_all();
+        m_changed.wait(lock, [this] { return m_stopped; });
+        return false;
+    }
+    bool waitUntilEntered()
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        return m_enteredCv.wait_for(lock, std::chrono::seconds(3), [this] { return m_entered; });
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_changed;
+    std::condition_variable m_enteredCv;
+    bool m_stopped = false;
+    bool m_entered = false;
+};
+
 }  // namespace
 
 HYR_TEST(r3b1_stop_wins_at_the_earliest_moment_after_starting_is_published)
@@ -1168,6 +1212,30 @@ HYR_TEST(b4_a_throwing_capability_query_fails_before_starting)
         HYR_CHECK_EQ(running.source->stopCalls(), 0);
         HYR_CHECK(running.session->lastError().value().code == SessionErrorCode::ComponentFailure);
     }
+}
+
+HYR_TEST(source_stop_wakes_scheduler_blocked_in_request_frame)
+{
+    auto source = std::make_unique<StopWakeCaptureSource>();
+    auto *blocked = source.get();
+    Session session;
+    session.setCaptureSource(std::move(source));
+    session.setTransport(std::make_unique<FakeTransport>());
+    HYR_CHECK(session.start());
+    HYR_CHECK(blocked->waitUntilEntered());
+
+    std::atomic<bool> returned{false};
+    std::thread stopper([&] {
+        session.stop();
+        returned.store(true);
+    });
+    const bool completed = waitFor([&] { return returned.load(); });
+    if (completed)
+        stopper.join();
+    else
+        stopper.detach();
+    HYR_CHECK(completed); // join-before-stop would block here forever
+    HYR_CHECK(session.state() == SessionState::Stopped);
 }
 
 HYR_TEST_MAIN()
