@@ -40,6 +40,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"

@@ -1,7 +1,5 @@
 #include "hyremote/core/types.hpp"
 
-#include "hyremote/core/storage.hpp"
-
 namespace hyremote {
 
 std::string_view pixelFormatName(PixelFormat format)
@@ -19,17 +17,6 @@ std::string_view pixelFormatName(PixelFormat format)
         return "Rgbx8888";
     }
     return "Unknown";
-}
-
-std::string_view storageKindName(StorageKind kind)
-{
-    switch (kind) {
-    case StorageKind::Cpu:
-        return "Cpu";
-    case StorageKind::External:
-        return "External";
-    }
-    return "External";
 }
 
 }  // namespace hyremote
