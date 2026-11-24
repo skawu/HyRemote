@@ -44,6 +44,7 @@
 namespace HyRemote::detail {
 namespace {
 
+std::function<void()> g_externalStopReclaimObserver;
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
 // #158/#603 physical acceptance: RealVNC Viewer 7.15.1 asks the user to dismiss an "Unencrypted Connection"
@@ -580,6 +581,13 @@ public:
         }
         startOccupancySweep();
         return true;
+    }
+
+    void beginStopping() noexcept
+    {
+        // Suppress further callbacks during a worker-side stop without clearing
+        // the installed handlers from inside one of those handlers.
+        m_stopping = true;
     }
 
     void shutdown()
@@ -2204,7 +2212,7 @@ public:
         if (m_thread || m_worker || m_port == 0 || m_address.isNull())
             return false;
 
-        auto thread = std::make_unique<QThread>();
+        auto thread = std::make_shared<QThread>();
         auto *worker = new RfbWorker(m_address, m_port, m_security, m_frames, std::move(onInput), std::move(onEvent));
         worker->moveToThread(thread.get());
         QObject::connect(thread.get(), &QThread::finished, worker, &QObject::deleteLater);
@@ -2228,20 +2236,51 @@ public:
     void stop() noexcept override
     {
         try {
-            std::lock_guard<std::mutex> lock(m_lifecycleMutex);
-            if (!m_thread || !m_worker)
-                return;
-
-            RfbWorker *worker = m_worker;
-            QMetaObject::invokeMethod(worker, [worker] { worker->shutdown(); }, Qt::BlockingQueuedConnection);
-            m_thread->quit();
-            m_thread->wait();
-            m_worker = nullptr;
-            m_thread.reset();
-
-            std::lock_guard<std::mutex> frameLock(m_frames->mutex);
-            m_frames->latest.reset();
-            m_frames->notificationPending = false;
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                if (!m_thread)
+                    return;
+                if (QThread::currentThread() == m_thread.get()) {
+                    // An event callback runs on the worker thread and may synchronously stop
+                    // its owner. Decide this before touching the external reclaim lock: waiting
+                    // for it here would wait for our own event loop to finish. Suppress further
+                    // callbacks now, but never clear the std::function executing this call.
+                    if (m_worker)
+                        m_worker->beginStopping();
+                    m_thread->quit();
+                    return;
+                }
+            }
+            // Serialize external reclaimers: a second stop() must not return before the first
+            // has joined the worker, and start() must not observe a free transport before then.
+            std::lock_guard<std::mutex> reclaimLock(m_reclaimMutex);
+            if (g_externalStopReclaimObserver)
+                g_externalStopReclaimObserver();
+            std::shared_ptr<QThread> thread;
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                if (!m_thread)
+                    return;
+                thread = m_thread;
+                // Publish shutdown while the worker pointer is still protected. A queued
+                // MetaCall releases the callback stack before shutdown clears the callbacks.
+                if (m_worker) {
+                    QMetaObject::invokeMethod(m_worker, [worker = m_worker, q = thread.get()] {
+                        worker->shutdown();
+                        q->quit();
+                    }, Qt::QueuedConnection);
+                }
+            }
+            thread->quit();
+            thread->wait();
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                m_worker = nullptr;
+                m_thread.reset();
+                std::lock_guard<std::mutex> frameLock(m_frames->mutex);
+                m_frames->latest.reset();
+                m_frames->notificationPending = false;
+            }
         } catch (...) {
         }
     }
@@ -2285,11 +2324,17 @@ private:
     RfbSecurityConfig m_security;
     std::shared_ptr<SharedFrameState> m_frames;
     std::mutex m_lifecycleMutex;
-    std::unique_ptr<QThread> m_thread;
+    std::mutex m_reclaimMutex;
+    std::shared_ptr<QThread> m_thread;
     RfbWorker *m_worker = nullptr;
 };
 
 }  // namespace
+
+void setRfbExternalStopReclaimObserverForTest(std::function<void()> observer)
+{
+    g_externalStopReclaimObserver = std::move(observer);
+}
 
 bool runRfbNotificationPostFailureRegression()
 {
