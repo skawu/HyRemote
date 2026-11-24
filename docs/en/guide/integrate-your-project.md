@@ -526,6 +526,94 @@ application's (reference: Qt 6.8.3 MinGW/x86_64).
 
 ---
 
+## Optional: choose the host paths explicitly (#591)
+
+The security descriptor, the writable state directory and the secret reference are resolved by **one shared Runtime path
+contract**. The four routes only supply the selection; none of them carries its own precedence rules, so one deployment
+answers identically on C++/QML/Generic/QPA.
+
+Precedence, resolved per path:
+
+| Path | Precedence |
+| --- | --- |
+| security descriptor | explicit application/launch selection > `HYREMOTE_CONFIG_FILE` > (none) |
+| state directory | explicit selection > `HYREMOTE_STATE_DIR` > `<descriptor directory>/state` > Qt platform user-data location |
+| secret reference | explicit selection > `HYREMOTE_SECRET_FILE` > (none) |
+
+There is no CWD or home-directory fallback. Relative paths are normalized to absolute paths, and the descriptor-relative
+state directory is anchored to the descriptor's own directory rather than the launch directory.
+
+Explicit entry points per route:
+
+- **C++**: `remote.setSecurityConfigFile(path)` (mutable only while `Stopped`);
+- **QML**: `RemoteAccess { securityConfigFile: "..." }`;
+- **Generic**: `-plugin hyremote:security-config=<path>`;
+- **QPA**: `-platform hyremote:hyremote-security-config=<path>`.
+
+When an explicit or environment selection is unusable (missing/unreadable file, or a state directory whose parent does
+not exist), **only the feature that depends on that path** fails closed with an actionable error; it never falls back to
+another writable location. An unusable state directory therefore does not stop a readable descriptor from starting.
+
+Only the descriptor has a public explicit selector today. The state directory and the secret reference are selectable
+through `HYREMOTE_STATE_DIR` / `HYREMOTE_SECRET_FILE` only, and the Runtime has no persistence or credential consumer
+yet: they are resolved, validated and reported truthfully in the diagnostic report, but that is **not** a claim that
+persistence or credential management has shipped.
+
+Report fields: `HOST_CONFIG_FILE` / `HOST_STATE_DIR` / `HOST_SECRET_FILE` with their own `_ORIGIN`
+(`explicit`, `environment`, `config-relative`, `platform-default`, `none`), and `HOST_PATHS_ERROR` on failure. See
+[troubleshooting](troubleshooting.md).
+
+---
+
+## Optional: server-side static text watermark (#589)
+
+The watermark is painted onto the **remote output** (Raw/TRLE and incremental damage both carry it). It never modifies
+the host application's own local pixels and needs no viewer cooperation.
+
+Shared defaults (Owner decision, one implementation for all four routes):
+
+| Item | Default |
+| --- | --- |
+| enabled | **off**; only a non-empty text enables it |
+| position | **bottom-right, single line** when unset; full-screen `tiled` must be chosen explicitly |
+| opacity | **0.35** |
+| font size | 16 points, converted with the target's device pixel ratio so it keeps its size across screens |
+| colour | `#FFFFFF` |
+
+Per route:
+
+- **C++**: `HyRemote::RemoteWatermark w; w.text = "CONFIDENTIAL"; remote.setWatermark(w);` (`clearWatermark()` disables);
+- **QML**: `RemoteAccess { watermarkText: "CONFIDENTIAL"; watermarkPosition: "tiled"; watermarkOpacity: 0.5 }`;
+- **Generic**: `-plugin hyremote:watermark=CONFIDENTIAL;watermark-position=tiled;watermark-opacity=0.5;watermark-font-size=24;watermark-color=#00FF00`;
+- **QPA**: `-platform hyremote:hyremote-watermark=CONFIDENTIAL:hyremote-watermark-position=bottom-left`.
+
+Bounded and **rejected rather than clamped**: text ≤128 code units and a single visible line (control, zero-width and
+bidi-override characters are refused), opacity 0.05–1.0, font size 8–96 points, colour `#RRGGBB`. When any value is
+invalid, the C++/QML setter fails or reports `errorCode=InvalidConfiguration`, the diagnostic report shows a non-`none`
+`WATERMARK_POLICY_ERROR`, and `start()` fails - it **never streams a picture without the watermark** while the host Qt
+application keeps running. Text that cannot fit the frame is refused too: no clipping, no eliding, no silent shrinking.
+No user name, IP, time or device template is supported or accepted; image logos belong to #593 after V1 GA.
+
+**It survives a restart (#591).** An explicitly configured policy is written into the resolved state directory
+(`<state dir>/watermark.policy`, containing only text/position/opacity/size/colour - never credentials or descriptor
+contents) and restored on the next start when that process makes no explicit selection of its own. Precedence is
+**explicit this run > persisted policy > shared default**; an explicit disable removes the file, so a watermark cannot
+"come back" after a restart. A hand-edited or out-of-bounds file is **not** restored (the shared resolver rejects it)
+and never blocks the host application from starting - but the state directory is not a hand-written configuration
+entry point.
+
+**Refusing to guess (#761).** Turning a stored watermark off is an explicit switch - `watermark-state=off` on the
+Generic route, `hyremote-watermark-state=off` on QPA - and only that switch removes the stored file. A launch that
+supplies only attributes (position, opacity, font size, colour) **without** text is refused with an actionable error
+instead of silently clearing a watermark that is currently in force: partial watermark configuration is not supported,
+so state the text and the attributes together, or switch the stored watermark off explicitly.
+
+Diagnostic fields: `WATERMARK_ENABLED`, `WATERMARK_POSITION`, `WATERMARK_OPACITY`, `WATERMARK_FONT_SIZE`,
+`WATERMARK_COLOR`, `WATERMARK_TEXT_CODE_UNITS`, `WATERMARK_POLICY_ERROR`. The report carries the text **length** only,
+never the text.
+
+---
+
 ## STEP 8 - The most common failures
 
 | Symptom | Cause | Fix |

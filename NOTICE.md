@@ -18,13 +18,13 @@ The Transparent QPA Proxy additionally depends on exact Qt private QPA interface
 
 ### OpenSSL
 
-HyRemote's V1 authenticated/encrypted RFB implementation uses OpenSSL cryptographic primitives as a **private implementation dependency** of the single `HyRemoteRemoteAccess` runtime. OpenSSL is not part of the public C++/QML/QPA API and downstream applications are not given an `OpenSSL` SDK target through HyRemote.
+**Current published behavior:** the RFB `AuthenticatedEncrypted` profile is **not implemented**; neither VNC password authentication nor the current shared Runtime provides encrypted transport. OpenSSL must not be presented as an already shipped encrypted-RFB implementation. If a future separately qualified encrypted transport uses OpenSSL, it must remain a private implementation dependency of the shared Runtime, not a fifth public frontend or an undeclared SDK dependency.
 
-The HyRemote source tree does not vendor or relicense OpenSSL. Source builds use the OpenSSL installation selected by CMake on the qualified build host. The OpenSSL project's own license terms therefore continue to apply.
+The HyRemote source tree does not vendor or relicense OpenSSL. Builds that explicitly enable an OpenSSL-dependent capability must resolve the library through the selected CMake/toolchain installation; this selection is **conditional** and does not certify or imply that TLS is available in the currently released product. Any actual OpenSSL redistribution remains subject to its own license and notice terms.
 
 If a HyRemote binary release asset redistributes OpenSSL runtime binaries, that release asset must also carry the OpenSSL license/notice material required for that exact redistributed version. Release-readiness evidence must record the exact OpenSSL runtime version and prove that a clean extracted SDK runs without relying on an undeclared build-workspace copy. Conversely, a platform build that intentionally relies on an operating-system supplied OpenSSL runtime must document that runtime prerequisite instead of silently bundling a different copy.
 
-The legacy VNC-authentication DES primitive is used only for protocol interoperability in the explicit `Authenticated` compatibility profile. It is **not** the V1 GA encrypted-security claim; `AuthenticatedEncrypted` remains the required secure release profile and must fail closed if its TLS capability or material cannot be established.
+The legacy VNC-authentication DES primitive is used only for protocol interoperability in the explicit `Authenticated` compatibility profile; **it does not encrypt the RFB session**. The unimplemented `AuthenticatedEncrypted` profile fails closed rather than downgrading. A future Internet-safe security claim requires separate design, evidence and release admission, not an assumption that OpenSSL is already deployed.
 
 ## Development and CI tooling
 

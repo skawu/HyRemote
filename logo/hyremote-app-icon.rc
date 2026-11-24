@@ -1,0 +1,13 @@
+// #241: the Windows file icon for every HyRemote-owned runnable GUI program.
+//
+// This resource is the *executable* icon Explorer, the taskbar and Alt-Tab read from the PE file. It is deliberately
+// separate from `QGuiApplication::setWindowIcon()`: that call only affects the icon of a running window and cannot
+// give the .exe a file icon.
+//
+// The .ico is generated from the one canonical brand asset, never hand-edited:
+//   python -c "from PIL import Image; im=Image.open('logo/huayan-logo-single.png').convert('RGBA');
+//              s=max(im.size); c=Image.new('RGBA',(s,s),(0,0,0,0)); c.paste(im,((s-im.width)//2,(s-im.height)//2));
+//              c.save('logo/hyremote-app.ico', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+//
+// Do not add a second brand image: this file references the generated .ico only.
+IDI_ICON1 ICON "hyremote-app.ico"

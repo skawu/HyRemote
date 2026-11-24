@@ -40,9 +40,9 @@ The V0.3.0.0 publication historically named **Qt 6.8.3 on Windows and Linux x86_
 
 The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified. Its 5.15.2 row is the original V0.3.0.0-era legacy record; the current state of every Qt 5 route was decided by Owner D2 (2026-10-27) and is stated in the current development-line table below.
 
-## Current development line: V0.3.4.0 exact cells (not released)
+## Current development line: V0.3.4.0 exact cells (V0.3.4.0 released 2026-10-29)
 
-V0.3.4.0 is the **current development target, not a released version**. A cell is the full combination of exact Qt patch, compiler/ABI, OS/architecture, integration route and UI target. One passing cell never implies another cell of the same Qt family.
+V0.3.4.0 was **released on 2026-10-29**: annotated tag `v0.3.4.0` points at `main` `27bf97d`, the candidate and acceptance SHA is `c57dae0`, and both the same-SHA L2 (run `40812083626`) and the RealVNC Viewer 7.15.1 D05 physical run passed. A cell is the full combination of exact Qt patch, compiler/ABI, OS/architecture, integration route and UI target. One passing cell never implies another cell of the same Qt family; the next version, V0.3.5.0, is not released.
 
 | Exact Qt | Compiler / ABI | Platform | Integration | UI target | Status | Evidence and boundary |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ V0.3.4.0 is the **current development target, not a released version**. A cell i
 | 6.8.3 | msvc2022_64 | Windows x86_64 | QML API | Qt Quick | **Supported** | Installed QML consumer and QML tests |
 | 6.8.3 | msvc2022_64 | Windows x86_64 | Generic Plugin | Widgets / Quick | **Supported** | Preserves the native Qt platform identity; package and tests pass |
 | 6.8.3 exact | msvc2022_64 | Windows x86_64 | QPA | Widgets / Quick | **Limited** | Exact 6.8.3 private ABI only (`qwindows`); no other Qt patch |
-| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Widgets | **Limited** | Runtime, Tool, examples and installed consumers (CMake + qmake) build and run; Windows Qt 5 lane 62/62 CTest |
+| 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Widgets | **Limited** | Runtime, Tool, examples and installed consumers (CMake + qmake) build and run; the released candidate `c57dae0` passed the Windows Qt 5 lane **65/65 CTest** and the RealVNC 7.15.1 D05 physical run |
 | 5.15.2 | msvc2019_64 | Windows x86_64 | C++ API | Qt Quick | **Experimental** | Internal `HYREMOTE_QT5_ENABLE_QUICK=ON` only; capture/input tests fail, normal entry is hidden; never to be called supported |
 | 5.15.2 | msvc2019_64 | Windows x86_64 | QML API | — | **Unsupported** | Owner D2: Qt 5 QML is outside the declared scope |
 | 5.15.2 | msvc2019_64 | Windows x86_64 | Generic Plugin | — | **Unsupported** | Owner D2: Generic requires Qt 6.8 or newer |
@@ -59,7 +59,7 @@ V0.3.4.0 is the **current development target, not a released version**. A cell i
 | 6.5 / 6.12 | — | — | — | — | **Detected, not qualified** | Separate post-V1.0-GA admission under #605; detection is not support |
 | any Qt | — | non-Windows (Linux/Wayland/ARM64/EGLFS) | — | — | **User-validation pending** | No target-system evidence; never blocks a Windows version and is never Supported |
 
-Viewer boundary: **RealVNC Viewer 7.15.1** is the required maintained viewer for V0.3.4.0. On the current development-line candidate (Windows Qt 5.15.2 and Qt 6.8.3 Widgets hosts) connection, keyboard press/release and disconnect/reconnect are recorded. Right-click input reaches the host, but the native context menu in the remote screenshot is `NOT_CONFIRMED`; per Owner D1 it moves to V0.4.0.0 qualification and is not recorded as PASS. No other viewer inherits these results.
+Viewer boundary: **RealVNC Viewer 7.15.1** is the required maintained viewer for V0.3.4.0. The D05 physical run on the released candidate `c57dae0` (Windows Qt 5.15.2 and Qt 6.8.3 Widgets hosts) recorded connection, keyboard press/release, close + reconnect, DPR 1.5 and protocol-level TRLE. Right-click input reaches the host, but the native context menu in the remote screenshot is `NOT_CONFIRMED`; per Owner D1 it moves to V0.4.0.0 qualification and is not recorded as PASS. No other viewer inherits these results.
 
 ## Qt LTS policy
 

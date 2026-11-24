@@ -19,6 +19,8 @@
 #include <QQmlEngine>
 #include <QThread>
 #include <QTimer>
+#include <QTemporaryDir>
+#include <QFileInfo>
 #include <QVariant>
 
 #include "detail/component_factories.hpp"
@@ -441,6 +443,135 @@ void testLocalValidationErrorSurvivesUnrelatedRuntimeEvents(QQmlEngine &engine)
     HyRemote::detail::resetFactories();
 }
 
+void testExplicitEmptyWatermarkOverridesPersistedPolicy(QQmlEngine &engine)
+{
+    // First prove a real persisted policy can be restored by an OMITTED QML property, then verify
+    // an EXPLICIT empty assignment removes it. A getter/signal-only test cannot prove this contract.
+    QTemporaryDir stateDir;
+    CHECK(stateDir.isValid());
+    if (!stateDir.isValid())
+        return;
+    const bool previousSelected = qEnvironmentVariableIsSet("HYREMOTE_STATE_DIR");
+    const QByteArray previousValue = qgetenv("HYREMOTE_STATE_DIR");
+    qputenv("HYREMOTE_STATE_DIR", stateDir.path().toUtf8());
+
+    const auto state = std::make_shared<RuntimeState>();
+    installRuntime(state);
+    QObject target;
+    const QString policyPath = stateDir.filePath(QStringLiteral("watermark.policy"));
+
+    {
+        auto access = createAccess(engine, "watermark_seed.qml");
+        CHECK(access != nullptr);
+        if (access) {
+            access->setProperty("target", QVariant::fromValue<QObject *>(&target));
+            access->setProperty("watermarkText", QStringLiteral("PERSISTED"));
+            access->setProperty("enabled", true);
+            settle();
+            CHECK(access->property("enabled").toBool());
+            CHECK(QFileInfo::exists(policyPath));
+            access->setProperty("enabled", false);
+        }
+    }
+    {
+        auto access = createAccess(engine, "watermark_omitted.qml");
+        CHECK(access != nullptr);
+        if (access) {
+            access->setProperty("target", QVariant::fromValue<QObject *>(&target));
+            // Nothing assigned: persistence is intentionally restored, not implicitly cleared.
+            access->setProperty("enabled", true);
+            settle();
+            CHECK(access->property("enabled").toBool());
+            QString report;
+            CHECK(QMetaObject::invokeMethod(access.get(), "diagnosticReport",
+                                            Q_RETURN_ARG(QString, report)));
+            CHECK(report.contains(QStringLiteral("WATERMARK_ENABLED=true")));
+            CHECK(QFileInfo::exists(policyPath));
+            access->setProperty("enabled", false);
+        }
+    }
+    {
+        auto access = createAccess(engine, "watermark_explicit_off.qml");
+        CHECK(access != nullptr);
+        if (access) {
+            access->setProperty("target", QVariant::fromValue<QObject *>(&target));
+            CHECK(access->property("watermarkText").toString().isEmpty());
+            access->setProperty("watermarkText", QString());  // explicit OFF, despite same default
+            access->setProperty("enabled", true);
+            settle();
+            CHECK(access->property("enabled").toBool());
+            QString report;
+            CHECK(QMetaObject::invokeMethod(access.get(), "diagnosticReport",
+                                            Q_RETURN_ARG(QString, report)));
+            CHECK(report.contains(QStringLiteral("WATERMARK_ENABLED=false")));
+            CHECK(!QFileInfo::exists(policyPath));
+            access->setProperty("enabled", false);
+        }
+    }
+
+    HyRemote::detail::resetFactories();
+    if (previousSelected)
+        qputenv("HYREMOTE_STATE_DIR", previousValue);
+    else
+        qunsetenv("HYREMOTE_STATE_DIR");
+}
+
+void testRejectedRunningWatermarkEditDoesNotPoisonRestart(QQmlEngine &engine)
+{
+    // Isolate persistent-policy writes from the developer/user environment.
+    QTemporaryDir stateDir;
+    CHECK(stateDir.isValid());
+    if (!stateDir.isValid())
+        return;
+    const bool previousSelected = qEnvironmentVariableIsSet("HYREMOTE_STATE_DIR");
+    const QByteArray previousValue = qgetenv("HYREMOTE_STATE_DIR");
+    qputenv("HYREMOTE_STATE_DIR", stateDir.path().toUtf8());
+
+    const auto state = std::make_shared<RuntimeState>();
+    installRuntime(state);
+    QObject target;
+
+    auto access = createAccess(engine, "watermark_rejected_while_running.qml");
+    CHECK(access != nullptr);
+    if (access) {
+        access->setProperty("target", QVariant::fromValue<QObject *>(&target));
+        access->setProperty("enabled", true);
+        settle();
+        CHECK(access->property("enabled").toBool());
+
+        // Runtime rejects changes while Running. Rejected values must never appear in getters or
+        // prevent the same requested values being set successfully after stop().
+        access->setProperty("watermarkText", QStringLiteral("NEW-MARK"));
+        CHECK(access->property("errorCode").toInt() == 1);
+        CHECK(access->property("watermarkText").toString().isEmpty());
+        access->setProperty("watermarkPosition", QStringLiteral("top-left"));
+        CHECK(access->property("watermarkPosition").toString() == QStringLiteral("bottom-right"));
+
+        access->setProperty("enabled", false);
+        access->setProperty("watermarkText", QStringLiteral("NEW-MARK"));
+        access->setProperty("watermarkPosition", QStringLiteral("top-left"));
+        CHECK(access->property("watermarkText").toString() == QStringLiteral("NEW-MARK"));
+        CHECK(access->property("watermarkPosition").toString() == QStringLiteral("top-left"));
+        CHECK(access->property("errorCode").toInt() == 0);
+
+        access->setProperty("enabled", true);
+        settle();
+        CHECK(access->property("enabled").toBool());
+        QString diagnostics;
+        CHECK(QMetaObject::invokeMethod(access.get(), "diagnosticReport",
+                                        Q_RETURN_ARG(QString, diagnostics)));
+        CHECK(diagnostics.contains(QStringLiteral("WATERMARK_ENABLED=true")));
+        CHECK(diagnostics.contains(QStringLiteral("WATERMARK_POSITION=top-left")));
+        access->setProperty("enabled", false);
+    }
+    access.reset();
+    HyRemote::detail::resetFactories();
+    if (previousSelected)
+        qputenv("HYREMOTE_STATE_DIR", previousValue);
+    else
+        qunsetenv("HYREMOTE_STATE_DIR");
+}
+
 void testNotificationFromAWorkerThreadIsMarshalledToTheOwnerThread(QQmlEngine &engine)
 {
     const auto state = std::make_shared<RuntimeState>();
@@ -530,6 +661,8 @@ int main(int argc, char **argv)
     testTargetLossNotifiesStateAndError(engine);
     testRecoverableErrorAndClearErrorParity(engine);
     testLocalValidationErrorSurvivesUnrelatedRuntimeEvents(engine);
+    testRejectedRunningWatermarkEditDoesNotPoisonRestart(engine);
+    testExplicitEmptyWatermarkOverridesPersistedPolicy(engine);
     testNotificationFromAWorkerThreadIsMarshalledToTheOwnerThread(engine);
     testNoSignalAfterDestructionWithAQueuedNotification(engine);
 

@@ -76,6 +76,91 @@ endif()
 # Runtime-owned regressions. These exercise Shared Runtime internals through the C++ test-exports the
 # runtime target already exposes to the build tree, so they register whenever tests are enabled -
 # not only when the C++ frontend or the application-level automatic controller is built.
+add_executable(hyremote-host-paths-test
+    test_host_paths.cpp
+    ../src/detail/host_paths.cpp
+)
+target_link_libraries(hyremote-host-paths-test
+    PRIVATE
+        hyremote-remoteaccess
+        Qt6::Core
+        Qt6::Network
+)
+add_test(NAME hyremote-host-paths-test COMMAND hyremote-host-paths-test)
+set_tests_properties(hyremote-host-paths-test PROPERTIES TIMEOUT 60)
+
+# #589 W1: the shared static text watermark policy. Product defaults, bounded validation and the rule that an
+# explicitly enabled watermark is refused rather than silently dropped are all Runtime contracts, so they are
+# tested without a capture adapter or a viewer.
+add_executable(hyremote-watermark-policy-test
+    test_watermark_policy.cpp
+)
+target_compile_features(hyremote-watermark-policy-test PRIVATE cxx_std_17)
+target_link_libraries(hyremote-watermark-policy-test
+    PRIVATE
+        hyremote-remoteaccess
+        Qt6::Core
+        Qt6::Network
+)
+target_include_directories(hyremote-watermark-policy-test PRIVATE ../src)
+# The Core/Shared Runtime policy test registers for every supported frontend set, including
+# Generic/QPA-only builds. Its optional public-C++ facade default-parity assertion is meaningful
+# only when that facade is enabled. Never force the C++ frontend into such builds merely to
+# resolve a test-only include: #761 identified this as a real scoped-CI build break.
+if(HYREMOTE_BUILD_CPP_API)
+    target_include_directories(hyremote-watermark-policy-test
+        PRIVATE "${PROJECT_SOURCE_DIR}/src/integrations/cpp/include")
+    target_compile_definitions(hyremote-watermark-policy-test
+        PRIVATE HYREMOTE_TEST_CPP_SURFACE_AVAILABLE=1)
+endif()
+# The test states the capability contract of the build it runs in, so it must see the same macro as the runtime.
+target_compile_definitions(hyremote-watermark-policy-test PRIVATE
+    HYREMOTE_HAS_WATERMARK_RENDERING=${HYREMOTE_WATERMARK_RENDERING_AVAILABLE}
+)
+add_test(NAME hyremote-watermark-policy-test COMMAND hyremote-watermark-policy-test)
+set_tests_properties(hyremote-watermark-policy-test PROPERTIES TIMEOUT 15)
+
+# #589 W2: pixel-level compositor acceptance. It needs Qt Gui for text rendering, so it registers only where the
+# Gui module exists; the runtime-only configuration without any capture adapter simply has no compositor to test.
+if(TARGET Qt6::Gui)
+    add_executable(hyremote-watermark-compositor-test
+        test_watermark_compositor.cpp
+        ../src/detail/watermark_compositor.cpp
+        ../src/detail/watermark_policy.cpp
+    )
+    target_compile_features(hyremote-watermark-compositor-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-watermark-compositor-test PRIVATE ../src)
+    target_link_libraries(hyremote-watermark-compositor-test
+        PRIVATE
+            Qt6::Core
+            Qt6::Gui
+    )
+    # Deliberately not registered with QT_QPA_PLATFORM=offscreen: the compositor's whole acceptance is rendered
+    # pixels, and the offscreen platform plugin ships no usable font database on Windows (Qt 5 lane), which would
+    # turn "no glyphs" into a fake compositor failure. The test itself fails loudly when no font is available.
+    add_test(NAME hyremote-watermark-compositor-test COMMAND hyremote-watermark-compositor-test)
+    set_tests_properties(hyremote-watermark-compositor-test PROPERTIES TIMEOUT 60)
+
+    # #589 W2b: the transport-facing decorator. It pins the frame identity the damage bookkeeping depends on and the
+    # rule that the captured buffer is never modified.
+    add_executable(hyremote-watermark-frame-decorator-test
+        test_watermark_frame_decorator.cpp
+        ../src/detail/watermark_frame_decorator.cpp
+        ../src/detail/watermark_compositor.cpp
+    )
+    target_compile_features(hyremote-watermark-frame-decorator-test PRIVATE cxx_std_17)
+    target_include_directories(hyremote-watermark-frame-decorator-test PRIVATE ../src)
+    target_link_libraries(hyremote-watermark-frame-decorator-test
+        PRIVATE
+            hyremote-remoteaccess
+            HyRemote::Core
+            Qt6::Core
+            Qt6::Gui
+    )
+    add_test(NAME hyremote-watermark-frame-decorator-test COMMAND hyremote-watermark-frame-decorator-test)
+    set_tests_properties(hyremote-watermark-frame-decorator-test PROPERTIES TIMEOUT 60)
+endif()
+
 add_executable(hyremote-security-descriptor-test
     test_security_descriptor.cpp
     ../src/detail/security_descriptor.cpp
@@ -492,6 +577,10 @@ hyremote_label_test_family("component;runtime;fast"
     hyremote-runtime-automatic-composite-input-test
     hyremote-runtime-notifications-test
     hyremote-security-descriptor-test
+    hyremote-host-paths-test
+    hyremote-watermark-policy-test
+    hyremote-watermark-compositor-test
+    hyremote-watermark-frame-decorator-test
     hyremote-target-component-provider-test
     hyremote-input-mailbox-admission-test
 )

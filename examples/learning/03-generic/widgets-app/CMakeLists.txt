@@ -18,6 +18,14 @@ if(NOT TARGET Qt6::Widgets)
 endif()
 
 add_executable(hyremote-learning-03-widgets main.cpp)
+# Canonical project-owned mark and application icon; no HyRemote Runtime API is linked for Generic examples.
+target_sources(hyremote-learning-03-widgets PRIVATE ../../../hyremote_branding.cpp ../../../../logo/hyremote-branding.qrc)
+# #241: the native Windows file icon is separate acceptance from the Qt window icon.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../logo/hyremote-app-icon.rc")
+    target_sources(hyremote-learning-03-widgets PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../logo/hyremote-app-icon.rc")
+endif()
+set_target_properties(hyremote-learning-03-widgets PROPERTIES AUTORCC ON)
 target_compile_features(hyremote-learning-03-widgets PRIVATE cxx_std_17)
 target_link_libraries(hyremote-learning-03-widgets PRIVATE Qt6::Widgets)
 

@@ -103,6 +103,26 @@ QString effectiveListener(const DiagnosticSnapshot &snapshot)
         .arg(*snapshot.effectivePort);
 }
 
+// #591: a resolved host-path fact is either a bounded, single-line location or the explicit `none`
+// placeholder. Provenance is reported separately so a support report can tell an explicit selection from
+// an environment selector, a configuration-relative default and a platform default.
+QString hostPathLocation(const HyRemote::detail::HostPathSelection &selection)
+{
+    return selection.isSet() ? boundedOneLine(selection.value) : QStringLiteral("none");
+}
+
+QString hostPathOrigin(const HyRemote::detail::HostPathSelection &selection)
+{
+    return QString::fromLatin1(HyRemote::detail::hostPathOriginName(selection.origin));
+}
+
+// #589: the watermark facts a support report may carry. The operator's text is never printed, only its
+// length, so product text cannot leak into a bug report.
+QString watermarkColor(quint32 rgb)
+{
+    return QStringLiteral("#%1").arg(rgb, 6, 16, QLatin1Char('0')).toUpper();
+}
+
 QString hyremoteVersion()
 {
     const QString version = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_VERSION);
@@ -190,7 +210,7 @@ QString deploymentIdentity()
 QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
 {
     QStringList lines;
-    lines.reserve(18);
+    lines.reserve(32);
 
     lines << QStringLiteral("HYREMOTE_VERSION=%1").arg(hyremoteVersion())
           << QStringLiteral("BUILD_IDENTITY=%1").arg(buildIdentity())
@@ -209,7 +229,28 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
                           : QStringLiteral("true"))
           << QStringLiteral("REMOTE_INPUT=%1")
                  .arg(snapshot.remoteInputEnabled ? QStringLiteral("true") : QStringLiteral("false"))
-          << QStringLiteral("CONNECTED_CLIENTS=%1").arg(snapshot.connectedClientCount);
+          << QStringLiteral("CONNECTED_CLIENTS=%1").arg(snapshot.connectedClientCount)
+          << QStringLiteral("HOST_CONFIG_FILE=%1").arg(hostPathLocation(snapshot.hostPaths.configFile))
+          << QStringLiteral("HOST_CONFIG_FILE_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.configFile))
+          << QStringLiteral("HOST_STATE_DIR=%1").arg(hostPathLocation(snapshot.hostPaths.stateDir))
+          << QStringLiteral("HOST_STATE_DIR_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.stateDir))
+          << QStringLiteral("HOST_SECRET_FILE=%1").arg(hostPathLocation(snapshot.hostPaths.secretFile))
+          << QStringLiteral("HOST_SECRET_FILE_ORIGIN=%1").arg(hostPathOrigin(snapshot.hostPaths.secretFile))
+          << QStringLiteral("HOST_PATHS_ERROR=%1")
+                 .arg(snapshot.hostPaths.ok() ? QStringLiteral("none")
+                                              : boundedOneLine(snapshot.hostPaths.error()))
+          << QStringLiteral("WATERMARK_ENABLED=%1")
+                 .arg(snapshot.watermark.policy.enabled ? QStringLiteral("true") : QStringLiteral("false"))
+          << QStringLiteral("WATERMARK_POSITION=%1")
+                 .arg(HyRemote::detail::watermarkPositionName(snapshot.watermark.policy.position))
+          << QStringLiteral("WATERMARK_OPACITY=%1")
+                 .arg(QString::number(snapshot.watermark.policy.opacity, 'g', 4))
+          << QStringLiteral("WATERMARK_FONT_SIZE=%1").arg(snapshot.watermark.policy.fontPointSize)
+          << QStringLiteral("WATERMARK_COLOR=%1").arg(watermarkColor(snapshot.watermark.policy.colorRgb))
+          << QStringLiteral("WATERMARK_TEXT_CODE_UNITS=%1").arg(snapshot.watermark.policy.text.size())
+          << QStringLiteral("WATERMARK_POLICY_ERROR=%1")
+                 .arg(snapshot.watermark.ok() ? QStringLiteral("none")
+                                              : boundedOneLine(snapshot.watermark.error));
 
     if (snapshot.lastError) {
         lines << QStringLiteral("LAST_ERROR_CODE=%1").arg(errorCodeName(snapshot.lastError->code))

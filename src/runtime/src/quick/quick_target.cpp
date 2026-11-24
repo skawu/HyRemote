@@ -263,6 +263,8 @@ private:
         frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
+        frame.geometry.devicePixelRatio =
+            image.devicePixelRatio() > 0.0 ? static_cast<float>(image.devicePixelRatio()) : 1.0F;
         frame.storage = std::move(storage);
         frame.timing.ptsSource = hyremote::PtsSource::Completion;
         frame.timing.requestTime = request.requestTime;

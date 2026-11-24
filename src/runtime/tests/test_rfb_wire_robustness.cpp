@@ -12,11 +12,15 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <ctime>
+#include <functional>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -44,6 +48,7 @@
 #include "rfb_interaction_latency_stats.hpp"
 #include "transport/rfb_delivery_state.hpp"
 #include "transport/rfb_transport.hpp"
+#include "detail/viewer_capture_demand.hpp"
 
 namespace {
 
@@ -707,10 +712,14 @@ std::unique_ptr<hyremote::Transport> startTransport(
     quint16 port,
     Recorder &recorder,
     hyremote::RemoteFrame initial,
-    HyRemote::detail::RfbCursorProvider cursorProvider = {})
+    HyRemote::detail::RfbCursorProvider cursorProvider = {},
+    HyRemote::detail::RfbFrameDecorator frameDecorator = {},
+    std::function<void(bool)> frameChangeObserver = {})
 {
     HyRemote::detail::RfbSecurityConfig security;
     security.cursorProvider = std::move(cursorProvider);
+    security.frameDecorator = std::move(frameDecorator);
+    security.frameChangeObserver = std::move(frameChangeObserver);
     auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port,
                                                           std::move(security));
     if (!transport)
@@ -781,6 +790,539 @@ void testTrleRawAndIncrementalDelivery()
     rawSocket.disconnectFromHost();
     waitForDisconnected(trleSocket);
     waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+// #589 W2 wire-level acceptance: the decorator runs on the transport's own copy before encoding, so every encoding a
+// viewer can negotiate has to carry the composed pixels. These cases decode what actually arrived instead of trusting
+// the composed buffer, and they check the control direction too: without a decorator nothing may look watermarked.
+constexpr std::uint32_t kMarkColor = 0xFF00FFU;
+
+HyRemote::detail::RfbFrameDecorator markDecorator()
+{
+    return [](const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated, QString &error) {
+        if (!source.storage) {
+            error = QStringLiteral("no source storage");
+            return false;
+        }
+        const auto plane = source.storage->mapRead(0);
+        if (!plane || !plane->data) {
+            error = QStringLiteral("no readable plane");
+            return false;
+        }
+        const std::uint32_t width = source.geometry.size.width;
+        const std::uint32_t height = source.geometry.size.height;
+        if (width < 32U || height < 16U) {
+            error = QStringLiteral("frame too small for the mark");
+            return false;
+        }
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(plane->stride, height);
+        if (!storage || !storage->mutablePlane(0)) {
+            error = QStringLiteral("no target storage");
+            return false;
+        }
+        std::memcpy(storage->mutablePlane(0), plane->data, plane->stride * height);
+        auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+
+        // The mark colour depends on the capture's first pixel, so a later frame can change the *composed* pixels
+        // while the capture under the mark stays identical. Without that, an incremental assertion cannot tell
+        // "the composed frame was re-sent" from "the mark was already in my copy".
+        const auto *firstPixel = bytes;
+        const std::uint32_t firstRgb = (static_cast<std::uint32_t>(firstPixel[0]) << 16U)
+                                       | (static_cast<std::uint32_t>(firstPixel[1]) << 8U)
+                                       | static_cast<std::uint32_t>(firstPixel[2]);
+        const std::uint32_t markColor = firstRgb == 0x102030U ? 0x00FF00U : kMarkColor;
+
+        for (std::uint32_t y = height - 16U; y < height; ++y) {
+            for (std::uint32_t x = width - 32U; x < width; ++x) {
+                auto *pixel = bytes + (static_cast<std::size_t>(y) * width + x) * 4U;
+                pixel[0] = static_cast<std::uint8_t>((markColor >> 16U) & 0xffU);
+                pixel[1] = static_cast<std::uint8_t>((markColor >> 8U) & 0xffU);
+                pixel[2] = static_cast<std::uint8_t>(markColor & 0xffU);
+                pixel[3] = 0xffU;
+            }
+        }
+        decorated = source;
+        decorated.storage = std::move(storage);
+        return true;
+    };
+}
+
+// #790: the listener remains Running after a viewer leaves. A separate decorated storage
+// must be freed by the *last socket* disconnect, while the latest raw bootstrap survives.
+
+// #790: the actual user's configuration has NO watermark. Releasing only
+// m_observedFrame/m_servedFrame would keep the raw 8.3MB SharedFrameState::latest
+// alive, so exercise the Runtime-opt-in path with a raw storage weak reference.
+void testProducerBackedIdleRawFrameRelease()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    const auto released = [](const std::weak_ptr<const hyremote::FrameStorage> &storage) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!storage.expired() && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return storage.expired();
+    };
+
+    auto bootstrap = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> firstStorage = bootstrap.storage;
+    transport->enqueueFrame(std::move(bootstrap));
+    CHECK(released(firstStorage)); // idle before a first Viewer needs no cached RGBA pixels
+
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        QTcpSocket viewer;
+        std::uint16_t width = 0, height = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &width, &height);
+        CHECK(joined && width == 128 && height == 128);
+        if (!joined)
+            break;
+        CHECK(sendSetEncodings(viewer, {0}));
+        CHECK(sendUpdateRequest(viewer, false, 0, 0, width, height));
+        CHECK(noFramebufferData(viewer, 75)); // no old raw pixels/invalid fallback
+        auto fresh = makeFrame(128, 128, 0x203040U);
+        const std::weak_ptr<const hyremote::FrameStorage> currentStorage = fresh.storage;
+        transport->enqueueFrame(std::move(fresh)); // simulate Runtime's ClientConnected-triggered new grab
+        TestFramebuffer frame;
+        frame.resize(width, height);
+        std::vector<UpdateRect> rects;
+        const bool gotPixels = readFramebufferUpdate(viewer, frame, rects);
+        CHECK(gotPixels);
+        if (gotPixels)
+            CHECK(frame.get(0, 0) == 0x203040U);
+        CHECK(!currentStorage.expired());
+        viewer.disconnectFromHost();
+        CHECK(waitForDisconnected(viewer));
+        CHECK(released(currentStorage)); // no retained unmarked raw frame at zero viewers
+    }
+
+    transport->stop();
+}
+
+void testStandaloneMarkedBootstrapSurvivesReconnects()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    std::mutex guarded;
+    std::weak_ptr<const hyremote::FrameStorage> currentDecoration;
+    auto mark = markDecorator();
+    auto trackedMark = [&](const hyremote::RemoteFrame &source,
+                           hyremote::RemoteFrame &output, QString &error) {
+        if (!mark(source, output, error))
+            return false;
+        std::lock_guard<std::mutex> lock(guarded);
+        currentDecoration = output.storage;
+        return true;
+    };
+    auto raw = makeFrame(128, 128, 0x203040U);
+    const std::weak_ptr<const hyremote::FrameStorage> bootstrapRaw = raw.storage;
+    auto transport = startTransport(port, recorder, std::move(raw), {}, trackedMark);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    const auto decoratedStorage = [&] {
+        std::lock_guard<std::mutex> lock(guarded);
+        return currentDecoration;
+    };
+    const auto checkDecoratedWire = [&](QTcpSocket &socket) {
+        CHECK(sendSetEncodings(socket, {0}));
+        CHECK(sendUpdateRequest(socket, false, 0, 0, 128, 128));
+        TestFramebuffer framebuffer;
+        framebuffer.resize(128, 128);
+        std::vector<UpdateRect> rects;
+        const bool received = readFramebufferUpdate(socket, framebuffer, rects);
+        CHECK(received);
+        if (received) {
+            CHECK(framebuffer.get(0, 0) == 0x203040U);
+            CHECK(framebuffer.get(120, 120) == kMarkColor);
+        }
+    };
+    QTcpSocket first;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(first, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    // Must deliver already queued/marked bootstrap with no second capture after join.
+    checkDecoratedWire(first);
+    CHECK(!decoratedStorage().expired());
+
+    QTcpSocket second;
+    CHECK(connectRawRfb(second, port, false));
+    checkDecoratedWire(second);
+    first.disconnectFromHost();
+    CHECK(waitForDisconnected(first));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(!decoratedStorage().expired()); // 2 -> 1 still retains other viewer's composed frame
+    second.disconnectFromHost();
+    CHECK(waitForDisconnected(second));
+    CHECK(!decoratedStorage().expired()); // standalone retains bootstrap for an immediate reconnect
+    CHECK(!bootstrapRaw.expired()); // raw shared bootstrap still enables the next ServerInit
+
+    for (int i = 0; i < 20; ++i) {
+        QTcpSocket viewer;
+        const bool ready = connectRawRfbWithRetry(viewer, port);
+        CHECK(ready);
+        if (!ready)
+            break;
+        // No new enqueueFrame() between disconnect/reconnect: this is the exact
+        // bootstrap-decorator contract caught by independent #790 review.
+        checkDecoratedWire(viewer);
+        CHECK(!decoratedStorage().expired());
+        viewer.disconnectFromHost();
+        CHECK(waitForDisconnected(viewer));
+        CHECK(!decoratedStorage().expired()); // unchanged standalone transport contract
+    }
+    transport->stop();
+    CHECK(decoratedStorage().expired());
+    CHECK(bootstrapRaw.expired()); // transport stop releases its pixel storage
+}
+
+
+// #790: producer-backed reconnect must obtain a fresh capture before pixels are
+// served; failure of its watermark decoration must close the socket fail-closed.
+void testProducerBackedReconnectWatermarkFailsClosed()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+
+    Recorder recorder;
+    std::atomic<bool> failOnNewFrame{false};
+    auto mark = markDecorator();
+    HyRemote::detail::RfbSecurityConfig security;
+    security.initialFramebufferWidth = 128;
+    security.initialFramebufferHeight = 128;
+    security.releaseIdleFrameBuffers = true;
+    security.frameDecorator = [&](const hyremote::RemoteFrame &source,
+                                  hyremote::RemoteFrame &decorated, QString &error) {
+        if (failOnNewFrame.load()) {
+            error = QStringLiteral("intentional reconnect decorator failure");
+            return false;
+        }
+        return mark(source, decorated, error);
+    };
+    auto transport = HyRemote::detail::createRfbTransport(QHostAddress::LocalHost, port, security);
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+    CHECK(transport->start([&](const hyremote::InputEvent &event) { recorder.record(event); },
+                           [&](const hyremote::TransportEvent &event) { recorder.record(event); }));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+
+    QTcpSocket first;
+    const bool initiallyConnected = connectRawRfb(first, port, false);
+    CHECK(initiallyConnected);
+    if (!initiallyConnected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(first, {0}));
+    CHECK(sendUpdateRequest(first, false, 0, 0, 128, 128));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+    TestFramebuffer firstFrame;
+    firstFrame.resize(128, 128);
+    std::vector<UpdateRect> rects;
+    CHECK(readFramebufferUpdate(first, firstFrame, rects));
+    CHECK(firstFrame.get(120, 120) == kMarkColor);
+    first.disconnectFromHost();
+    CHECK(waitForDisconnected(first));
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::ClientDisconnected;
+        });
+    }));
+
+    QTcpSocket reconnect;
+    const bool joined = connectRawRfb(reconnect, port, false);
+    CHECK(joined);
+    if (joined) {
+        CHECK(sendSetEncodings(reconnect, {0}));
+        CHECK(sendUpdateRequest(reconnect, false, 0, 0, 128, 128));
+        CHECK(noFramebufferData(reconnect, 75)); // no stale unmarked pixels
+        failOnNewFrame.store(true);
+        transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+        CHECK(waitForDisconnected(reconnect));
+    }
+    CHECK(recorder.waitFor([](const auto &, const auto &events) {
+        return std::any_of(events.begin(), events.end(), [](const auto &event) {
+            return event.code == hyremote::TransportEventCode::FatalFailure
+                && event.message.find("decorator") != std::string::npos;
+        });
+    }));
+    transport->stop();
+}
+
+void testWatermarkReachesEveryEncoding()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, markDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    // TRLE: the tiles must carry the composed pixels, not the capture.
+    QTcpSocket trleSocket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(trleSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(trleSocket, {15, 0}));
+    CHECK(sendUpdateRequest(trleSocket, false, 0, 0, width, height));
+    TestFramebuffer trleFrame;
+    trleFrame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(trleSocket, trleFrame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 15);
+    CHECK(trleFrame.get(120, 120) == kMarkColor);
+    CHECK(trleFrame.get(0, 0) == 0x203040U);
+
+    // Raw: the same pixels through the other encoding.
+    QTcpSocket rawSocket;
+    CHECK(connectRawRfb(rawSocket, port, false, &width, &height));
+    CHECK(sendSetEncodings(rawSocket, {0}));
+    CHECK(sendUpdateRequest(rawSocket, false, 0, 0, width, height));
+    TestFramebuffer rawFrame;
+    rawFrame.resize(width, height);
+    CHECK(readFramebufferUpdate(rawSocket, rawFrame, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+    CHECK(rawFrame.get(120, 120) == kMarkColor);
+
+    // Incremental damage, in the discriminating direction: forget what the viewer already knew, then change the
+    // *capture* underneath the mark. A server that encodes the composed frame resends the mark there; one that encodes
+    // the capture (or tracks damage only on capture pixels) would put the new background on the wire, and the cleared
+    // viewer buffer would show it. Asserting the mark on a buffer that was never told about it is what distinguishes
+    // "the mark survived in my own copy" from "the mark was actually delivered again".
+    trleFrame.resize(width, height);
+    CHECK(trleFrame.get(120, 120) == 0U);
+    CHECK(sendUpdateRequest(trleSocket, true, 0, 0, width, height));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U, {{{0, 0, 4, 4}, 0x102030U}}));
+    CHECK(readFramebufferUpdate(trleSocket, trleFrame, rectangles));
+    // The trimmed mark colour can only be on the wire if the composed frame was encoded and its damage was tracked
+    // between composed frames.
+    CHECK(trleFrame.get(120, 120) == 0x00FF00U);
+    CHECK(trleFrame.get(0, 0) == 0x102030U);
+
+    trleSocket.disconnectFromHost();
+    rawSocket.disconnectFromHost();
+    waitForDisconnected(trleSocket);
+    waitForDisconnected(rawSocket);
+    transport->stop();
+}
+
+// A decorator that sizes its mark from the frame's own device pixel ratio, so a wire test can prove the ratio a frame
+// carries is the one the composed pixels were produced with.
+HyRemote::detail::RfbFrameDecorator dprAwareMarkDecorator()
+{
+    return [](const hyremote::RemoteFrame &source, hyremote::RemoteFrame &decorated, QString &error) {
+        if (!source.storage) {
+            error = QStringLiteral("no source storage");
+            return false;
+        }
+        const auto plane = source.storage->mapRead(0);
+        if (!plane || !plane->data) {
+            error = QStringLiteral("no readable plane");
+            return false;
+        }
+        const auto width = source.geometry.size.width;
+        const auto height = source.geometry.size.height;
+        const double ratio = source.geometry.devicePixelRatio > 0.0F
+                                 ? static_cast<double>(source.geometry.devicePixelRatio)
+                                 : 1.0;
+        const auto markWidth = static_cast<std::uint32_t>(32.0 * ratio);
+        const auto markHeight = static_cast<std::uint32_t>(16.0 * ratio);
+        if (width < markWidth || height < markHeight) {
+            error = QStringLiteral("frame too small for the mark");
+            return false;
+        }
+        auto storage = hyremote::CpuFrameStorage::createSinglePlane(plane->stride, height);
+        if (!storage || !storage->mutablePlane(0)) {
+            error = QStringLiteral("no target storage");
+            return false;
+        }
+        std::memcpy(storage->mutablePlane(0), plane->data, plane->stride * height);
+        auto *bytes = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+        for (std::uint32_t y = height - markHeight; y < height; ++y) {
+            for (std::uint32_t x = width - markWidth; x < width; ++x) {
+                auto *pixel = bytes + (static_cast<std::size_t>(y) * width + x) * 4U;
+                pixel[0] = 0xffU;
+                pixel[1] = 0x00U;
+                pixel[2] = 0xffU;
+                pixel[3] = 0xffU;
+            }
+        }
+        decorated = source;
+        decorated.storage = std::move(storage);
+        return true;
+    };
+}
+
+void testWatermarkSurvivesFramebufferResize()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U), {}, markDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {-223, 15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 120) == kMarkColor);
+
+    // The framebuffer shrinks: the mark must be recomposed for the new geometry, not left at the old coordinates.
+    transport->enqueueFrame(makeFrame(96, 80, 0x445566U));
+    CHECK(sendUpdateRequest(socket, true, 0, 0, 96, 80));
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.width == 96 && frame.height == 80);
+    bool desktopSizeSeen = false;
+    for (const UpdateRect &rect : rectangles) {
+        if (rect.encoding == -223)
+            desktopSizeSeen = true;
+    }
+    CHECK(desktopSizeSeen);
+    CHECK(frame.get(95, 79) == kMarkColor);
+    CHECK(frame.get(64, 64) == kMarkColor);
+    CHECK(frame.get(63, 64) == 0x445566U);
+    CHECK(frame.get(64, 63) == 0x445566U);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
+void testWatermarkFollowsDevicePixelRatio()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    hyremote::RemoteFrame first = makeFrame(128, 128, 0x203040U);
+    first.geometry.devicePixelRatio = 1.0F;
+    auto transport = startTransport(port, recorder, std::move(first), {}, dprAwareMarkDecorator());
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+    CHECK(frame.get(120, 120) == kMarkColor);
+    // At ratio 1.0 the mark is 32x16, so this row is still capture.
+    CHECK(frame.get(120, 100) == 0x203040U);
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+
+    // The same geometry at ratio 2.0: the mark must double in both directions, which is only possible if the ratio the
+    // frame carries is the one the composed pixels were produced with.
+    //
+    // A *new* viewer reads the ratio-2 frame as its initial picture. Re-requesting on the first viewer instead would
+    // race against that viewer's already-queued update for the ratio-1 frame, which is a test bug, not a product
+    // defect: the assertion would then be made against pixels that were correctly composed for the older frame.
+    hyremote::RemoteFrame second = makeFrame(128, 128, 0x203040U);
+    second.geometry.devicePixelRatio = 2.0F;
+    transport->enqueueFrame(std::move(second));
+
+    QTcpSocket afterRescale;
+    CHECK(connectRawRfb(afterRescale, port, false, &width, &height));
+    CHECK(sendSetEncodings(afterRescale, {15, 0}));
+    CHECK(sendUpdateRequest(afterRescale, false, 0, 0, width, height));
+    TestFramebuffer rescaled;
+    rescaled.resize(width, height);
+    CHECK(readFramebufferUpdate(afterRescale, rescaled, rectangles));
+    CHECK(rescaled.get(120, 100) == kMarkColor);
+    CHECK(rescaled.get(70, 110) == kMarkColor);
+    CHECK(rescaled.get(60, 110) == 0x203040U);
+    CHECK(rescaled.get(120, 95) == 0x203040U);
+
+    afterRescale.disconnectFromHost();
+    waitForDisconnected(afterRescale);
+    transport->stop();
+}
+
+void testNoMarkWithoutDecorator()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    Recorder recorder;
+    auto transport = startTransport(port, recorder, makeFrame(128, 128, 0x203040U));
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0;
+    std::uint16_t height = 0;
+    CHECK(connectRawRfb(socket, port, false, &width, &height));
+    CHECK(sendSetEncodings(socket, {15, 0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer frame;
+    frame.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, frame, rectangles));
+
+    bool markFound = false;
+    for (std::uint16_t y = 0; y < height; ++y) {
+        for (std::uint16_t x = 0; x < width; ++x) {
+            if (frame.get(x, y) == kMarkColor)
+                markFound = true;
+        }
+    }
+    CHECK(!markFound);
+
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
     transport->stop();
 }
 
@@ -1970,18 +2512,31 @@ void testStalledClientReleasesHeldKeyOnce()
     }, 9000));
     CHECK(waitForDisconnected(socket));
 
+    // The release is published from the transport's worker thread, so a fully loaded suite can observe the
+    // client-side disconnect a moment before the recorder sees it. Wait for the balanced pair instead of
+    // racing the publication; the assertion below still requires exactly one press and one release.
     int presses = 0;
     int releases = 0;
-    {
-        std::lock_guard<std::mutex> lock(recorder.mutex);
-        for (const auto &event : recorder.inputs) {
-            if (event.kind != hyremote::InputEventKind::Key || event.key != hyremote::KeyCode::A)
-                continue;
-            if (event.pressed)
-                ++presses;
-            else
-                ++releases;
+    QElapsedTimer balance;
+    balance.start();
+    while (balance.elapsed() < 5000) {
+        presses = 0;
+        releases = 0;
+        {
+            std::lock_guard<std::mutex> lock(recorder.mutex);
+            for (const auto &event : recorder.inputs) {
+                if (event.kind != hyremote::InputEventKind::Key || event.key != hyremote::KeyCode::A)
+                    continue;
+                if (event.pressed)
+                    ++presses;
+                else
+                    ++releases;
+            }
         }
+        if (presses == 1 && releases == 1)
+            break;
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     CHECK(presses == 1);
     CHECK(releases == 1);
@@ -2477,9 +3032,343 @@ void testLargeDamageCoalescesForPaint()
 
 }  // namespace
 
+
+
+void testRfbFeedbackUsesActualServedPixels()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+    Recorder recorder;
+    std::atomic<int> unchanged{0}, changed{0};
+    auto transport = startTransport(
+        port, recorder, makeFrame(128, 128, 0x203040U), {}, {},
+        [&](bool differs) {
+            if (differs)
+                ++changed;
+            else
+                ++unchanged;
+        });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(socket, port, false, &width, &height);
+    CHECK(connected && width == 128 && height == 128);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(socket, {0}));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer actual;
+    actual.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, actual, rectangles));
+
+    const auto reached = [](const std::atomic<int> &counter, int expected) {
+        QElapsedTimer timer;
+        timer.start();
+        while (counter.load() < expected && timer.elapsed() < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        return counter.load() >= expected;
+    };
+    const int beforeUnchanged = unchanged.load();
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U));
+    CHECK(reached(unchanged, beforeUnchanged + 1)); // fullFrame hint is NOT proof of changed pixels
+
+    const int beforeChanged = changed.load();
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    transport->enqueueFrame(makeFrame(128, 128, 0x203040U, {{{70, 10, 8, 8}, 0xe0a030U}}));
+    CHECK(reached(changed, beforeChanged + 1));
+    CHECK(readFramebufferUpdate(socket, actual, rectangles));
+    CHECK(actual.get(70, 10) == 0xe0a030U); // matching feedback is also what viewer received
+
+    socket.disconnectFromHost();
+    CHECK(waitForDisconnected(socket));
+    transport->stop();
+}
+
+void testStaticViewerCaptureDemandFeedback()
+{
+    HyRemote::detail::ViewerCaptureDemand demand;
+    demand.start();
+    demand.frameQueued(true);
+    std::atomic<bool> finished{false};
+    std::atomic<bool> permitted{false};
+    std::thread bootstrapWaiter([&] {
+        permitted.store(demand.waitForViewer());
+        finished.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    CHECK(!finished.load()); // no viewer -> no repeated full grabs
+    demand.setViewerCount(1);
+    bootstrapWaiter.join();
+    CHECK(finished.load() && permitted.load());
+
+    // Existing transport did the exact tile diff. Three genuinely identical served frames
+    // enter the bounded background probe; one changed frame or input resumes active captures.
+    for (int n = 0; n < 3; ++n)
+        demand.noteFrameChange(false);
+    const auto began = std::chrono::steady_clock::now();
+    CHECK(demand.waitForViewer()); // must wait for a bounded local-only update probe
+    const auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - began);
+    CHECK(waited.count() >= 30);
+    CHECK(waited.count() < 1000);
+    demand.noteRemoteInput();
+    const auto fast = std::chrono::steady_clock::now();
+    CHECK(demand.waitForViewer());
+    CHECK(std::chrono::steady_clock::now() - fast < std::chrono::milliseconds(100));
+
+    for (int n = 0; n < 3; ++n)
+        demand.noteFrameChange(false);
+    std::atomic<bool> woke{false};
+    std::thread blocked([&] {
+        (void)demand.waitForViewer();
+        woke.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    demand.noteFrameChange(true);
+    blocked.join();
+    CHECK(woke.load()); // changed rendered pixels immediately cancel the idle gate
+
+    demand.setViewerCount(0);
+    std::atomic<bool> released{false};
+    std::thread zero([&] {
+        (void)demand.waitForViewer();
+        released.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(15));
+    CHECK(!released.load());
+    demand.stop();
+    zero.join();
+    CHECK(released.load()); // stop does not wait for another Viewer
+    demand.start();
+    demand.frameQueued(false);
+    CHECK(demand.waitForViewer()); // new run can bootstrap without a Viewer
+    demand.stop();
+}
+
+
+// #567: exact 1080p full-screen profiling is opt-in only. Keep this out of the
+// default CI suite: it measures a synthetic loopback peer, not RealVNC or RK3588.
+hyremote::RemoteFrame makeTexturedPageFrame(std::uint32_t width,
+                                            std::uint32_t height,
+                                            std::uint32_t seed)
+{
+    auto storage = hyremote::CpuFrameStorage::createSinglePlane(width * 4U, height);
+    if (!storage || !storage->mutablePlane(0))
+        return {};
+    auto *pixels = reinterpret_cast<std::uint8_t *>(storage->mutablePlane(0));
+    for (std::uint32_t y = 0; y < height; ++y) {
+        for (std::uint32_t x = 0; x < width; ++x) {
+            const std::size_t offset = (static_cast<std::size_t>(y) * width + x) * 4U;
+            pixels[offset] = static_cast<std::uint8_t>((17U * x + 31U * y + 53U * seed) & 0xffU);
+            pixels[offset + 1] = static_cast<std::uint8_t>((7U * x + 97U * y + 29U * seed) & 0xffU);
+            pixels[offset + 2] = static_cast<std::uint8_t>((151U * x + 23U * y + 11U * seed) & 0xffU);
+            pixels[offset + 3] = 0xffU;
+        }
+    }
+    hyremote::RemoteFrame frame;
+    frame.geometry.size = {width, height};
+    frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+    frame.geometry.alphaMode = hyremote::AlphaMode::Opaque;
+    frame.geometry.planeCount = 1;
+    frame.storage = std::move(storage);
+    frame.timing.pts = hyremote::Clock::now();
+    frame.timing.ptsSource = hyremote::PtsSource::Completion;
+    frame.damage = hyremote::Damage::fullFrame();
+    return frame;
+}
+
+void testFullPageTransitionSingleWireRectangle()
+{
+    constexpr std::uint16_t width = 512;
+    constexpr std::uint16_t height = 256;
+    constexpr std::uint32_t newPageColor = 0xa040f0U;
+    for (const bool trle : {false, true}) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (!port)
+            return;
+        Recorder recorder;
+        auto transport = startTransport(port, recorder, makeFrame(width, height, 0x203040U));
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+        QTcpSocket viewer;
+        std::uint16_t actualWidth = 0, actualHeight = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &actualWidth, &actualHeight);
+        CHECK(joined && actualWidth == width && actualHeight == height);
+        if (!joined) {
+            transport->stop();
+            continue;
+        }
+        CHECK(sendSetEncodings(viewer, trle ? std::vector<std::int32_t>{15, 0}
+                                           : std::vector<std::int32_t>{0}));
+        CHECK(sendUpdateRequest(viewer, false, 0, 0, width, height));
+        TestFramebuffer received;
+        received.resize(width, height);
+        std::vector<UpdateRect> rects;
+        CHECK(readFramebufferUpdate(viewer, received, rects));
+        CHECK(received.get(0, 0) == 0x203040U);
+
+        // A complete changed page should reach the wire as ONE coherent RFB
+        // FramebufferUpdate with ONE full-frame rectangle, not 64px row bands.
+        CHECK(sendUpdateRequest(viewer, true, 0, 0, width, height));
+        transport->enqueueFrame(makeFrame(width, height, newPageColor));
+        const bool gotPage = readFramebufferUpdate(viewer, received, rects);
+        CHECK(gotPage);
+        if (gotPage) {
+            CHECK(rects.size() == 1U);
+            if (rects.size() == 1U) {
+                CHECK(rects.front().x == 0 && rects.front().y == 0);
+                CHECK(rects.front().width == width && rects.front().height == height);
+                CHECK(rects.front().encoding == (trle ? 15 : 0));
+            }
+            CHECK(received.get(0, 0) == newPageColor);
+            CHECK(received.get(width / 2, height / 2) == newPageColor);
+            CHECK(received.get(width - 1, height - 1) == newPageColor);
+        }
+        viewer.disconnectFromHost();
+        waitForDisconnected(viewer);
+        transport->stop();
+    }
+}
+
+// A deliberately expensive, manually invoked test fixture for exact 1920x1080
+// wire delivery. Values include synthetic loopback decoding; NOT board capture,
+// network bitrate/RTT, RealVNC painting time, or a product performance SLA.
+void runLargePageTransitionProfile(const QString &outputPath)
+{
+    constexpr std::uint16_t width = 1920;
+    constexpr std::uint16_t height = 1080;
+    QJsonArray samples;
+    for (const bool trle : {false, true}) {
+        const quint16 port = freePort();
+        CHECK(port != 0);
+        if (!port)
+            return;
+        Recorder recorder;
+        auto transport = startTransport(port, recorder, makeFrame(width, height, 0x203040U));
+        CHECK(transport != nullptr);
+        if (!transport)
+            return;
+
+        QTcpSocket viewer;
+        std::uint16_t rw = 0, rh = 0;
+        const bool joined = connectRawRfb(viewer, port, false, &rw, &rh);
+        if (!joined || rw != width || rh != height
+            || !sendSetEncodings(viewer, trle ? std::vector<std::int32_t>{15, 0}
+                                              : std::vector<std::int32_t>{0})
+            || !sendUpdateRequest(viewer, false, 0, 0, width, height)) {
+            CHECK(false);
+            viewer.abort();
+            transport->stop();
+            continue;
+        }
+        TestFramebuffer received;
+        received.resize(width, height);
+        std::vector<UpdateRect> rects;
+        if (!readFramebufferUpdate(viewer, received, rects)) {
+            CHECK(false);
+            viewer.abort();
+            transport->stop();
+            continue;
+        }
+        auto changed = makeTexturedPageFrame(width, height, 13U);
+        if (!changed.storage) {
+            CHECK(false);
+            viewer.abort();
+            transport->stop();
+            continue;
+        }
+        profileBytesRead = 0;
+        QElapsedTimer timer;
+        timer.start();
+        const bool sentRequest = sendUpdateRequest(viewer, true, 0, 0, width, height);
+        if (sentRequest)
+            transport->enqueueFrame(std::move(changed));
+        const bool gotPage = sentRequest && readFramebufferUpdate(viewer, received, rects);
+        const double completeMs = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
+        const qint64 wireBytesRead = profileBytesRead;
+
+        QJsonObject record;
+        record.insert(QStringLiteral("encoding"), trle ? QStringLiteral("trle") : QStringLiteral("raw"));
+        record.insert(QStringLiteral("received"), gotPage);
+        record.insert(QStringLiteral("wire_bytes_read"), static_cast<double>(wireBytesRead));
+        record.insert(QStringLiteral("request_to_full_decode_ms"), completeMs);
+        record.insert(QStringLiteral("fbu_count"), gotPage ? 1 : 0);
+        record.insert(QStringLiteral("rectangle_count"), static_cast<int>(rects.size()));
+        QJsonArray rectangleList;
+        if (gotPage) {
+            for (const UpdateRect &rect : rects) {
+                QJsonObject bounds;
+                bounds.insert(QStringLiteral("x"), static_cast<int>(rect.x));
+                bounds.insert(QStringLiteral("y"), static_cast<int>(rect.y));
+                bounds.insert(QStringLiteral("width"), static_cast<int>(rect.width));
+                bounds.insert(QStringLiteral("height"), static_cast<int>(rect.height));
+                bounds.insert(QStringLiteral("encoding"), rect.encoding);
+                rectangleList.append(bounds);
+            }
+            CHECK(rects.size() == 1U);
+            if (rects.size() == 1U) {
+                CHECK(rects.front().x == 0 && rects.front().y == 0
+                      && rects.front().width == width && rects.front().height == height
+                      && rects.front().encoding == (trle ? 15 : 0));
+            }
+            const auto expectedColor = [](std::uint32_t x, std::uint32_t y) {
+                constexpr std::uint32_t seed = 13U;
+                const std::uint32_t red = (17U * x + 31U * y + 53U * seed) & 0xffU;
+                const std::uint32_t green = (7U * x + 97U * y + 29U * seed) & 0xffU;
+                const std::uint32_t blue = (151U * x + 23U * y + 11U * seed) & 0xffU;
+                return (red << 16U) | (green << 8U) | blue;
+            };
+            CHECK(received.get(0, 0) == expectedColor(0, 0));
+            CHECK(received.get(width / 2, height / 2) == expectedColor(width / 2, height / 2));
+            CHECK(received.get(width - 1, height - 1) == expectedColor(width - 1, height - 1));
+        }
+        record.insert(QStringLiteral("rectangles"), rectangleList);
+        samples.append(record);
+        std::cerr << "LARGE_PAGE_PROFILE " << (trle ? "trle" : "raw")
+                  << " bytes=" << wireBytesRead << " complete_ms=" << completeMs
+                  << " rects=" << rects.size() << " received=" << gotPage << '\n';
+        viewer.disconnectFromHost();
+        waitForDisconnected(viewer);
+        transport->stop();
+    }
+    QJsonObject root;
+    root.insert(QStringLiteral("schema"), QStringLiteral("hyremote-rfb-large-page-profile/1"));
+    root.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    root.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    root.insert(QStringLiteral("width"), width);
+    root.insert(QStringLiteral("height"), height);
+    root.insert(QStringLiteral("measurement_scope"),
+                QStringLiteral("synthetic loopback full FBU decode incl client; not Host capture, link throughput, or RealVNC painting"));
+    root.insert(QStringLiteral("samples"), samples);
+    QFile file(outputPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        std::cerr << "LARGE_PAGE_PROFILE unable to open output " << outputPath.toStdString() << '\n';
+        ++failures;
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+
+    const QByteArray largeProfilePath = qgetenv("HYREMOTE_RFB_LARGE_PROFILE_FILE");
+    if (!largeProfilePath.isEmpty()) {
+        runLargePageTransitionProfile(QString::fromLocal8Bit(largeProfilePath));
+        return failures == 0 ? 0 : 1;
+    }
 
     const QByteArray profilePath = qgetenv("HYREMOTE_RFB_PROFILE_FILE");
     if (!profilePath.isEmpty()) {
@@ -2488,6 +3377,13 @@ int main(int argc, char **argv)
     }
 
     testTrleRawAndIncrementalDelivery();
+    testWatermarkReachesEveryEncoding();
+    testStandaloneMarkedBootstrapSurvivesReconnects();
+    testProducerBackedIdleRawFrameRelease();
+    testProducerBackedReconnectWatermarkFailsClosed();
+    testWatermarkSurvivesFramebufferResize();
+    testWatermarkFollowsDevicePixelRatio();
+    testNoMarkWithoutDecorator();
     testOpaqueAlphaPolicy();
     testTrlePreferredOverRawOrder();
     testCursorPseudoEncoding();
@@ -2498,6 +3394,9 @@ int main(int argc, char **argv)
     testPerViewerPendingDamageRemainsBounded();
     testPendingDamageCoalescesAtDelivery();
     testLargeDamageCoalescesForPaint();
+    testFullPageTransitionSingleWireRectangle();
+    testStaticViewerCaptureDemandFeedback();
+    testRfbFeedbackUsesActualServedPixels();
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();

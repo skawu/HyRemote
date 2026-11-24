@@ -269,6 +269,9 @@ private:
         frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
+        // #806: composed output allocates exactly one pixel per logical canvas unit.
+        // Source surfaces may be 2x DPR, but drawImage scales them into this grid.
+        frame.geometry.devicePixelRatio = 1.0F;
         frame.storage = std::move(writable.storage);
         frame.timing.ptsSource = hyremote::PtsSource::Completion;
         frame.timing.requestTime = request.requestTime;
@@ -355,7 +358,6 @@ private:
                 || !frame.storage || frame.geometry.size.width == 0 || frame.geometry.size.height == 0) {
                 continue;
             }
-
             const auto plane = frame.storage->mapRead(0);
             if (!plane || !plane->data || plane->stride == 0)
                 continue;
@@ -377,6 +379,8 @@ private:
         }
         painter.end();
 
+        // The result is in logical canvas pixels (DPR=1), not child capture pixels.
+        // Relabeling it with a child's DPR would double-scale a remote watermark.
         result.timing.completionTime = hyremote::Clock::now();
         publishFrame(state, std::move(result));
     }

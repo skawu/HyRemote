@@ -1,5 +1,5 @@
 # 第三方依赖政策
-> **当前事实源（2026-10-23）：** V0.3.0.0 Product Preview 已发布；首次 GA 仅对真实资格化的 Windows Qt5.15/Qt6.8 单元承诺支持。传输加密、网关（Gateway）/中继（Relay）/云服务及额外平台均须独立准入；不把历史 TODO 视为版本必交项。依赖/漏洞响应长期责任：[#611](https://github.com/skawu/HyRemote/issues/611)。
+> **当前已发布基线（2026-11-02）：** V0.3.4.0 已发布（[发布说明](releases/v0.3.4.0.md)）；V0.3.3.0 的不可变 tag 存在[发布后勘误](releases/v0.3.3.0-errata.md)；首次 GA 仅对真实资格化的 Windows Qt5.15/Qt6.8 单元承诺支持。传输加密、网关（Gateway）/中继（Relay）/云服务及额外平台均须独立准入；不把历史 TODO 视为版本必交项。依赖/漏洞响应长期责任：[#611](https://github.com/skawu/HyRemote/issues/611)。
 
 
 > 语言 / Language：**中文** ｜ [English](en/dependency-policy.md)
@@ -85,7 +85,7 @@ HYREMOTE_WITH_TRANSPORT_SECURITY
 - HyRemote 不会把请求的安全构建静默降级为不安全构建；
 - 加密实现类型保持私有 Runtime 细节，不作为下游 SDK 目标。
 
-当前已发布的 V0.3.0.0 Product Preview 中，`AuthenticatedEncrypted` 不可用，会在 listener 创建前失败关闭。
+当前已发布 V0.3.4.0 产品线中，`AuthenticatedEncrypted` 仍不可用，并在创建 listener 前失败关闭；启用传统 VNC 认证不提供传输加密。
 
 > **未来候选，非首轮 GA 自动必需：** 加密传输、证书及其第三方运行时依赖须按实际用户场景、安全评估和 #24/#95 另行准入；不能从 TODO 推断已交付，也不能宣称当前公网安全（#143/#190/#611）。
 

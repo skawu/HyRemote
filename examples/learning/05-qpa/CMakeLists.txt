@@ -14,6 +14,13 @@ add_executable(hyremote-qpa-proxy-existing-app
     ../../../logo/hyremote-branding.qrc
 )
 
+# Ensure the canonical Qt logo .qrc is compiled into the application, including standalone GUI builds.
+set_target_properties(hyremote-qpa-proxy-existing-app PROPERTIES AUTORCC ON)
+# #241: the native Windows file icon is separate acceptance from the Qt window icon.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../logo/hyremote-app-icon.rc")
+    target_sources(hyremote-qpa-proxy-existing-app PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../../../logo/hyremote-app-icon.rc")
+endif()
 target_compile_features(hyremote-qpa-proxy-existing-app PRIVATE cxx_std_17)
 target_link_libraries(hyremote-qpa-proxy-existing-app PRIVATE Qt6::Widgets)
 

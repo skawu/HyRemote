@@ -23,6 +23,7 @@ set(HYB_TESTS_BUILD OFF)
 set(HYB_TESTS_RUN OFF)
 set(HYB_TESTS_PARALLEL "")
 set(HYB_TESTS_EXCLUDE "")
+set(HYB_TESTS_FILTER "")
 set(HYB_TESTS_XVFB OFF)
 set(HYB_EXAMPLES OFF)
 set(HYB_CLEAN OFF)
@@ -218,6 +219,8 @@ function(hyb_set_entry section key raw_value origin)
             set(HYB_TESTS_PARALLEL "${value}" PARENT_SCOPE)
         elseif(key_l STREQUAL "exclude")
             set(HYB_TESTS_EXCLUDE "${value}" PARENT_SCOPE)
+        elseif(key_l STREQUAL "filter")
+            set(HYB_TESTS_FILTER "${value}" PARENT_SCOPE)
         elseif(key_l STREQUAL "xvfb")
             hyb_bool("${value}" parsed "${origin}: tests.xvfb")
             set(HYB_TESTS_XVFB "${parsed}" PARENT_SCOPE)
@@ -402,7 +405,7 @@ set(i 0)
 while(i LESS argc)
     list(GET HYB_ARGS ${i} arg)
     if(arg STREQUAL "--help")
-        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH (advanced; normal users select a Kit or profile)\n  --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
+        message(STATUS "HyRemote build entry point\n\nUsage: build.cmd [command] [options]\n\nCommands: build (default) | install | test | clean | rebuild | help\n\nConfiguration precedence: defaults < build.yml < command line\n\n  --config=FILE\n  --mode=cpp|qml|generic|qpa|all|runtime|minimal\n  --integrations=cpp,qml,generic,qpa\n  --cpp|--no-cpp --qml|--no-qml --generic|--no-generic --qpa|--no-qpa\n  --security | --no-security\n  --build-type=Release|Debug --build-dir=DIR --generator=NAME\n  --qt-prefix=PATH (advanced; normal users select a Kit or profile)\n  --toolchain=FILE.cmake\n  --c-compiler=PATH --cxx-compiler=PATH\n  --tests|--no-tests --run-tests|--no-run-tests\n  --examples|--no-examples --test-filter=REGEX --test-exclude=REGEX --xvfb|--no-xvfb\n  --cmake=KEY=VALUE --env=KEY=VALUE (repeatable)\n  --clean -v -jN --jobs=N --show-config --no-prompt")
         return()
     elseif(arg MATCHES "^--config=" OR arg STREQUAL "--no-config")
         # Already consumed in pass 1.
@@ -411,7 +414,7 @@ while(i LESS argc)
     elseif(arg STREQUAL "--mode" OR arg STREQUAL "--integrations" OR arg STREQUAL "--build-type"
            OR arg STREQUAL "--build-dir" OR arg STREQUAL "--generator" OR arg STREQUAL "--qt-prefix"
            OR arg STREQUAL "--toolchain" OR arg STREQUAL "--c-compiler" OR arg STREQUAL "--cxx-compiler"
-           OR arg STREQUAL "--test-exclude" OR arg STREQUAL "--cmake" OR arg STREQUAL "--env"
+           OR arg STREQUAL "--test-exclude" OR arg STREQUAL "--test-filter" OR arg STREQUAL "--cmake" OR arg STREQUAL "--env"
            OR arg STREQUAL "--jobs")
         set(option_name "${arg}")
         math(EXPR i "${i}+1")
@@ -444,6 +447,11 @@ while(i LESS argc)
             set(HYB_CXX_COMPILER "${option_value}")
         elseif(option_name STREQUAL "--test-exclude")
             set(HYB_TESTS_EXCLUDE "${option_value}")
+        elseif(option_name STREQUAL "--test-filter")
+            if(option_value STREQUAL "")
+                message(FATAL_ERROR "--test-filter requires a nonempty CTest regex")
+            endif()
+            set(HYB_TESTS_FILTER "${option_value}")
         elseif(option_name STREQUAL "--cmake")
             if(NOT option_value MATCHES "^([^=]+)=(.*)$")
                 message(FATAL_ERROR "--cmake expects KEY=VALUE")
@@ -519,6 +527,11 @@ while(i LESS argc)
         set(HYB_EXAMPLES OFF)
     elseif(arg MATCHES "^--test-exclude=(.*)$")
         set(HYB_TESTS_EXCLUDE "${CMAKE_MATCH_1}")
+    elseif(arg MATCHES "^--test-filter=(.*)$")
+        if("${CMAKE_MATCH_1}" STREQUAL "")
+            message(FATAL_ERROR "--test-filter requires a nonempty CTest regex")
+        endif()
+        set(HYB_TESTS_FILTER "${CMAKE_MATCH_1}")
     elseif(arg STREQUAL "--xvfb")
         set(HYB_TESTS_XVFB ON)
     elseif(arg STREQUAL "--no-xvfb")
@@ -1156,6 +1169,8 @@ if(HYB_SHOW_CONFIG OR HYB_VERBOSE)
     message(STATUS "  C compiler        : ${HYB_C_COMPILER}")
     message(STATUS "  C++ compiler      : ${HYB_CXX_COMPILER}")
     message(STATUS "  tests             : build=${HYB_TESTS_BUILD}, run=${HYB_TESTS_RUN}, xvfb=${HYB_TESTS_XVFB}")
+    message(STATUS "  tests.filter      : ${HYB_TESTS_FILTER}")
+    message(STATUS "  tests.exclude     : ${HYB_TESTS_EXCLUDE}")
     message(STATUS "  examples          : ${HYB_EXAMPLES}")
     message(STATUS "  cmake cache       : ${HYB_CMAKE_CACHE_ENTRIES}")
     message(STATUS "  env               : ${HYB_ENV_ENTRIES}")
@@ -1402,6 +1417,7 @@ if(HYB_INSTALL)
 endif()
 
 if(HYB_TESTS_RUN)
+    include("${CMAKE_CURRENT_LIST_DIR}/HyRemoteRuntimePathFilter.cmake")
     set(test_env ${HYB_ENV_ENTRIES})
     if(WIN32)
         # The runtime library is named after its target's OUTPUT_NAME, and its prefix and suffix belong to the
@@ -1412,10 +1428,9 @@ if(HYB_TESTS_RUN)
         # never reached PATH, so every test loading the runtime exited with 0xc0000135.
         file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE
             "${HYB_BUILD_DIR}/*HyRemoteRemoteAccess.dll")
-        # Release evidence deploys the product under <build>/evidence/<run>/ (checklist section 10). A deployed
-        # layout carries its own plugins beside its own library, so those directories must stay off PATH: with them
-        # present the tests resolved a foreign copy and the whole Widgets/Quick family failed with 0xc0000602.
-        list(FILTER runtime_candidates EXCLUDE REGEX "[/\\\\]evidence[/\\\\]")
+        # #800: discard installed/fixture Runtime copies before adding PATH dirs.
+        # They can carry Qt DLLs but lack offscreen, causing 0xC0000409.
+        hyb_filter_test_runtime_candidates(runtime_candidates "${HYB_BUILD_DIR}")
         set(test_path "$ENV{PATH}")
         if(NOT HYB_QT_PREFIX STREQUAL "")
             string(PREPEND test_path "${HYB_QT_PREFIX}/bin;")
@@ -1435,7 +1450,8 @@ if(HYB_TESTS_RUN)
         # tree produced, so the tests load the runtime under test rather than a deployed copy.
         file(GLOB_RECURSE runtime_candidates LIST_DIRECTORIES FALSE
             "${HYB_BUILD_DIR}/*HyRemoteRemoteAccess.so*")
-        list(FILTER runtime_candidates EXCLUDE REGEX "[/\\\\]evidence[/\\\\]")
+        # Apply the same staged-copy exclusion on LD_LIBRARY_PATH as on PATH.
+        hyb_filter_test_runtime_candidates(runtime_candidates "${HYB_BUILD_DIR}")
         set(test_ld "$ENV{LD_LIBRARY_PATH}")
         if(NOT HYB_QT_PREFIX STREQUAL "")
             string(PREPEND test_ld "${HYB_QT_PREFIX}/lib:")
@@ -1468,7 +1484,38 @@ if(HYB_TESTS_RUN)
             "Configure with tests enabled, or drop --run-tests: a run that executes nothing must not report success.")
     endif()
 
+    # Native positive selection never changes the suite's registration count. Use CTest
+    # itself to determine how many cases survive both -R and -E; a regex selecting zero
+    # must fail *before* reporting a successful test phase or claiming full acceptance.
+    if(NOT HYB_TESTS_FILTER STREQUAL "" OR NOT HYB_TESTS_EXCLUDE STREQUAL "")
+        set(selected_discover_cmd "${CMAKE_CTEST_COMMAND}" --test-dir "${HYB_BUILD_DIR}" -N)
+        if(NOT HYB_TESTS_FILTER STREQUAL "")
+            list(APPEND selected_discover_cmd -R "${HYB_TESTS_FILTER}")
+        endif()
+        if(NOT HYB_TESTS_EXCLUDE STREQUAL "")
+            list(APPEND selected_discover_cmd -E "${HYB_TESTS_EXCLUDE}")
+        endif()
+        execute_process(COMMAND ${selected_discover_cmd}
+            RESULT_VARIABLE selected_status
+            OUTPUT_VARIABLE selected_output
+            ERROR_VARIABLE selected_error)
+        set(HYB_SELECTED_TEST_COUNT 0)
+        if(selected_output MATCHES "Total Tests: ([0-9]+)")
+            set(HYB_SELECTED_TEST_COUNT "${CMAKE_MATCH_1}")
+        endif()
+        message(STATUS "SELECTED_TEST_COUNT=${HYB_SELECTED_TEST_COUNT}")
+        if(NOT selected_status EQUAL 0 OR HYB_SELECTED_TEST_COUNT EQUAL 0)
+            message(FATAL_ERROR
+                "CTest selected zero tests or failed discovery (status ${selected_status}); "
+                "filter='${HYB_TESTS_FILTER}', exclude='${HYB_TESTS_EXCLUDE}'. "
+                "Use a matching positive regex; no empty test run may report PASS.")
+        endif()
+    endif()
+
     set(ctest_cmd "${CMAKE_CTEST_COMMAND}" --test-dir "${HYB_BUILD_DIR}" --output-on-failure)
+    if(NOT HYB_TESTS_FILTER STREQUAL "")
+        list(APPEND ctest_cmd -R "${HYB_TESTS_FILTER}")
+    endif()
     if(NOT HYB_TESTS_PARALLEL STREQUAL "")
         list(APPEND ctest_cmd --parallel "${HYB_TESTS_PARALLEL}")
     elseif(NOT HYB_JOBS STREQUAL "")

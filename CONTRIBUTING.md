@@ -245,9 +245,7 @@ capability explicitly re-adopts it. Nothing in this cadence re-activates a TLS p
 
 Working rules that keep that cadence meaningful:
 
-- **Push once per change.** Iterate locally: focused tests, then the canonical `build.cmd` gate, then a clean local
-  exact head - and only then push and open the pull request. A second push is for a genuine hosted failure, not for
-  using CI as a trial-and-error loop.
+- **Push once per stable change.** During unfinished work, compile and use focused positive/negative tests at meaningful checkpoints; do **not** repeatedly run the full suite. Before opening a Ready PR, validate the affected contract; run one local canonical full `build.cmd test` only when the risk matrix in [G0–G6](tests/EXECUTION_MANUAL.md) actually requires it. Every ready-PR head still requires its own fresh hosted affected L1 `ci-merge-verdict`; an older head's MERGE decision cannot be reused. A second push is for a genuine fix/review change, not to use CI as a trial-and-error loop.
 - **Drafts are cheap on purpose.** A draft runs governance only, so it is safe to open early for collaboration; the
   product gate starts when the pull request becomes ready for review.
 - **Merge only from a fresh base.** A merge commit is built from the pull request head against the base's current tip,

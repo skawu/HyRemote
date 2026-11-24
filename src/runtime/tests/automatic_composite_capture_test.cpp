@@ -17,7 +17,10 @@ namespace {
 class SolidCapture final : public hyremote::CaptureSource
 {
 public:
-    explicit SolidCapture(QRgb color) : m_color(color) {}
+    explicit SolidCapture(QRgb color, int pixelWidth = 2, int pixelHeight = 2, float dpr = 1.0F)
+        : m_color(color), m_pixelWidth(pixelWidth), m_pixelHeight(pixelHeight), m_dpr(dpr)
+    {
+    }
 
     hyremote::CaptureCapabilities capabilities() const override
     {
@@ -40,9 +43,9 @@ public:
     {
         if (!m_onFrame)
             return false;
-        constexpr int width = 2;
-        constexpr int height = 2;
-        constexpr std::size_t stride = width * 4U;
+        const int width = m_pixelWidth;
+        const int height = m_pixelHeight;
+        const std::size_t stride = static_cast<std::size_t>(width) * 4U;
         auto storage = hyremote::CpuFrameStorage::createSinglePlane(stride, height);
         if (!storage || !storage->mutablePlane(0))
             return false;
@@ -60,10 +63,12 @@ public:
         }
 
         hyremote::RemoteFrame frame;
-        frame.geometry.size = {width, height};
+        frame.geometry.size = {static_cast<std::uint32_t>(width),
+                               static_cast<std::uint32_t>(height)};
         frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
         frame.geometry.alphaMode = hyremote::AlphaMode::Premultiplied;
         frame.geometry.planeCount = 1;
+        frame.geometry.devicePixelRatio = m_dpr;
         frame.storage = std::move(storage);
         frame.timing.ptsSource = hyremote::PtsSource::Completion;
         frame.timing.requestTime = request.requestTime;
@@ -76,6 +81,9 @@ public:
 
 private:
     QRgb m_color;
+    int m_pixelWidth;
+    int m_pixelHeight;
+    float m_dpr;
     hyremote::FrameReadyHandler m_onFrame;
 };
 
@@ -129,7 +137,9 @@ int main(int argc, char **argv)
                 return result;
             if (target == &leftTarget) {
                 result.supported = true;
-                result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255));
+                // High-DPI child: four physical pixels per logical two-unit surface.
+                result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255),
+                                                                 4, 4, 2.0F);
             } else if (target == &rightTarget) {
                 result.supported = true;
                 result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255));
@@ -155,7 +165,12 @@ int main(int argc, char **argv)
     }
 
     const QImage image = imageView(frames.front());
-    if (!check(image.size() == QSize(4, 2), "surface union becomes one logical canvas")
+    // #806 regression: left capture is 4x4 physical pixels with DPR=2 and
+    // right capture is 2x2 with DPR=1; both are rendered into a 4x2 logical
+    // output. A max(child DPR)=2 result wrongly enlarges watermark font pixels.
+    if (!check(frames.front().geometry.devicePixelRatio == 1.0F,
+               "composite output DPR follows its logical canvas, not its 2x child")
+        || !check(image.size() == QSize(4, 2), "surface union becomes one logical canvas")
         || !check(image.pixelColor(0, 0) == QColor(255, 0, 0, 255), "left surface is composed")
         || !check(image.pixelColor(3, 0) == QColor(0, 255, 0, 255), "right surface is composed")) {
         return 4;

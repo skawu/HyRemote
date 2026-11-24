@@ -478,7 +478,9 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
     expect_refusal("0.3.2.0 (Bandwidth/ZRLE slot) stays refused" "0.3.2.0")
     expect_refusal("0.4.0.0 refuses until #235 records activation" "0.4.0.0")
     expect_refusal("1.1.0.0 refuses: no post-GA fixed technical slot" "1.1.0.0")
-    expect_refusal("unknown future 0.3.5.0 is refused until independently admitted" "0.3.5.0")
+    # 0.3.5.0 is an admitted train since 2026-10-29 (asserted by the exact-train table above); a version that was
+    # merely planned and never admitted still never resolves.
+    expect_refusal("unknown future 0.3.9.0 is refused until independently admitted" "0.3.9.0")
 
     # 15. A malformed authority is refused.
     # Script mode has no build directory, so the temporary manifests this matrix writes must never land in the
@@ -768,7 +770,7 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
         "release-scope self test: PASS (schema ${authority_schema}, ${cases_run} cases, "
         "sentinel 0.0.0, refused 0.0.x, V0.1 -> #229, released history 0.2.0.0/0.2.0.1 selectable, "
         "V0.3.0.0 -> #234 [264,240,335] on the 0.2.0.0 lineage, V0.3.3.0 -> #234 [144,175] on the 0.3.0.0 lineage, V0.3.4.0 -> #594 [265,566,603] on the 0.3.3.0 lineage, "
-        "retired slots 0.2.1.0/0.3.1.0/0.3.2.0 and future 0.3.5.0 fail closed, "
+        "retired slots 0.2.1.0/0.3.1.0/0.3.2.0 and an unadmitted future 0.3.9.0 fail closed, "
         "V0.4.0.0 conditional on #235)")
     return()
 endif()

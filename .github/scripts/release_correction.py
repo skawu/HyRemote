@@ -79,6 +79,156 @@ def validate(*, git, version, notes_name, base_notes, head_notes, head_cmake, de
     return "candidate-correction"
 
 
+# #806: a previously accepted RC6 note must be explicitly reopened after newly verified release-blocking
+# P2 defects. This exception is SHA-locked to a single unpublished release branch and does NOT generalize
+# the right to overwrite accepted release history. Its next correction is a fresh reviewed candidate.
+REOPEN_VERSION = "0.3.5.0"
+REOPEN_BASE_SHA = "377b0a61b5dd99e3c16ea88356463068b255c7a6"
+REOPEN_ACCEPTED_MARKER = "Status: **accepted for V0.3.5.0**"
+
+
+def validate_reopen(*, git, version, notes_name, base_notes, head_notes, head_cmake,
+                    actual_base_sha, develop_ref=DEVELOP_REF):
+    """Fail closed for the single Owner-authorized post-acceptance #793 correction.
+
+    This gate is evaluated by a protected-release PR review, *never* by a direct branch update.
+    The candidate tree must equal reviewed develop byte-for-byte other than its root VERSION;
+    its notes must be exactly the pending develop notes, not arbitrary replacement prose.
+    """
+    if version != REOPEN_VERSION or actual_base_sha != REOPEN_BASE_SHA:
+        raise SystemExit("post-acceptance release reopen is not authorized for this exact version/base SHA")
+    if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
+        raise SystemExit("post-acceptance release reopen requires the exact accepted RC6 notes")
+    develop_notes = git("show", f"{develop_ref}:{notes_name}").decode("utf-8")
+    if not develop_notes.startswith(CANDIDATE_MARKER) or head_notes != develop_notes:
+        raise SystemExit("reopened release notes must equal the exact pending develop notes")
+    develop_cmake = git("show", f"{develop_ref}:CMakeLists.txt")
+    if head_cmake != versioned_cmake(develop_cmake, version):
+        raise SystemExit("reopened release CMakeLists must equal reviewed develop except the VERSION token")
+    surface = set(git("diff", "--name-only", develop_ref, "HEAD").decode("utf-8").splitlines())
+    if surface != {"CMakeLists.txt"}:
+        raise SystemExit("reopened candidate tree must equal develop except the root VERSION")
+    return "candidate-reopen-correction"
+
+
+
+# #812 / #768: a second, separately reviewed, strictly bounded reopen of the
+# ACCEPTED but UNPUBLISHED RC7 after independent whole-release P2 findings.
+# Never use this gate for another release, accepted base, candidate tree or feature.
+RC7_REOPEN_BASE_SHA = "a5fd439ed4039614021f2254dd2df6b76ffd4374"
+RC7_REVIEWED_PRODUCT_SOURCE_SHA = "1b6b2f4f991f773e6f48b8484d0f3b8905d0f72e"
+RC7_PRODUCT_FILES = frozenset({
+    "src/runtime/src/access_instance.cpp",
+    "src/runtime/tests/test_watermark_policy.cpp",
+    "src/integrations/cpp/tests/test_remote_access.cpp",
+    "tools/local-owner/worker.py",
+})
+RC7_GOVERNANCE_FILES = frozenset({
+    ".github/scripts/release_correction.py",
+    ".github/workflows/git-flow-policy.yml",
+})
+
+
+def validate_reopen_rc7(*, git, version, notes_name, base_notes, head_notes,
+                        base_cmake, head_cmake, actual_base_sha, head_ref,
+                        develop_ref=DEVELOP_REF,
+                        fixed_source_ref=RC7_REVIEWED_PRODUCT_SOURCE_SHA):
+    """Admit only the independently reviewed #812/#768 repairs, governance and
+    exact pending bilingual notes on the frozen accepted-but-untagged RC7.
+
+    Unrelated develop files (including architecture, roadmap, performance work
+    orders, other versions, transport/API work) are NEVER imported by this gate.
+    """
+    if head_ref != "feature/812-release-preparation":
+        raise SystemExit("RC7 post-acceptance reopen denied on unauthorized preparation branch")
+    if version != "0.3.5.0" or actual_base_sha != RC7_REOPEN_BASE_SHA:
+        raise SystemExit("RC7 post-acceptance reopen denied on unapproved version/base")
+    if not base_notes.startswith(REOPEN_ACCEPTED_MARKER):
+        raise SystemExit("RC7 reopen requires previously accepted notes on the exact base")
+    if head_cmake != base_cmake:
+        raise SystemExit("RC7 source correction must not alter the release VERSION/CMakeLists")
+    pending = git("show", f"{develop_ref}:{notes_name}").decode("utf-8")
+    if not pending.startswith(CANDIDATE_MARKER) or head_notes != pending:
+        raise SystemExit("RC7 correction notes must equal reviewed develop's exact pending bilingual notes")
+    if "# 中文" not in head_notes or "# English" not in head_notes or "## Security boundary" not in head_notes:
+        raise SystemExit("RC7 corrected candidate notes must retain bilingual/security structure")
+    expected = RC7_PRODUCT_FILES | RC7_GOVERNANCE_FILES | {notes_name}
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD").decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit(
+            "RC7 correction changed-file scope must be the exact P2+governance+notes set: "
+            f"expected {sorted(expected)}, found {sorted(changed)}")
+    # The four real source fixes must be byte-for-byte identical to the SHA
+    # that merged reviewed #813 and #816 into develop, independent of later
+    # unrelated develop movements. The governance & pending-notes bytes come
+    # only from the separately reviewed current develop branch.
+    for file_name in sorted(RC7_PRODUCT_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{fixed_source_ref}:{file_name}"):
+            raise SystemExit(f"RC7 corrected product-source blob differs from reviewed fix: {file_name}")
+    for file_name in sorted(RC7_GOVERNANCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{develop_ref}:{file_name}"):
+            raise SystemExit(f"RC7 correction governance blob differs from reviewed develop: {file_name}")
+    return "rc7-scoped-post-acceptance-reopen"
+
+
+# #95/#1047: one exact untagged V0.3.5.0 security correction.
+# It cannot import later develop product work or repeat for a new base.
+V035_NUMERIC_BASE_SHA = "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
+V035_NUMERIC_HEAD_REF = "feature/589-release-preparation"
+# The independently reviewed #1047 was squash-merged into develop.
+# Pin that reachable immutable merge commit; the PR's unmerged HEAD object
+# is not guaranteed to exist in an isolated release-PR checkout.
+V035_NUMERIC_FIXED_SOURCE_SHA = "73cd3e11dabeff2a114ffa50a48105ef2080fd0f"
+V035_NUMERIC_SOURCE_FILES = frozenset({
+    "src/runtime/src/detail/watermark_store.cpp",
+    "src/runtime/tests/test_watermark_policy.cpp",
+})
+V035_NUMERIC_GOVERNANCE_FILES = frozenset({
+    ".github/scripts/release_correction.py",
+    ".github/workflows/git-flow-policy.yml",
+})
+
+
+def validate_v035_numeric_watermark(*, git, version, notes_name,
+                                   base_notes, head_notes, base_cmake,
+                                   head_cmake, actual_base_sha, head_ref,
+                                   fixed_source_ref=V035_NUMERIC_FIXED_SOURCE_SHA,
+                                   governance_ref=DEVELOP_REF):
+    """Only the independently reviewed #1047 source and reviewed gate itself.
+
+    A protected release PR must carry both this validator and its workflow
+    from the separately reviewed develop tree. This is not publication authority.
+    """
+    if version != "0.3.5.0" or actual_base_sha != V035_NUMERIC_BASE_SHA:
+        raise SystemExit("V035 numeric correction denied: unapproved version/base")
+    if head_ref != V035_NUMERIC_HEAD_REF:
+        raise SystemExit("V035 numeric correction denied: unauthorized preparation branch")
+    if not base_notes.startswith(CANDIDATE_MARKER) or head_notes != base_notes:
+        raise SystemExit("V035 numeric correction denied: pending bilingual notes must be unchanged")
+    if head_cmake != base_cmake:
+        raise SystemExit("V035 numeric correction denied: VERSION/CMake must be unchanged")
+    # Pending candidate notes cannot override a previously published tag.
+    if git("tag", "--list", "v0.3.5.0").strip():
+        raise SystemExit("V035 numeric correction denied: version already tagged")
+    expected = V035_NUMERIC_SOURCE_FILES | V035_NUMERIC_GOVERNANCE_FILES
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD").decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit(
+            "V035 numeric correction denied: changed-file scope differs from exact "
+            f"security+governance set: {sorted(changed)}")
+    # Immutable reviewed PR #1047 HEAD. No cherry-pick recomposition,
+    # partial test edits, or later unaccepted develop source allowed.
+    for file_name in sorted(V035_NUMERIC_SOURCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{fixed_source_ref}:{file_name}"):
+            raise SystemExit("V035 numeric correction denied: unreviewed source blob " + file_name)
+    # A release candidate must use governance already accepted on develop,
+    # not a gate independently weakened in the release-head PR.
+    for file_name in sorted(V035_NUMERIC_GOVERNANCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{governance_ref}:{file_name}"):
+            raise SystemExit("V035 numeric correction denied: unreviewed governance blob " + file_name)
+    return "v035-watermark-numeric-exact-security-correction"
+
+
 # ---------------------------------------------------------------- self test
 
 def _run(cwd: Path, *args: str) -> bytes:
@@ -188,6 +338,213 @@ def self_test() -> int:
     scenario("notes must stay pending and unchanged",
              develop_extra=False, head_extra_file=False, break_notes=True,
              break_cmake=False, expect_error="pending bilingual notes unchanged")
+
+    # Positive and negative tests for the exact one-off #806 accepted-RC6 reopen. This
+    # independently checks SHA lock, unchanged reviewed-develop notes, and source equality.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        _run(root, "git", "init", "-q")
+        _run(root, "git", "config", "core.autocrlf", "false")
+        notes_name = "docs/releases/v0.3.5.0.md"
+        pending = CANDIDATE_MARKER + "\n# 中文\n\n## Security boundary\n# English\n"
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.0.0 LANGUAGES CXX)\n')
+        _write(root, notes_name, pending)
+        _write(root, "src/a.cpp", "int value = 3;\n")
+        _commit(root, "reviewed develop candidate")
+        _run(root, "git", "update-ref", DEVELOP_REF, "HEAD")
+        _run(root, "git", "switch", "-q", "-c", "release")
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
+        _write(root, notes_name, REOPEN_ACCEPTED_MARKER + "\n# 中文\n# English\n")
+        _commit(root, "accepted RC6")
+        base_notes = _run(root, "git", "show", f"HEAD:{notes_name}").decode("utf-8")
+        _run(root, "git", "switch", "-q", "-c", "reopen", DEVELOP_REF)
+        _write(root, "CMakeLists.txt", 'project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n')
+        _commit(root, "exact new candidate")
+        git = _git_in(root)
+        head_cmake = git("show", "HEAD:CMakeLists.txt")
+        # Compare committed blobs, not Python's in-memory LF strings: on Windows Path.write_text()
+        # may create CRLF, which git preserves with core.autocrlf=false. The production gate also
+        # compares git blobs, so the self-test must reproduce that exact byte-level contract.
+        committed_notes = git("show", f"HEAD:{notes_name}").decode("utf-8")
+        candidates = (
+            ("exact post-acceptance reopen", REOPEN_BASE_SHA, committed_notes, None),
+            ("wrong accepted base SHA blocked", "0" * 40, committed_notes, "not authorized"),
+            ("arbitrary notes rewrite blocked", REOPEN_BASE_SHA, committed_notes + "edited\n", "pending develop notes"),
+        )
+        for name, tested_base, tested_notes, expected_error in candidates:
+            cases += 1
+            try:
+                validate_reopen(git=git, version=REOPEN_VERSION, notes_name=notes_name,
+                                base_notes=base_notes, head_notes=tested_notes,
+                                head_cmake=head_cmake, actual_base_sha=tested_base)
+                if expected_error is not None:
+                    print(f"FAIL {name}: expected {expected_error}")
+                    failures += 1
+                else:
+                    print(f"ok: {name}")
+            except SystemExit as error:
+                if expected_error is None or expected_error not in str(error):
+                    print(f"FAIL {name}: {error}")
+                    failures += 1
+                else:
+                    print(f"ok: {name}")
+
+    # #812/#768: exact post-RC7 candidate release guard. These fake Git blobs test
+    # byte-level scope and identities without depending on live GitHub state.
+    rc7_notes_name = "docs/releases/v0.3.5.0.md"
+    rc7_pending = CANDIDATE_MARKER + "\n# 中文\n# English\n## Security boundary\n"
+    rc7_accepted = REOPEN_ACCEPTED_MARKER + "\n# 中文\n# English\n"
+    rc7_files = RC7_PRODUCT_FILES | RC7_GOVERNANCE_FILES | {rc7_notes_name}
+    rc7_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n"
+
+    def rc7_scenario(name, *, wrong_base=False, wrong_branch=False, missing_file=False,
+                     wrong_product=False, wrong_governance=False,
+                     wrong_notes=False, wrong_cmake=False, expect_error=None):
+        nonlocal failures, cases
+        cases += 1
+        changed = rc7_files - ({"tools/local-owner/worker.py"} if missing_file else set())
+
+        def git_fixture(*args):
+            if args[:2] == ("diff", "--name-only"):
+                return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
+            if args[0] == "show" and len(args) == 2:
+                address = args[1]
+                if address == f"{DEVELOP_REF}:{rc7_notes_name}":
+                    return rc7_pending.encode("utf-8")
+                if ":" not in address:
+                    raise AssertionError("unexpected fixture Git show: " + address)
+                ref, path = address.split(":", 1)
+                if path in RC7_PRODUCT_FILES:
+                    if ref == "HEAD" and wrong_product and path == "tools/local-owner/worker.py":
+                        return b"BAD-PRODUCT-BLOB\n"
+                    return ("REVIEWED-SOURCE:" + path).encode("utf-8")
+                if path in RC7_GOVERNANCE_FILES:
+                    if ref == "HEAD" and wrong_governance and path == ".github/workflows/git-flow-policy.yml":
+                        return b"BAD-GOVERNANCE-BLOB\n"
+                    return ("REVIEWED-GOVERNANCE:" + path).encode("utf-8")
+            raise AssertionError("unexpected fixture Git query: " + repr(args))
+
+        try:
+            validate_reopen_rc7(
+                git=git_fixture, version="0.3.5.0", notes_name=rc7_notes_name,
+                base_notes=rc7_accepted,
+                head_notes=rc7_pending + ("arbitrary edit\n" if wrong_notes else ""),
+                base_cmake=rc7_cmake,
+                head_cmake=rc7_cmake + (b"tampered\n" if wrong_cmake else b""),
+                actual_base_sha=("0" * 40 if wrong_base else RC7_REOPEN_BASE_SHA),
+                head_ref=("feature/768-release-preparation" if wrong_branch
+                          else "feature/812-release-preparation"),
+                fixed_source_ref="reviewed-source")
+            if expect_error is not None:
+                print(f"FAIL {name}: expected rejection containing '{expect_error}'")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+        except SystemExit as error:
+            if expect_error is None or expect_error not in str(error):
+                print(f"FAIL {name}: {error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+
+    rc7_scenario("RC7 exact P2+governance correction accepted")
+    rc7_scenario("RC7 unrelated issue preparation branch rejected", wrong_branch=True,
+                 expect_error="unauthorized preparation branch")
+    rc7_scenario("RC7 different accepted base rejected", wrong_base=True,
+                 expect_error="unapproved version/base")
+    rc7_scenario("RC7 incomplete source scope rejected", missing_file=True,
+                 expect_error="changed-file scope")
+    rc7_scenario("RC7 altered worker source rejected", wrong_product=True,
+                 expect_error="product-source blob differs")
+    rc7_scenario("RC7 unreviewed governance rejected", wrong_governance=True,
+                 expect_error="governance blob differs")
+    rc7_scenario("RC7 arbitrary pending notes rejected", wrong_notes=True,
+                 expect_error="exact pending bilingual notes")
+    rc7_scenario("RC7 CMake/version alteration rejected", wrong_cmake=True,
+                 expect_error="must not alter the release VERSION")
+
+    # #95/#1047: one-time unpublished b068 candidate security correction.
+    # Probe successful exact source + multiple fail-closed adversarial inputs.
+    v035_notes = CANDIDATE_MARKER + "\n# 中文\n# English\n## Security boundary\n"
+    v035_cmake = b"project(HyRemote VERSION 0.3.5.0 LANGUAGES CXX)\n"
+    v035_files = V035_NUMERIC_SOURCE_FILES | V035_NUMERIC_GOVERNANCE_FILES
+
+    def v035_scenario(name, *, wrong_version=False, wrong_base=False,
+                      wrong_head=False, wrong_notes=False, wrong_cmake=False,
+                      extra_file=False, missing_file=False, bad_source=False,
+                      bad_governance=False, tagged=False, expect_error=None):
+        nonlocal failures, cases
+        cases += 1
+        changed = set(v035_files)
+        if missing_file:
+            changed.remove("src/runtime/tests/test_watermark_policy.cpp")
+        if extra_file:
+            changed.add("src/runtime/src/transport/rfb_transport.cpp")
+
+        def git_fixture(*args):
+            if args == ("tag", "--list", "v0.3.5.0"):
+                return b"v0.3.5.0\n" if tagged else b""
+            if args[:2] == ("diff", "--name-only"):
+                return ("\n".join(sorted(changed)) + "\n").encode("utf-8")
+            if args[0] == "show" and len(args) == 2:
+                ref, file_name = args[1].split(":", 1)
+                if file_name in V035_NUMERIC_SOURCE_FILES:
+                    if ref == "HEAD" and bad_source:
+                        return b"TAMPERED-SOURCE\n"
+                    return ("REVIEWED-1047:" + file_name).encode("utf-8")
+                if file_name in V035_NUMERIC_GOVERNANCE_FILES:
+                    if ref == "HEAD" and bad_governance:
+                        return b"TAMPERED-GOVERNANCE\n"
+                    return ("REVIEWED-GOVERNANCE:" + file_name).encode("utf-8")
+            raise AssertionError("unexpected Git query: " + repr(args))
+
+        try:
+            validate_v035_numeric_watermark(
+                git=git_fixture,
+                version=("0.3.6.0" if wrong_version else "0.3.5.0"),
+                notes_name="docs/releases/v0.3.5.0.md",
+                base_notes=v035_notes,
+                head_notes=(v035_notes + "changed\n" if wrong_notes else v035_notes),
+                base_cmake=v035_cmake,
+                head_cmake=(v035_cmake + b"changed" if wrong_cmake else v035_cmake),
+                actual_base_sha=("0" * 40 if wrong_base else V035_NUMERIC_BASE_SHA),
+                head_ref=("feature/789-release-preparation" if wrong_head
+                          else V035_NUMERIC_HEAD_REF),
+                fixed_source_ref="reviewed-source",
+                governance_ref="reviewed-governance")
+            if expect_error is not None:
+                print(f"FAIL {name}: expected {expect_error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+        except SystemExit as error:
+            if expect_error is None or expect_error not in str(error):
+                print(f"FAIL {name}: {error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+
+    v035_scenario("V035 exact #1047 security correction accepted")
+    v035_scenario("V035 wrong version denied", wrong_version=True,
+                  expect_error="unapproved version/base")
+    v035_scenario("V035 wrong frozen candidate denied", wrong_base=True,
+                  expect_error="unapproved version/base")
+    v035_scenario("V035 unrelated issue branch denied", wrong_head=True,
+                  expect_error="unauthorized preparation branch")
+    v035_scenario("V035 notes rewrite denied", wrong_notes=True,
+                  expect_error="pending bilingual notes")
+    v035_scenario("V035 project VERSION change denied", wrong_cmake=True,
+                  expect_error="VERSION/CMake")
+    v035_scenario("V035 extra RFB product edit denied", extra_file=True,
+                  expect_error="changed-file scope")
+    v035_scenario("V035 missing regression test denied", missing_file=True,
+                  expect_error="changed-file scope")
+    v035_scenario("V035 altered source blob denied", bad_source=True,
+                  expect_error="unreviewed source blob")
+    v035_scenario("V035 altered gate blob denied", bad_governance=True,
+                  expect_error="unreviewed governance blob")
+    v035_scenario("V035 already-tagged version denied", tagged=True,
+                  expect_error="version already tagged")
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")
