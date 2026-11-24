@@ -116,7 +116,7 @@ jobs:
         with:
           name: r953-linux-${{ matrix.qt }}-${{ matrix.loop }}
           path: tmp/r953/*.log
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
 
   windows-public-qt-compile:
