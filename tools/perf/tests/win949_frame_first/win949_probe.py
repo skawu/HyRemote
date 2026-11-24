@@ -55,6 +55,10 @@ RFB_VERSION = b"RFB 003.008\n"
 # to make this probe allocate unbounded memory and corrupt the A/B measurement.
 MAX_TEXT_BYTES = 4096
 MAX_RAW_RECT_BYTES = 64 * 1024 * 1024
+# The budget is PER WHOLE UPDATE, not per rectangle. The on-wire count is 16-bit
+# and individual 64 MiB rectangles otherwise accumulate without bound.
+MAX_UPDATE_BYTES = 64 * 1024 * 1024
+MAX_UPDATE_RECTANGLES = 4096
 MAX_FRAMEBUFFER_PIXELS = 16 * 1024 * 1024
 
 
@@ -67,6 +71,18 @@ def require_budget(value, limit, label):
         raise RfbError(f"{label} exceeds the probe budget ({value} > {limit})")
 
 
+def add_update_bytes(used, additional):
+    # Fail before receiving a newly advertised rectangle payload.
+    require_budget(used + additional, MAX_UPDATE_BYTES, "total update payload")
+    return used + additional
+
+
+def validate_raw_bounds(x, y, w, h, framebuffer_width, framebuffer_height):
+    if (w <= 0 or h <= 0 or x + w > framebuffer_width
+            or y + h > framebuffer_height):
+        raise RfbError("raw rectangle outside framebuffer")
+
+
 class RfbClient:
     """Exact RFB 3.8, None auth, Raw encoding, sub-rectangle polling."""
 
@@ -76,7 +92,10 @@ class RfbClient:
         self.width = 0
         self.height = 0
         self.name = ""
-        self.pixels = {}
+        # Bounded BGRX plane plus a one-byte-per-pixel validity mask. A Python
+        # dict of per-pixel tuples would be gigabytes at a legal 4K size.
+        self.pixels = bytearray()
+        self._known = bytearray()
         self._handshake(shared)
 
     # -- transport ---------------------------------------------------------- #
@@ -112,8 +131,8 @@ class RfbClient:
             raise RfbError(f"security handshake failed: {result}")
         self.sock.sendall(bytes([1 if shared else 0]))
         init = self._recv_exact(24)
-        self.width, self.height = struct.unpack(">HH", init[0:4])
-        require_budget(self.width * self.height, MAX_FRAMEBUFFER_PIXELS, "framebuffer")
+        width, height = struct.unpack(">HH", init[0:4])
+        self._reset_framebuffer(width, height)
         name_len = struct.unpack(">I", init[20:24])[0]
         require_budget(name_len, MAX_TEXT_BYTES, "server name")
         self.name = self._recv_exact(name_len).decode("utf-8", "replace") if name_len else ""
@@ -139,6 +158,19 @@ class RfbClient:
         except OSError:
             pass
 
+    def _reset_framebuffer(self, width: int, height: int) -> None:
+        if width <= 0 or height <= 0:
+            raise RfbError("invalid framebuffer dimensions")
+        pixels = width * height
+        require_budget(pixels, MAX_FRAMEBUFFER_PIXELS, "framebuffer")
+        # Release the old plane BEFORE allocating the replacement so repeated
+        # DesktopSize events cannot retain old coordinates and stale marks.
+        self.pixels = bytearray()
+        self._known = bytearray()
+        self.width, self.height = width, height
+        self.pixels = bytearray(pixels * 4)
+        self._known = bytearray(pixels)
+
     # -- protocol ----------------------------------------------------------- #
     def request_update(self, incremental: bool, x: int, y: int, w: int, h: int) -> None:
         self.sock.sendall(struct.pack(">BBHHHH", 3, 1 if incremental else 0, x, y, w, h))
@@ -152,22 +184,36 @@ class RfbClient:
         if kind == 0:
             self._recv_exact(1)
             (count,) = struct.unpack(">H", self._recv_exact(2))
+            require_budget(count, MAX_UPDATE_RECTANGLES, "rectangle count")
             rects = []
+            update_bytes = 0
+            # DesktopSize changes the geometry for later rectangles in this
+            # same message. Apply the actual pixel reset in _absorb() in wire
+            # order, so Raw before DesktopSize is never treated as new pixels.
+            frame_width, frame_height = self.width, self.height
             for _ in range(count):
                 x, y, w, h = struct.unpack(">HHHH", self._recv_exact(8))
                 (encoding,) = struct.unpack(">i", self._recv_exact(4))
                 if encoding == 0:
-                    require_budget(w * h * 4, MAX_RAW_RECT_BYTES, "raw rectangle")
-                    data = self._recv_exact(w * h * 4)
+                    validate_raw_bounds(x, y, w, h, frame_width, frame_height)
+                    raw_size = w * h * 4
+                    require_budget(raw_size, MAX_RAW_RECT_BYTES, "raw rectangle")
+                    update_bytes = add_update_bytes(update_bytes, raw_size)
+                    data = self._recv_exact(raw_size)
                     rects.append((x, y, w, h, data))
                 elif encoding == -223:  # DesktopSize pseudo-encoding
+                    if w <= 0 or h <= 0:
+                        raise RfbError("invalid resized framebuffer")
                     require_budget(w * h, MAX_FRAMEBUFFER_PIXELS, "resized framebuffer")
-                    self.width, self.height = w, h
+                    frame_width, frame_height = w, h
                     rects.append((x, y, w, h, None))
                 elif encoding == -239:  # Cursor pseudo-encoding
-                    require_budget(w * h * 4, MAX_RAW_RECT_BYTES, "cursor shape")
-                    self._recv_exact(w * h * 4)
-                    self._recv_exact((w + 7) // 8 * h)
+                    cursor_size = w * h * 4
+                    mask_size = (w + 7) // 8 * h
+                    require_budget(cursor_size, MAX_RAW_RECT_BYTES, "cursor shape")
+                    update_bytes = add_update_bytes(update_bytes, cursor_size + mask_size)
+                    self._recv_exact(cursor_size)
+                    self._recv_exact(mask_size)
                 else:
                     raise RfbError(f"unsupported server encoding {encoding}")
             return "update", rects
@@ -189,15 +235,21 @@ class RfbClient:
     def _absorb(self, rects) -> None:
         for x, y, w, h, data in rects:
             if data is None:
+                self._reset_framebuffer(w, h)
                 continue
+            validate_raw_bounds(x, y, w, h, self.width, self.height)
+            if len(data) != w * h * 4:
+                raise RfbError("truncated raw rectangle")
+            # A compact plane is at most 64 MiB plus a 16 MiB validity map.
+            # Slice complete BGRX rows instead of creating millions of Python
+            # coordinate/RGB tuples, preserving exact pixel semantics.
+            known_row = b"\x01" * w
             for row in range(h):
-                base = row * w * 4
-                for col in range(w):
-                    offset = base + col * 4
-                    blue = data[offset]
-                    green = data[offset + 1]
-                    red = data[offset + 2]
-                    self.pixels[(x + col, y + row)] = (red, green, blue)
+                target_pixel = (y + row) * self.width + x
+                source_byte = row * w * 4
+                self.pixels[target_pixel * 4:(target_pixel + w) * 4] = (
+                    data[source_byte:source_byte + w * 4])
+                self._known[target_pixel:target_pixel + w] = known_row
 
     def poll(self, x: int, y: int, w: int, h: int):
         """One non-incremental sub-rectangle update. Returns (t_send, t_recv, rects)."""
@@ -214,7 +266,14 @@ class RfbClient:
         return t_send, t_recv, rects
 
     def pixel(self, x: int, y: int):
-        return self.pixels.get((x, y))
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            return None
+        index = y * self.width + x
+        if not self._known[index]:
+            return None
+        byte = index * 4
+        blue, green, red = self.pixels[byte:byte + 3]
+        return (red, green, blue)
 
 
 # --------------------------------------------------------------------------- #
@@ -356,8 +415,43 @@ def self_test():
     assert activity_wake_status(on_text, False) == "BLOCKED_ROUTE_NOT_SELECTED"
     assert activity_wake_status(off_text, False) == "SELECTED"
     assert activity_wake_status("no route line\n", True) == "BLOCKED_ROUTE_NOT_SELECTED"
+    # Aggregate budget is independent of a single rectangle's size.
+    assert add_update_bytes(0, 16) == 16
+    assert add_update_bytes(MAX_UPDATE_BYTES - 8, 8) == MAX_UPDATE_BYTES
+    for negative_case in (
+        lambda: add_update_bytes(MAX_UPDATE_BYTES - 8, 9),
+        lambda: require_budget(MAX_UPDATE_RECTANGLES + 1, MAX_UPDATE_RECTANGLES,
+                               "rectangle count"),
+        lambda: validate_raw_bounds(3, 3, 2, 1, 4, 4),
+        lambda: validate_raw_bounds(0, 0, 0, 1, 4, 4),
+    ):
+        try:
+            negative_case()
+        except RfbError:
+            pass
+        else:
+            raise AssertionError("malformed RFB update was not rejected")
+    validate_raw_bounds(0, 0, 4, 4, 4, 4)
+    cache = RfbClient.__new__(RfbClient)
+    cache._reset_framebuffer(4, 4)
+    cache._absorb([(0, 0, 2, 1, bytes([3, 2, 1, 0, 6, 5, 4, 0]))])
+    assert cache.pixel(0, 0) == (1, 2, 3)
+    assert cache.pixel(1, 0) == (4, 5, 6)
+    assert cache.pixel(2, 0) is None  # Unknown pixels are not black.
+    cache._reset_framebuffer(1, 4)
+    assert cache.pixel(0, 0) is None  # No stale pixel after resize.
+    assert len(cache.pixels) == 4 * 4 and len(cache._known) == 4
+    cache._absorb([(0, 0, 1, 1, bytes([12, 11, 10, 0]))])
+    assert cache.pixel(0, 0) == (10, 11, 12)
+    assert cache.pixel(0, 1) is None
+    cache._absorb([(0, 0, 1, 1, bytes([50, 40, 30, 0])),
+                   (0, 0, 4, 1, None),
+                   (3, 0, 1, 1, bytes([9, 8, 7, 0]))])
+    assert cache.pixel(0, 0) is None  # Raw before DesktopSize was discarded.
+    assert cache.pixel(3, 0) == (7, 8, 9)
+    assert len(cache.pixels) == 4 * 1 * 4
     print("WIN949_SELF_TEST=PASS diagnostics=positive+negative framebuffer=logical+physical "
-          "wake=positive+negative")
+          "wake=positive+negative budget=aggregate+geometry cache=bounded+resize")
     return 0
 
 
