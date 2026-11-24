@@ -17,8 +17,12 @@ class QWheelEvent;
 class FramebufferView final : public QWidget
 {
 public:
+    enum class DisplayMode { Fit, Native };
+
     explicit FramebufferView(QWidget *parent = nullptr);
 
+    void setDisplayMode(DisplayMode mode);
+    DisplayMode displayMode() const { return m_displayMode; }
     void setFrame(const QImage &frame);
     void setCursorImage(const QImage &cursor, const QPoint &hotspot);
     void clearFrame(const QString &placeholder);
@@ -50,6 +54,7 @@ private:
 
     QImage m_frame;
     QString m_placeholder;
+    DisplayMode m_displayMode = DisplayMode::Fit;
     bool m_inputEnabled = false;
     quint8 m_buttons = 0;
     QPoint m_lastImagePoint{-1, -1};

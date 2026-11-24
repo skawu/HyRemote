@@ -9,7 +9,9 @@
 #include <QClipboard>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QPlainTextEdit>
+#include <QScrollArea>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -108,8 +110,8 @@ public:
         auto *central = new QWidget(this);
         setCentralWidget(central);
         auto *root = new QHBoxLayout(central);
-        root->setContentsMargins(10, 10, 10, 10);
-        root->setSpacing(12);
+        root->setContentsMargins(6, 6, 6, 6);
+        root->setSpacing(6);
 
         // S1 exposes only the three task entries that are actually usable.
         auto *nav = new QVBoxLayout;
@@ -119,6 +121,9 @@ public:
         m_connectPageButton->setCheckable(true);
         m_sessionPageButton->setCheckable(true);
         m_diagnosticsPageButton->setCheckable(true);
+        m_connectPageButton->setMaximumWidth(40);
+        m_sessionPageButton->setMaximumWidth(40);
+        m_diagnosticsPageButton->setMaximumWidth(40);
         nav->addWidget(m_connectPageButton);
         nav->addWidget(m_sessionPageButton);
         nav->addWidget(m_diagnosticsPageButton);
@@ -221,16 +226,30 @@ public:
 
         auto *sessionPage = new QWidget(m_pages);
         auto *sessionLayout = new QVBoxLayout(sessionPage);
-        sessionLayout->addWidget(m_view, 1);
+        m_viewScroll = new QScrollArea(sessionPage);
+        m_viewScroll->setWidgetResizable(true);
+        m_viewScroll->setWidget(m_view);
+        sessionLayout->addWidget(m_viewScroll, 1);
         auto *telemetryRow = new QHBoxLayout;
         m_control = new QCheckBox(sessionPage);
+        m_fitButton = new QPushButton(sessionPage);
+        m_nativeButton = new QPushButton(sessionPage);
+        m_fullscreenButton = new QPushButton(sessionPage);
+        m_fitButton->setCheckable(true);
+        m_nativeButton->setCheckable(true);
+        m_fitButton->setChecked(true);
+        m_fitButton->setMaximumWidth(36);
+        m_nativeButton->setMaximumWidth(40);
+        m_fullscreenButton->setMaximumWidth(40);
         m_fps = new QLabel(sessionPage);
         m_mbps = new QLabel(sessionPage);
         m_frames = new QLabel(sessionPage);
         m_bytes = new QLabel(sessionPage);
         m_resolution = new QLabel(sessionPage);
         telemetryRow->addWidget(m_control);
-        telemetryRow->addSpacing(16);
+        telemetryRow->addWidget(m_fitButton);
+        telemetryRow->addWidget(m_nativeButton);
+        telemetryRow->addWidget(m_fullscreenButton);
         telemetryRow->addWidget(m_fps);
         telemetryRow->addWidget(m_mbps);
         telemetryRow->addWidget(m_frames);
@@ -267,6 +286,17 @@ public:
         m_view->onKey = [this](quint32 keysym, bool pressed) {
             m_client->sendKey(keysym, pressed);
         };
+        if (QApplication::instance())
+            QApplication::instance()->installEventFilter(this);
+        connect(m_fitButton, &QPushButton::clicked, this, [this] {
+            setViewMode(FramebufferView::DisplayMode::Fit);
+        });
+        connect(m_nativeButton, &QPushButton::clicked, this, [this] {
+            setViewMode(FramebufferView::DisplayMode::Native);
+        });
+        connect(m_fullscreenButton, &QPushButton::clicked, this, [this] {
+            toggleFullscreen();
+        });
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
         connect(m_diagnosticsAction, &QPushButton::clicked, this, [this] {
@@ -411,9 +441,25 @@ public:
     bool verifyDiagnosticsUi(const QString &testCase);
     bool verifyServerNameMetadata();
     void setLocalControlRequested(bool requested);
+    void setViewMode(FramebufferView::DisplayMode mode);
+    void toggleFullscreen();
 
-    bool verifyUi() const
+    bool verifyUi()
     {
+        const bool modeControls = m_viewScroll && m_fitButton && m_nativeButton
+                                  && m_fullscreenButton;
+        bool nativeMode = false;
+        bool fitMode = false;
+        if (modeControls) {
+            setViewMode(FramebufferView::DisplayMode::Native);
+            nativeMode = m_view->displayMode() == FramebufferView::DisplayMode::Native
+                         && m_nativeButton->isChecked()
+                         && !m_viewScroll->widgetResizable();
+            setViewMode(FramebufferView::DisplayMode::Fit);
+            fitMode = m_view->displayMode() == FramebufferView::DisplayMode::Fit
+                      && m_fitButton->isChecked()
+                      && m_viewScroll->widgetResizable();
+        }
         const bool ok = m_brand && m_pages && m_connectPageButton && m_sessionPageButton
                         && m_diagnosticsPageButton && m_pages->count() == 3
                         && !QGuiApplication::windowIcon().isNull()
@@ -424,11 +470,12 @@ public:
                         && m_profilesLabel && m_profilesBox && m_profileSave
                         && m_profileEdit && m_profileDelete && m_profileConnect
                         && m_profileRecover && m_profileWarning
-                        && m_diagnosticsAction;
+                        && m_diagnosticsAction && modeControls && nativeMode && fitMode;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
                   << " view=" << (m_view != nullptr)
+                  << " view-modes=" << (nativeMode && fitMode)
                   << " task-pages=" << (m_pages ? m_pages->count() : 0)
                   << " telemetry=" << (m_fps != nullptr && m_mbps != nullptr)
                   << " language=" << (m_languageBox != nullptr)
@@ -439,6 +486,21 @@ public:
     }
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event && event->type() == QEvent::KeyPress && isActiveWindow()) {
+            auto *widget = qobject_cast<QWidget *>(watched);
+            if (widget && (widget == this || isAncestorOf(widget))) {
+                const int key = static_cast<QKeyEvent *>(event)->key();
+                if (key == Qt::Key_F11 || (isFullScreen() && key == Qt::Key_Escape)) {
+                    toggleFullscreen();
+                    return true; // local window shortcut, never sent to the remote host
+                }
+            }
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     void changeEvent(QEvent *event) override
     {
         // FocusOut is delivered to the child frame view, not necessarily to this
@@ -542,8 +604,8 @@ private:
         setWindowTitle(text("HyRemoteTool - 远程访问客户端",
                             "HyRemoteTool - Remote access client"));
         m_connectPageButton->setText(text("连接", "Connect"));
-        m_sessionPageButton->setText(text("远程会话", "Session"));
-        m_diagnosticsPageButton->setText(text("基础诊断", "Diagnostics"));
+        m_sessionPageButton->setText(text("会话", "Session"));
+        m_diagnosticsPageButton->setText(text("诊断", "Diag"));
         m_remoteLabel->setText(text("远程", "Remote"));
         m_portLabel->setText(text("端口", "Port"));
         m_connect->setText((m_state == RfbClient::State::Connected
@@ -560,6 +622,11 @@ private:
         }
         m_status->setText(status);
         m_control->setText(text("请求远程控制", "Request control"));
+        m_fitButton->setText(text("适应", "Fit"));
+        m_nativeButton->setText(QStringLiteral("100%"));
+        m_fullscreenButton->setText(isFullScreen()
+                                        ? text("退出全屏", "Exit")
+                                        : text("全屏", "Full"));
         m_control->setToolTip(text(
             "默认只读。勾选后仅允许本机发送输入；远端是否接受由设备策略决定，RFB 名称不能证明授权。",
             "View-only by default. Checking only permits local input sending; "
@@ -720,6 +787,10 @@ private:
     QLabel *m_bytes = nullptr;
     QLabel *m_resolution = nullptr;
     QCheckBox *m_control = nullptr;
+    QScrollArea *m_viewScroll = nullptr;
+    QPushButton *m_fitButton = nullptr;
+    QPushButton *m_nativeButton = nullptr;
+    QPushButton *m_fullscreenButton = nullptr;
 };
 
 
@@ -882,6 +953,26 @@ void ClientWindow::setLocalControlRequested(bool requested)
         m_client->setRemoteControlEnabled(false);
     }
     retranslateUi(); // show local intent, not an invented Host grant
+}
+
+void ClientWindow::setViewMode(FramebufferView::DisplayMode mode)
+{
+    // Disable automatic viewport sizing before applying native-pixel geometry;
+    // otherwise QScrollArea immediately resizes the child back to the viewport.
+    m_viewScroll->setWidgetResizable(mode == FramebufferView::DisplayMode::Fit);
+    m_view->setDisplayMode(mode);
+    m_fitButton->setChecked(mode == FramebufferView::DisplayMode::Fit);
+    m_nativeButton->setChecked(mode == FramebufferView::DisplayMode::Native);
+    retranslateUi();
+}
+
+void ClientWindow::toggleFullscreen()
+{
+    if (isFullScreen())
+        showNormal();
+    else
+        showFullScreen();
+    retranslateUi();
 }
 
 bool ClientWindow::verifyServerNameMetadata()
