@@ -722,6 +722,9 @@ struct Session::Impl
         if (gate)
             gate->closeAndDrain();
 
+        // Stop the source before joining the scheduler. Shared Runtime's ObservedCaptureSource
+        // wakes a scheduler blocked inside requestFrame() from this stop() (ViewerCaptureDemand
+        // stop -> notify_all); joining first would wait for a wake we have not yet delivered.
         stopComponentQuietly(source);
 
         if (mailbox != nullptr)
@@ -1232,22 +1235,28 @@ void Session::stop() noexcept
     }
 
     // Take the teardown claim atomically. A concurrent stop() (or an in-progress start() that is
-    // being cancelled) waits here until the current teardown has finished, and then either finds the
-    // run already `Stopped` or completes the transition of a faulted run. The claim also invalidates
-    // the run generation, which is how a concurrent start() learns that its run was cancelled.
+    // being cancelled) waits here until the current teardown has finished. A failed start already
+    // performed the only ordered teardown of that run; this caller only publishes Stopped.
     Impl::claimTeardown(impl);
 
-    bool alreadyStopped = false;
+    bool finished = false;
     {
         std::lock_guard<std::mutex> lock(impl.mutex);
         if (impl.state == SessionState::Stopped) {
             // Another caller completed the teardown while we waited for the claim. Release it so
             // further waiting callers can finish as well, and touch nothing else.
             impl.teardownStarted = false;
-            alreadyStopped = true;
+            finished = true;
+        } else if (impl.state == SessionState::Faulted && !impl.sourceStarted
+                   && !impl.transportStarted && !impl.workersCreated) {
+            // Preserve the start-failure diagnostic and do not count a second ordered teardown
+            // for a run whose committed resources were already torn down.
+            impl.state = SessionState::Stopped;
+            impl.teardownStarted = false;
+            finished = true;
         }
     }
-    if (alreadyStopped) {
+    if (finished) {
         impl.cv.notify_all();
         return;
     }

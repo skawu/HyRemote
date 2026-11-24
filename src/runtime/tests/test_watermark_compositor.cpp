@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -460,6 +461,17 @@ void checkDegenerateInputs()
               QStringLiteral("a malformed plane is refused"));
         check(!error.isEmpty(), QStringLiteral("a malformed plane explains itself"));
         check(destination.isEmpty(), QStringLiteral("a malformed plane produces no buffer"));
+    }
+    {
+        // An oversized width must be refused before width * 4 is evaluated; on a 32-bit
+        // qsizetype that product would otherwise wrap and make the short plane look valid.
+        QByteArray tiny(4, '\0');
+        const WatermarkFrameView oversized = viewOf(tiny, std::numeric_limits<int>::max(), 1, 4);
+        QByteArray destination;
+        QString error;
+        check(!composeWatermark(enabledPolicy(QStringLiteral("BIG")), oversized, destination, error),
+              QStringLiteral("an oversized frame width is refused before stride multiplication"));
+        check(destination.isEmpty(), QStringLiteral("an oversized frame produces no buffer"));
     }
 }
 
