@@ -17,7 +17,7 @@
 #include <QCommandLineParser>
 #include <QFile>
 #include <QDateTime>
-#include <QFocusEvent>
+#include <QEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -390,12 +390,14 @@ public:
     }
 
 protected:
-    void focusOutEvent(QFocusEvent *event) override
+    void changeEvent(QEvent *event) override
     {
-        // Losing focus must never preserve a local input request. Release held
-        // keys/buttons first while the wire is still permitted.
-        setLocalControlRequested(false);
-        QWidget::focusOutEvent(event);
+        // FocusOut is delivered to the child frame view, not necessarily to this
+        // top-level widget. WindowDeactivate is the reliable signal that the user
+        // switched away from the Tool; never preserve a local input request then.
+        if (event && event->type() == QEvent::WindowDeactivate)
+            setLocalControlRequested(false);
+        QWidget::changeEvent(event);
     }
 
     void closeEvent(QCloseEvent *event) override
@@ -853,21 +855,21 @@ bool ClientWindow::verifyServerNameMetadata()
                                    && !m_view->inputEnabled()
                                    && !m_client->remoteControlEnabled();
     setLocalControlRequested(true);
-    QFocusEvent focusOut(QEvent::FocusOut);
-    focusOutEvent(&focusOut);
-    const bool focusLossReadOnly = !m_control->isChecked()
-                                   && !m_view->inputEnabled()
-                                   && !m_client->remoteControlEnabled()
-                                   && !m_diagnostics.report().snapshot().remoteControlRequested;
+    QEvent deactivated(QEvent::WindowDeactivate);
+    changeEvent(&deactivated);
+    const bool deactivationReadOnly = !m_control->isChecked()
+                                      && !m_view->inputEnabled()
+                                      && !m_client->remoteControlEnabled()
+                                      && !m_diagnostics.report().snapshot().remoteControlRequested;
     applyState(RfbClient::State::Disconnected);
     const bool ok = metadataOnly && optedIn && withdrawn && reconnectReadOnly
-                    && focusLossReadOnly;
+                    && deactivationReadOnly;
     std::cout << (ok ? "TOOL_SERVERNAME_UI_PASS" : "TOOL_SERVERNAME_UI_FAIL")
               << " metadata=" << metadataOnly
               << " explicit-intent=" << optedIn
               << " revoked=" << withdrawn
               << " reconnect-view-only=" << reconnectReadOnly
-              << " focus-loss-view-only=" << focusLossReadOnly
+              << " deactivation-view-only=" << deactivationReadOnly
               << std::endl;
     return ok;
 }
