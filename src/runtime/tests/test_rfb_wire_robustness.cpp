@@ -43,6 +43,31 @@
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 #include "../src/transport/rfb_trle.hpp"
+
+namespace {
+
+struct RfbStopRendezvous
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool reclaimHeld = false;
+    bool workerReturned = false;
+    bool externalReturned = false;
+};
+
+void notifyExternalStopReclaim(void *context)
+{
+    auto *rendezvous = static_cast<RfbStopRendezvous *>(context);
+    if (!rendezvous)
+        return;
+    {
+        std::lock_guard<std::mutex> lock(rendezvous->mutex);
+        rendezvous->reclaimHeld = true;
+    }
+    rendezvous->changed.notify_all();
+}
+
+}  // namespace
 #include "hyremote/core/storage.hpp"
 #include "hyremote/core/transport.hpp"
 #include "rfb_interaction_latency_stats.hpp"
@@ -855,15 +880,7 @@ void testWorkerStopReentryDoesNotWaitForExternalReclaim()
     if (port == 0)
         return;
 
-    struct Rendezvous
-    {
-        std::mutex mutex;
-        std::condition_variable changed;
-        bool reclaimHeld = false;
-        bool workerReturned = false;
-        bool externalReturned = false;
-    };
-    auto rendezvous = std::make_shared<Rendezvous>();
+    auto rendezvous = std::make_shared<RfbStopRendezvous>();
     std::shared_ptr<hyremote::Transport> transport = HyRemote::detail::createRfbTransport(
         QHostAddress::LocalHost, port, HyRemote::detail::RfbSecurityConfig{});
     CHECK(transport != nullptr);
@@ -903,13 +920,8 @@ void testWorkerStopReentryDoesNotWaitForExternalReclaim()
     socket.disconnectFromHost();
     CHECK(waitForDisconnected(socket));
 
-    HyRemote::detail::setRfbExternalStopReclaimObserverForTest([rendezvous] {
-        {
-            std::lock_guard<std::mutex> lock(rendezvous->mutex);
-            rendezvous->reclaimHeld = true;
-        }
-        rendezvous->changed.notify_all();
-    });
+    HyRemote::detail::setRfbExternalStopReclaimObserverForTest(
+        notifyExternalStopReclaim, rendezvous.get());
     std::thread externalStop([transport, rendezvous] {
         transport->stop();
         {
@@ -933,6 +945,7 @@ void testWorkerStopReentryDoesNotWaitForExternalReclaim()
         externalStop.join();
     else
         externalStop.detach(); // shared state only; a failure path cannot dangle
+    HyRemote::detail::setRfbExternalStopReclaimObserverForTest(nullptr, nullptr);
 }
 
 void testTrleRawAndIncrementalDelivery()
