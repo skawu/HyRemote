@@ -2204,7 +2204,7 @@ public:
         if (m_thread || m_worker || m_port == 0 || m_address.isNull())
             return false;
 
-        auto thread = std::make_unique<QThread>();
+        auto thread = std::make_shared<QThread>();
         auto *worker = new RfbWorker(m_address, m_port, m_security, m_frames, std::move(onInput), std::move(onEvent));
         worker->moveToThread(thread.get());
         QObject::connect(thread.get(), &QThread::finished, worker, &QObject::deleteLater);
@@ -2228,43 +2228,44 @@ public:
     void stop() noexcept override
     {
         try {
+            std::shared_ptr<QThread> thread;
             RfbWorker *worker = nullptr;
-            QThread *thread = nullptr;
             {
                 std::lock_guard<std::mutex> lock(m_lifecycleMutex);
                 if (!m_thread)
                     return;
-                thread = m_thread.get();
-                worker = m_worker;
-                m_worker = nullptr;
-                if (QThread::currentThread() == thread) {
+                if (QThread::currentThread() == m_thread.get()) {
                     // An event callback runs on the worker thread and may synchronously stop
                     // its owner. Never wait on or destroy our own QThread, and never clear the
                     // std::function currently executing that callback. quit() plus the existing
                     // finished()->deleteLater() releases the worker after the event loop stops;
                     // an external stop()/destructor remains responsible for the QThread object.
-                    thread->quit();
+                    m_worker = nullptr;
+                    m_thread->quit();
                     return;
                 }
+                // The first external caller claims reclamation. Each caller keeps its own
+                // reference alive across wait(), so no thread can delete the QThread while
+                // another is still returning from wait().
+                thread = m_thread;
+                m_thread.reset();
+                worker = m_worker;
+                m_worker = nullptr;
             }
             // Never block this thread on the worker: a callback that stops concurrently must be
             // able to return, and a queued shutdown must not be stranded by that callback's quit().
             const bool queued = worker
-                && QMetaObject::invokeMethod(worker, [worker, thread] {
+                && QMetaObject::invokeMethod(worker, [worker, q = thread.get()] {
                        worker->shutdown();
-                       thread->quit();
+                       q->quit();
                    }, Qt::QueuedConnection);
             if (!queued)
                 thread->quit();
             thread->wait();
 
-            std::lock_guard<std::mutex> lock(m_lifecycleMutex);
-            if (m_thread.get() == thread) {
-                m_thread.reset();
-                std::lock_guard<std::mutex> frameLock(m_frames->mutex);
-                m_frames->latest.reset();
-                m_frames->notificationPending = false;
-            }
+            std::lock_guard<std::mutex> frameLock(m_frames->mutex);
+            m_frames->latest.reset();
+            m_frames->notificationPending = false;
         } catch (...) {
         }
     }
@@ -2308,7 +2309,7 @@ private:
     RfbSecurityConfig m_security;
     std::shared_ptr<SharedFrameState> m_frames;
     std::mutex m_lifecycleMutex;
-    std::unique_ptr<QThread> m_thread;
+    std::shared_ptr<QThread> m_thread;
     RfbWorker *m_worker = nullptr;
 };
 
