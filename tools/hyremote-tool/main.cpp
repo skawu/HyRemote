@@ -9,6 +9,7 @@
 #include <QClipboard>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QPlainTextEdit>
 #include <QScrollArea>
 #include <QCheckBox>
@@ -232,16 +233,10 @@ public:
             m_client->sendPointer(mask, x, y);
         };
         m_view->onKey = [this](quint32 keysym, bool pressed) {
-            // RFB X11 keysyms: Escape 0xff1b, F11 0xffc8.
-            const bool exitFullscreen = isFullScreen()
-                && (keysym == 0xff1bU || keysym == 0xffc8U);
-            const bool enterFullscreen = !isFullScreen() && keysym == 0xffc8U;
-            if (pressed && (exitFullscreen || enterFullscreen)) {
-                toggleFullscreen();
-                return;
-            }
             m_client->sendKey(keysym, pressed);
         };
+        if (QApplication::instance())
+            QApplication::instance()->installEventFilter(this);
         connect(m_fitButton, &QPushButton::clicked, this, [this] {
             setViewMode(FramebufferView::DisplayMode::Fit);
         });
@@ -436,6 +431,21 @@ public:
     }
 
 protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event && event->type() == QEvent::KeyPress && isActiveWindow()) {
+            auto *widget = qobject_cast<QWidget *>(watched);
+            if (widget && (widget == this || isAncestorOf(widget))) {
+                const int key = static_cast<QKeyEvent *>(event)->key();
+                if (key == Qt::Key_F11 || (isFullScreen() && key == Qt::Key_Escape)) {
+                    toggleFullscreen();
+                    return true; // local window shortcut, never sent to the remote host
+                }
+            }
+        }
+        return QWidget::eventFilter(watched, event);
+    }
+
     void changeEvent(QEvent *event) override
     {
         // FocusOut is delivered to the child frame view, not necessarily to this
@@ -872,8 +882,10 @@ void ClientWindow::setLocalControlRequested(bool requested)
 
 void ClientWindow::setViewMode(FramebufferView::DisplayMode mode)
 {
-    m_view->setDisplayMode(mode);
+    // Disable automatic viewport sizing before applying native-pixel geometry;
+    // otherwise QScrollArea immediately resizes the child back to the viewport.
     m_viewScroll->setWidgetResizable(mode == FramebufferView::DisplayMode::Fit);
+    m_view->setDisplayMode(mode);
     m_fitButton->setChecked(mode == FramebufferView::DisplayMode::Fit);
     m_nativeButton->setChecked(mode == FramebufferView::DisplayMode::Native);
     retranslateUi();
