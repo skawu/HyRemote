@@ -864,9 +864,13 @@ void testWorkerThreadStopIsReclaimedByOwner()
 
     std::atomic<bool> stopRequested{false};
     std::atomic<bool> workerStopReturned{false};
+    std::atomic<int> eventCalls{0};
+    const auto noopInput = [](const hyremote::InputEvent &) {};
+    const auto noopEvent = [](const hyremote::TransportEvent &) {};
     const bool started = transport->start(
-        [](const hyremote::InputEvent &) {},
+        noopInput,
         [&](const hyremote::TransportEvent &event) {
+            ++eventCalls;
             if (event.code != hyremote::TransportEventCode::ClientDisconnected
                 || stopRequested.exchange(true))
                 return;
@@ -889,11 +893,18 @@ void testWorkerThreadStopIsReclaimedByOwner()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(workerStopReturned.load());
 
-    // No frame may be queued at a worker that already stopped.
+    // No frame may be queued at a worker that already stopped, and the transport must not
+    // restart while the old thread still owns the listener.
     transport->enqueueFrame(makeFrame(8, 8, 0x102030U));
+    CHECK(!transport->start(noopInput, noopEvent));
 
     // Only the external owner may join and release the QThread; stop() stays idempotent.
     transport->stop();
+    transport->stop();
+    const int callsAfterStop = eventCalls.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CHECK(eventCalls.load() == callsAfterStop);
+    CHECK(transport->start(noopInput, noopEvent)); // old thread was fully reclaimed
     transport->stop();
 
     // Once reclaimed, a fresh transport can bind the same listener again.

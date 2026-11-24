@@ -2228,6 +2228,9 @@ public:
     void stop() noexcept override
     {
         try {
+            // Serialize external reclaimers: a second stop() must not return before the first
+            // has joined the worker, and start() must not observe a free transport until then.
+            std::lock_guard<std::mutex> reclaimLock(m_reclaimMutex);
             std::shared_ptr<QThread> thread;
             RfbWorker *worker = nullptr;
             {
@@ -2239,17 +2242,15 @@ public:
                     // its owner. Never wait on or destroy our own QThread, and never clear the
                     // std::function currently executing that callback. quit() plus the existing
                     // finished()->deleteLater() releases the worker after the event loop stops;
-                    // an external stop()/destructor remains responsible for the QThread object.
+                    // the QThread handle stays until an external stop()/destructor reclaims it.
                     m_worker = nullptr;
                     m_thread->quit();
                     return;
                 }
-                // The first external caller claims reclamation. Each caller keeps its own
-                // reference alive across wait(), so no thread can delete the QThread while
-                // another is still returning from wait().
                 thread = m_thread;
-                m_thread.reset();
                 worker = m_worker;
+                // Invalidate callbacks and block start()/enqueueFrame() before joining. Keep
+                // m_thread set until wait() returns so quiescence is observable to other callers.
                 m_worker = nullptr;
             }
             // Never block this thread on the worker: a callback that stops concurrently must be
@@ -2263,9 +2264,13 @@ public:
                 thread->quit();
             thread->wait();
 
-            std::lock_guard<std::mutex> frameLock(m_frames->mutex);
-            m_frames->latest.reset();
-            m_frames->notificationPending = false;
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                m_thread.reset();
+                std::lock_guard<std::mutex> frameLock(m_frames->mutex);
+                m_frames->latest.reset();
+                m_frames->notificationPending = false;
+            }
         } catch (...) {
         }
     }
@@ -2309,6 +2314,7 @@ private:
     RfbSecurityConfig m_security;
     std::shared_ptr<SharedFrameState> m_frames;
     std::mutex m_lifecycleMutex;
+    std::mutex m_reclaimMutex;
     std::shared_ptr<QThread> m_thread;
     RfbWorker *m_worker = nullptr;
 };
