@@ -187,11 +187,15 @@ class RfbClient:
             require_budget(count, MAX_UPDATE_RECTANGLES, "rectangle count")
             rects = []
             update_bytes = 0
+            # DesktopSize changes the geometry for later rectangles in this
+            # same message. Apply the actual pixel reset in _absorb() in wire
+            # order, so Raw before DesktopSize is never treated as new pixels.
+            frame_width, frame_height = self.width, self.height
             for _ in range(count):
                 x, y, w, h = struct.unpack(">HHHH", self._recv_exact(8))
                 (encoding,) = struct.unpack(">i", self._recv_exact(4))
                 if encoding == 0:
-                    validate_raw_bounds(x, y, w, h, self.width, self.height)
+                    validate_raw_bounds(x, y, w, h, frame_width, frame_height)
                     raw_size = w * h * 4
                     require_budget(raw_size, MAX_RAW_RECT_BYTES, "raw rectangle")
                     update_bytes = add_update_bytes(update_bytes, raw_size)
@@ -201,7 +205,7 @@ class RfbClient:
                     if w <= 0 or h <= 0:
                         raise RfbError("invalid resized framebuffer")
                     require_budget(w * h, MAX_FRAMEBUFFER_PIXELS, "resized framebuffer")
-                    self._reset_framebuffer(w, h)
+                    frame_width, frame_height = w, h
                     rects.append((x, y, w, h, None))
                 elif encoding == -239:  # Cursor pseudo-encoding
                     cursor_size = w * h * 4
@@ -231,6 +235,7 @@ class RfbClient:
     def _absorb(self, rects) -> None:
         for x, y, w, h, data in rects:
             if data is None:
+                self._reset_framebuffer(w, h)
                 continue
             validate_raw_bounds(x, y, w, h, self.width, self.height)
             if len(data) != w * h * 4:
@@ -439,6 +444,12 @@ def self_test():
     cache._absorb([(0, 0, 1, 1, bytes([12, 11, 10, 0]))])
     assert cache.pixel(0, 0) == (10, 11, 12)
     assert cache.pixel(0, 1) is None
+    cache._absorb([(0, 0, 1, 1, bytes([50, 40, 30, 0])),
+                   (0, 0, 4, 1, None),
+                   (3, 0, 1, 1, bytes([9, 8, 7, 0]))])
+    assert cache.pixel(0, 0) is None  # Raw before DesktopSize was discarded.
+    assert cache.pixel(3, 0) == (7, 8, 9)
+    assert len(cache.pixels) == 4 * 1 * 4
     print("WIN949_SELF_TEST=PASS diagnostics=positive+negative framebuffer=logical+physical "
           "wake=positive+negative budget=aggregate+geometry cache=bounded+resize")
     return 0
