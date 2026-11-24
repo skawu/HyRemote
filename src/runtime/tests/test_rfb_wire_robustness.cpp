@@ -846,6 +846,68 @@ void testRfbConsumerPressureAndFullRequestWake()
     transport->stop();
 }
 
+// A transport event callback may synchronously stop its owner on the RFB worker thread.
+// That worker must neither join itself nor destroy its own QThread; an external owner must
+// still be able to reclaim the thread object afterwards.
+void testWorkerThreadStopIsReclaimedByOwner()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (port == 0)
+        return;
+
+    auto transport = HyRemote::detail::createRfbTransport(
+        QHostAddress::LocalHost, port, HyRemote::detail::RfbSecurityConfig{});
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    std::atomic<bool> stopRequested{false};
+    std::atomic<bool> workerStopReturned{false};
+    const bool started = transport->start(
+        [](const hyremote::InputEvent &) {},
+        [&](const hyremote::TransportEvent &event) {
+            if (event.code != hyremote::TransportEventCode::ClientDisconnected
+                || stopRequested.exchange(true))
+                return;
+            transport->stop();
+            workerStopReturned.store(true);
+        });
+    CHECK(started);
+    if (!started) {
+        transport->stop();
+        return;
+    }
+    transport->enqueueFrame(makeFrame(32, 24, 0x203040U));
+
+    QTcpSocket socket;
+    CHECK(connectRawRfb(socket, port, false));
+    socket.disconnectFromHost();
+    CHECK(waitForDisconnected(socket));
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!workerStopReturned.load() && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(workerStopReturned.load());
+
+    // No frame may be queued at a worker that already stopped.
+    transport->enqueueFrame(makeFrame(8, 8, 0x102030U));
+
+    // Only the external owner may join and release the QThread; stop() stays idempotent.
+    transport->stop();
+    transport->stop();
+
+    // Once reclaimed, a fresh transport can bind the same listener again.
+    auto next = HyRemote::detail::createRfbTransport(
+        QHostAddress::LocalHost, port, HyRemote::detail::RfbSecurityConfig{});
+    CHECK(next != nullptr);
+    if (next) {
+        const bool nextStarted = next->start([](const hyremote::InputEvent &) {},
+                                             [](const hyremote::TransportEvent &) {});
+        CHECK(nextStarted);
+        next->stop();
+    }
+}
+
 void testTrleRawAndIncrementalDelivery()
 {
     const quint16 port = freePort();
@@ -5180,6 +5242,7 @@ int main(int argc, char **argv)
     CHECK(HyRemote::detail::runRfbNotificationPostFailureRegression());
     testTrleRawAndIncrementalDelivery();
     testRfbConsumerPressureAndFullRequestWake();
+    testWorkerThreadStopIsReclaimedByOwner();
     testDamageAndEncodedFrameShareSnapshot();
     testPointerViewportTracksAdvertisedFramebuffer();
     testDecoratedRegionsCannotHideWatermarkChanges();
