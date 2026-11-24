@@ -52,9 +52,9 @@ import numpy as np
 import psutil
 from PIL import ImageGrab
 
-# Must match kMarkerPalette in app/frame_fixture.cpp.
+# Must match kMarkerPalette in app/fixture_scene.hpp.
 MARK_PALETTE = [(0, 0, 0), (255, 255, 255), (255, 0, 0), (0, 255, 0),
-                (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255)]
+                (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
 
 # Colour tolerance: the fixture paints exact palette pixels, but a Viewer
 # window that scales the framebuffer interpolates them. Match per channel.
