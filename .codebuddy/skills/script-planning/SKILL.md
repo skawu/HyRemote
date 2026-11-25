@@ -33,9 +33,7 @@ Before creating or editing any executable script, record in the task contract
   workflow step, or an explicit `build.cmd` invocation);
 - expected execution count and PASS/FAIL criteria.
 
-**No contract entry means no new script.** If a genuinely unforeseen need
-appears mid-task, stop and add the contract entry first, then write the script.
-Never create a script "just to try something" and delete it afterwards.
+**No approved plan entry means no new script.** Cloud Owner defines the required verification entry and any indispensable new tracked script in the owning design/task before implementation. If an unforeseen gap appears, Local Owner records the actual failure/coverage gap and proposed smallest reuse or extension for Cloud Owner disposition before writing a new script or changing the acceptance path; continue independent work. An ordinary bounded read-only or failure diagnostic is not an alternative acceptance pipeline. Never create a script just to try something and delete it afterwards.
 
 ## 3. Where scripts belong
 
