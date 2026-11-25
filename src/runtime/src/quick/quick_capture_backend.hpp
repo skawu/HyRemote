@@ -106,8 +106,8 @@ inline QuickCaptureSelection selectQuickCaptureRoute(
     }
     // The caller owns the version/Kit capability gate. The route selector
     // never consults a chipset/OS name and never grants private QRhi access.
-    // All accelerated providers remain research-only and explicitly
-    // gated by version-family, build option and actual GraphicsApi.
+    // Accelerated providers are qualified-build opt-ins, never implicit
+    // defaults; each is gated by version-family, build option and actual GraphicsApi.
     // Qt5.15 direct GL and Qt6 RHI differ in the Qt callback phase.
     // Qt5 direct-GL shares the pixel conversion and readback contract with
     // Qt6 but uses afterRendering, NOT the Qt6 afterFrameEnd RHI callback.
