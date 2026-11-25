@@ -44,8 +44,6 @@
 namespace HyRemote::detail {
 namespace {
 
-RfbStopReclaimObserver g_externalStopReclaimObserver = nullptr;
-void *g_externalStopReclaimContext = nullptr;
 constexpr int kMaxClients = 8;
 constexpr int kHandshakeTimeoutMs = 3000;
 // #158/#603 physical acceptance: RealVNC Viewer 7.15.1 asks the user to dismiss an "Unencrypted Connection"
@@ -2255,8 +2253,6 @@ public:
             // Serialize external reclaimers: a second stop() must not return before the first
             // has joined the worker, and start() must not observe a free transport before then.
             std::lock_guard<std::mutex> reclaimLock(m_reclaimMutex);
-            if (g_externalStopReclaimObserver)
-                g_externalStopReclaimObserver(g_externalStopReclaimContext);
             std::shared_ptr<QThread> thread;
             {
                 std::lock_guard<std::mutex> lock(m_lifecycleMutex);
@@ -2331,12 +2327,6 @@ private:
 };
 
 }  // namespace
-
-void setRfbExternalStopReclaimObserverForTest(RfbStopReclaimObserver observer, void *context)
-{
-    g_externalStopReclaimObserver = observer;
-    g_externalStopReclaimContext = observer ? context : nullptr;
-}
 
 bool runRfbNotificationPostFailureRegression()
 {
