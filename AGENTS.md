@@ -11,6 +11,10 @@ neither a Cloud nor Local ChatGPT conversation automatically runs in the backgro
 The [Local Owner inbox setup](tools/local-owner/README.md) is opt-in once per authorized Windows
 environment; until the first real ACK, report `RECORDED_UNDELIVERED` rather than "已下发".
 
+## Human-triggered continuation (mandatory)
+
+On “继续工作” or an otherwise unspecified continuation request, read the current upstream [#768 Owner dispatch entry](https://github.com/skawu/HyRemote/issues/768) and its latest applicable dispatch comment, plus [#594 version authority](https://github.com/skawu/HyRemote/issues/594). Read the latest results in the selected owning Issue/PR. Do not execute a historical snapshot or rely on chat memory. Check existing work, claim the highest-priority authorized unclaimed task, and post a short receipt to its owning Issue (task/dispatch comment ID, target version, exact starting SHA, Owner); then implement and report there. If the task is already claimed or finished, continue the next independent authorized task. If GitHub cannot be read, report the actual access blocker rather than guessing. This is a Human-started interactive Agent path, not an unattended executable order; the reviewed machine inbox and its security requirements remain unchanged. Human need not forward task text. A recorded dispatch is not a verified receipt.
+
 ## Implementation economy (mandatory for agents)
 
 Read `.codebuddy/rules/lean-engineering.md` before designing or reviewing a code change. Favor the smallest correct implementation, existing Qt/runtime mechanisms, and reused risk-selected tests. No extra abstraction/test executable/CI workflow without a concrete uncovered product risk; do not invent a Human approval step for routine testing. This does **not** reduce current protected security/ABI/release gates. PRs must explain any new test identity and show actual product evidence, not test counts. This section is an execution constraint, not authorization to change approved V15/V8 architecture.
@@ -80,7 +84,7 @@ Rules:
 The V0.3.4.0 task charter and version-specific execution order below describe
 their historical 2026-10-26 development phase, and must not be interpreted as
 new Local Owner assignments. For the live priority use the current release train,
-#95 and the reviewed `.github/local-owner/orders/` inbox, not prior task prose.
+#95, the current #768 dispatch (interactive continuation) or the reviewed `.github/local-owner/orders/` inbox (machine worker), not prior task prose.
 
 **V0.3.0.0 Product Preview** was released on 2026-10-19. **V0.3.3.0 was validly reissued on 2026-10-24** following the documented retraction/remediation incident; the earlier retracted candidate remains historical audit evidence, not the current release. #144/#175 are historical delivered work; #370 remains long-lived performance governance. **Current development Feature = V0.3.4.0**, Windows Qt5.15.2/Qt6.8.3 exact qualified SDK/Runtime product cells (#603/#265/#566), with machine train registered by merged PR #655; a registered train is not release approval. See the [single current roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), [local Owner task charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md), and `.github/release/release-trains.json` for separate planning and activation authority. V0.3.1.0/V0.3.2.0 stay retired; V0.4 RC is inactive and qualification-only; V1 GA is not released.
 
@@ -241,6 +245,10 @@ When a real viewer/device/environment is required, use **Agent-primary / Human-a
 - Do not force-push/rewrite accepted shared history unless repository authority explicitly requires it.
 - Do not merge a stale-head PR whose accepted evidence no longer matches the base/head that will merge.
 - Salvage useful work narrowly from superseded branches; do not merge stale branches wholesale.
+
+## Shared engineering conventions
+
+Cloud Owner maintains the task/roadmap and execution rules; Local Owner implements the authorized product scope. Reuse mature, suitable Skills before adapting or creating one; verify actual availability, license and safety. New project-owned source files and technical documents use a hy prefix, except established fixed filenames and compatibility-required paths. Use Chinese logical commits, and semantic Git Flow topics; retain existing mandatory branch naming checks until a reviewed migration changes them. Preserve existing protection and avoid bulk renaming. Use the always-applied lean-engineering rule for minimum implementation, affected-test reuse and short actual efficiency review; customer maintenance is prioritized and receives its own incremental Maintenance version under the existing release authority.
 
 ## Scope discipline
 

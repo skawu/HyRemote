@@ -10,8 +10,7 @@ Keep this short on purpose. Root `AGENTS.md` is the authority; this is only a
 checklist, not a second entry or a second set of rules.
 
 **Start (once per task, not once per message):**
-1. Read the target Issue / latest authoritative comment and `AGENTS.md`'s
-   product-phase snapshot. Do not re-read the whole `AGENTS.md` mid-task.
+1. Read root `AGENTS.md` and the current target Issue/latest authoritative comment. For “继续工作” without a target, read #768's current Owner dispatch as specified in AGENTS.md; post the actual task receipt before implementation. The historical product-phase snapshot is not a queue. Do not re-read the whole AGENTS.md mid-task.
 2. Skim `memory/MEMORY.md` hooks; open only the topic files whose hook matches.
    Never load all topics "just in case".
 3. Write the task contract into the todo list. Keep exactly one in-progress item.
