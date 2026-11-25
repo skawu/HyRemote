@@ -1012,6 +1012,8 @@ TargetComponents createQuickTargetComponents(
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
     if (selection.route == QuickCaptureRoute::ExperimentalD3d11Staging) {
+        qInfo() << "HYREMOTE_QUICK_CAPTURE=D3D11_STAGING";
+        // Compatibility token for existing capability evidence.
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=D3D11_STAGING_SOURCE";
         result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
             window, createExperimentalQuickD3d11StagingCaptureSource(window),
