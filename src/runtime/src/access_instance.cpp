@@ -1,5 +1,7 @@
 #include "access_instance.hpp"
 
+#include "detail/target_component_provider.hpp"
+
 #include <QAbstractSocket>  // QHostAddress::protocol() answers in this enum, used by the IPv4-only contract
 #include <QBitmap>
 #include <QColor>
@@ -475,6 +477,10 @@ public:
 
     bool start(hyremote::FrameReadyHandler onFrame, hyremote::CaptureEventHandler onEvent) override
     {
+        {
+            std::lock_guard<std::mutex> lock(m_idleReleaseMutex);
+            m_idleReleaseStopping = false;
+        }
         const auto runActive = m_runActive;
         const auto observe = m_onRuntimeObservation;
         // Both QObject::destroyed and a previously queued widget/Quick capture
@@ -535,17 +541,69 @@ public:
             m_targetLossGate->closeAndDrain();
         QObject::disconnect(m_targetDestroyedConnection);
         m_demand->stop();
+        // Core stops the source before joining the scheduler. An already
+        // admitted zero-viewer IdleRelease may therefore still be running on
+        // that thread. Close this admission before stopping a backend whose
+        // idle buffer/GPU storage is being released; never hold the mutex
+        // while invoking the backend, its callbacks or its stop().
+        {
+            std::unique_lock<std::mutex> lock(m_idleReleaseMutex);
+            m_idleReleaseStopping = true;
+            m_idleReleaseDrained.wait(lock, [this] { return m_idleReleasesInFlight == 0; });
+        }
         m_source->stop();
     }
 
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
-        if (!m_demand->waitForViewer())
-            return false;
+        // #790: the Shared Runtime owns the one zero-viewer signal and delivers
+        // it on this capture-scheduler thread before asking for pixels. Every
+        // technology behind CaptureSource shares this contract, so a backend
+        // never needs its own idle timer, platform check or viewer counter.
+        for (;;) {
+            const auto wait = m_demand->waitForCapture();
+            if (wait == ViewerCaptureDemand::WaitResult::Stopped)
+                return false;
+            if (wait == ViewerCaptureDemand::WaitResult::Capture)
+                break;
+            {
+                std::lock_guard<std::mutex> lock(m_idleReleaseMutex);
+                if (m_idleReleaseStopping)
+                    return false;
+                ++m_idleReleasesInFlight;
+            }
+            // CaptureSource's idle hook is noexcept and must not wait on a
+            // GPU fence, Qt render or worker join. Stop may wait only for
+            // this already-entered hook to return, not for any capture frame.
+            m_source->releaseIdleResources();
+            {
+                std::lock_guard<std::mutex> lock(m_idleReleaseMutex);
+                --m_idleReleasesInFlight;
+            }
+            m_idleReleaseDrained.notify_all();
+        }
+#if defined(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE)
+        m_demand->noteCaptureStarted();
+        bool accepted = false;
+        try {
+            accepted = m_source->requestFrame(request);
+        } catch (...) {
+            m_demand->noteCaptureCompleted();
+            throw;
+        }
+        if (!accepted)
+            m_demand->noteCaptureCompleted();
+        return accepted;
+#else
         return m_source->requestFrame(request);
+#endif
     }
 
 private:
+    std::mutex m_idleReleaseMutex;
+    std::condition_variable m_idleReleaseDrained;
+    std::size_t m_idleReleasesInFlight = 0;
+    bool m_idleReleaseStopping = false;
     std::unique_ptr<hyremote::CaptureSource> m_source;
     QPointer<QObject> m_target;
     // Owned by the capture wrapper, created on the AccessInstance lifecycle
@@ -1405,6 +1463,14 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     if (auto *quickWindow = qobject_cast<QQuickWindow *>(targetObject))
         recordInitialFramebuffer(quickWindow->size(), quickWindow->devicePixelRatio());
 #endif
+    // Zero-code Generic/QPA uses a private per-object TargetComponentProvider
+    // rather than passing a QWidget/QQuickWindow to AccessInstance. The
+    // provider reports the actual output pixel grid (CompositeTarget = 1x
+    // logical union) without making this common Runtime depend on a hidden
+    // concrete adapter symbol or an SoC/render-backend-specific condition.
+    // Missing/empty dimensions retain the existing fail-closed opt-out.
+    if (auto *provider = dynamic_cast<detail::TargetComponentProvider *>(targetObject))
+        recordInitialFramebuffer(provider->initialFramebufferPixelSize(), 1.0);
     // #790: release raw idle pixels only for a known-size Qt target with an active
     // Shared Runtime producer. A ClientConnected event wakes the capture scheduler
     // to send a fresh first frame; no SDK API or standalone RFB behavior changes.
@@ -1591,6 +1657,17 @@ bool AccessInstance::Impl::composeAndStart(const QHostAddress &address, const de
     // #789: reuse transport's exact changed-pixel calculation to avoid repeatedly grabbing a
     // static Qt Quick scene at the active 60fps cap. Only a weak pointer crosses the worker seam.
     auto viewerDemand = std::make_shared<ViewerCaptureDemand>();
+    effectiveSecurity.frameBackpressureObserver =
+        [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
+            bool blocked, bool noViewerUpdateDemand) {
+            if (const auto demand = weak.lock())
+                demand->noteDeliveryBackpressure(blocked, noViewerUpdateDemand);
+        };
+    effectiveSecurity.frameFullRefreshObserver =
+        [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)] {
+            if (const auto demand = weak.lock())
+                demand->noteForcedViewerRefresh();
+        };
     effectiveSecurity.frameChangeObserver = [weak = std::weak_ptr<ViewerCaptureDemand>(viewerDemand)](
                                                 bool changed) {
         if (auto gate = weak.lock())

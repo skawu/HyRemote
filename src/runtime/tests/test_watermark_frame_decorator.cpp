@@ -10,6 +10,7 @@
 #include <QTextStream>
 
 #include <cstring>
+#include <memory>
 
 namespace {
 
@@ -126,6 +127,77 @@ void checkDevicePixelRatioComesFromTheFrame()
           QStringLiteral("the decorated frame keeps the capture's device pixel ratio"));
 }
 
+// The compositor's QImage and temporary QByteArray have already gone out
+// of scope when transport reads this FrameStorage. Check the moved pixels
+// survive independently of the source and are never exposed as mutable data.
+void checkOwnedComposedStorageOutlivesSourceAndKeepsPaddedRows()
+{
+    const auto decorator = makeWatermarkFrameDecorator(enabledPolicy());
+    hyremote::RemoteFrame composed;
+    std::weak_ptr<const hyremote::FrameStorage> oldSource;
+    QByteArray referencePixels;
+    constexpr std::size_t paddedStride = static_cast<std::size_t>(kWidth) * 4U + 16U;
+    {
+        auto original = makeFrame(43);
+        auto padded = hyremote::CpuFrameStorage::createSinglePlane(paddedStride, kHeight);
+        check(padded && padded->mutablePlane(0),
+              QStringLiteral("padded source storage allocates"));
+        if (!padded || !padded->mutablePlane(0))
+            return;
+        const auto src = original.storage->mapRead(0);
+        auto *dst = padded->mutablePlane(0);
+        if (!src || !src->data)
+            return;
+        for (int y = 0; y < kHeight; ++y) {
+            std::memcpy(dst + static_cast<std::size_t>(y) * paddedStride,
+                        src->data + static_cast<std::size_t>(y) * src->stride,
+                        static_cast<std::size_t>(kWidth) * 4U);
+            std::memset(dst + static_cast<std::size_t>(y) * paddedStride
+                              + static_cast<std::size_t>(kWidth) * 4U,
+                        0xA5, 16);
+        }
+        original.storage = std::move(padded);
+        oldSource = original.storage;
+        QString error;
+        check(decorator(original, composed, error),
+              QStringLiteral("padded watermark composes into owned storage"));
+        check(error.isEmpty(), QStringLiteral("padded watermark has no error"));
+        if (!composed.storage)
+            return;
+        const auto plane = composed.storage->mapRead(0);
+        check(plane.has_value(), QStringLiteral("owned composited plane can be read"));
+        if (!plane)
+            return;
+        check(plane->stride == paddedStride
+                  && plane->bytes == paddedStride * static_cast<std::size_t>(kHeight),
+              QStringLiteral("owned storage keeps source stride and byte count"));
+        referencePixels = readPixels(composed);
+        bool paddingUntouched = true;
+        for (int y = 0; y < kHeight; ++y) {
+            const auto pad = reinterpret_cast<const unsigned char *>(plane->data)
+                             + static_cast<std::size_t>(y) * paddedStride
+                             + static_cast<std::size_t>(kWidth) * 4U;
+            for (std::size_t j = 0; j < 16; ++j)
+                paddingUntouched = paddingUntouched && pad[j] == 0xA5;
+        }
+        check(paddingUntouched,
+              QStringLiteral("compositor preserves all 200 padded row sentinels"));
+    }
+    check(oldSource.expired(),
+          QStringLiteral("composed frame retains no source frame allocation"));
+    check(composed.storage->kind() == hyremote::StorageKind::Cpu,
+          QStringLiteral("composed storage presents a plain CPU plane"));
+    check(!composed.storage->mapRead(1).has_value(),
+          QStringLiteral("composed storage refuses a nonexistent second plane"));
+    check(readPixels(composed) == referencePixels,
+          QStringLiteral("final watermarked bytes survive source and compositor destruction"));
+
+    hyremote::RemoteFrame shared = composed;
+    composed.storage.reset();
+    check(readPixels(shared) == referencePixels,
+          QStringLiteral("Core frame copies preserve the immutable composed pixel owner"));
+}
+
 void checkUnusableFrameIsRefused()
 {
     const auto decorator = makeWatermarkFrameDecorator(enabledPolicy());
@@ -167,6 +239,7 @@ int main(int argc, char **argv)
 
     checkDisabledProducesNoDecorator();
     checkCompositionPreservesIdentityAndSource();
+    checkOwnedComposedStorageOutlivesSourceAndKeepsPaddedRows();
     checkDevicePixelRatioComesFromTheFrame();
     checkUnusableFrameIsRefused();
     checkTextThatCannotFitIsRefused();

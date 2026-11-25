@@ -9,6 +9,7 @@
 #include <limits>
 
 #include "hyremote/core/frame.hpp"
+#include "rfb_pixel_policy.hpp"
 
 namespace HyRemote::detail {
 
@@ -19,20 +20,6 @@ inline std::uint32_t rfbRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b) noex
 {
     return (static_cast<std::uint32_t>(r) << 16U) | (static_cast<std::uint32_t>(g) << 8U)
            | static_cast<std::uint32_t>(b);
-}
-
-// RFB true-colour pixels carry no alpha. V0.3.3's presentation policy is a deterministic black
-// matte: straight-alpha pixels are composited over black, while premultiplied RGB is already
-// black-composited and is passed through unchanged. Opaque pixels are unchanged.
-inline std::uint8_t rfbOpaqueChannel(std::uint8_t channel,
-                                     std::uint8_t alpha,
-                                     hyremote::AlphaMode mode) noexcept
-{
-    if (mode == hyremote::AlphaMode::Straight) {
-        return static_cast<std::uint8_t>((static_cast<std::uint32_t>(channel) * alpha + 127U)
-                                         / 255U);
-    }
-    return channel;
 }
 
 inline void appendNativeCpixel(QByteArray &out, std::uint32_t rgb)
@@ -83,9 +70,20 @@ inline bool appendNativeTrlePayload(QByteArray &out,
                       rfbOpaqueChannel(source[2], source[3], frame.geometry.alphaMode));
     };
 
+    // The old unconditional reserve allocated 1920*1080*3 = 5.93 MiB even
+    // when the actual TRLE payload was just ~32 KiB of solid tiles. That
+    // inflated temporary encoder allocations/allocator high-water for large
+    // flat HMI pages. Defer the raw-sized reservation until the first tile
+    // has already been classified by the existing encoder. On an all-raw
+    // (high-entropy) page the very first tile still reserves the full buffer,
+    // preserving its one-allocation fast path without a second pixel scan.
+    // Mixed pages may grow the QByteArray normally; no wire bytes or tile
+    // classification thresholds change.
     const std::uint64_t rawCpixelBytes = static_cast<std::uint64_t>(width) * height * 3U;
-    if (rawCpixelBytes <= static_cast<std::uint64_t>(std::numeric_limits<qsizetype>::max()))
-        out.reserve(out.size() + static_cast<qsizetype>(rawCpixelBytes));
+    const std::uint64_t tileCount =
+        ((static_cast<std::uint64_t>(width) + kRfbTrleTile - 1U) / kRfbTrleTile)
+        * ((static_cast<std::uint64_t>(height) + kRfbTrleTile - 1U) / kRfbTrleTile);
+    bool firstTile = true;
 
     for (std::uint32_t tileY = y; tileY < y + height; tileY += kRfbTrleTile) {
         const std::uint32_t tileHeight = std::min(kRfbTrleTile, y + height - tileY);
@@ -112,6 +110,24 @@ inline bool appendNativeTrlePayload(QByteArray &out,
                     }
                     indices[static_cast<std::size_t>(row) * tileWidth + col]
                         = static_cast<std::uint8_t>(index);
+                }
+            }
+
+            if (firstTile) {
+                firstTile = false;
+                if (paletteOverflow) {
+                    // Only an actually raw first tile earns a whole-rectangle
+                    // reserve. Include each raw tile's mode byte as well as
+                    // CPIXELs to avoid a tail reallocation on noisy pages.
+                    // Check the combined size before narrowing to qsizetype.
+                    const std::uint64_t maxSize = static_cast<std::uint64_t>(
+                        std::numeric_limits<qsizetype>::max());
+                    const std::uint64_t prefix = static_cast<std::uint64_t>(out.size());
+                    if (rawCpixelBytes <= maxSize - prefix
+                        && tileCount <= maxSize - prefix - rawCpixelBytes) {
+                        out.reserve(out.size()
+                                    + static_cast<qsizetype>(rawCpixelBytes + tileCount));
+                    }
                 }
             }
 

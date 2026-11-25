@@ -128,6 +128,56 @@ HYR_TEST(coreCallbackContainsAllocationFailure)
     }
 }
 
+// #790: an intentionally empty terminal from Composite/Quick is a valid
+// completion of an admitted capture request, even though its image is invalid.
+// validateFrame() forms a long rejection reason and can allocate/throw before
+// Core's ordinary in-flight debit. Inject precisely that first allocation and
+// prove the credit still returns and the next capture is admitted.
+HYR_TEST(coreInvalidTerminalValidationFailureRetiresCaptureCredit)
+{
+    RunningSession run;
+    SessionConfig config;
+    config.capture.maxInFlight = 1;
+    config.capture.targetFramesPerSecond = 2.0; // pace the next admission
+    // The fixture applies configuration when it CONSTRUCTS Session in
+    // prepare(), not in start(); otherwise the default maxInFlight=2 can
+    // mask precisely the credit-starvation regression tested below.
+    run.prepare(config);
+    HYR_CHECK(run.start());
+    // Core increments its credit before calling the source. Synchronize on
+    // the fake actually ACCEPTING request #1, not just Core's inFlight gauge,
+    // or OS thread scheduling can make the injection race an unissued request.
+    HYR_CHECK(waitFor([&] { return run.source->requestCalls() == 1; }));
+    HYR_CHECK_EQ(run.session->stats().inFlight, std::size_t{1});
+
+    RemoteFrame emptyTerminal;
+    bool escaped = false;
+    bool delivered = false;
+    t_remainingAllocations = 0;
+    try {
+        // Keep assertions OUTSIDE the injection window. The fake's delivery
+        // only acquires a shared callback pointer and does not allocate.
+        delivered = run.source->deliver(std::move(emptyTerminal));
+    } catch (...) {
+        escaped = true;
+    }
+    const bool validationActuallyAllocated = t_remainingAllocations == -1;
+    t_remainingAllocations = -1;
+
+    HYR_CHECK(delivered);
+    HYR_CHECK(!escaped);
+    HYR_CHECK(validationActuallyAllocated);
+    HYR_CHECK(run.session->state() == SessionState::Running);
+    HYR_CHECK_EQ(run.session->stats().framesRejectedInvalid, std::uint64_t{1});
+    // Without the credit-on-exception fix, the scheduler remains stuck at
+    // maxInFlight=1 and can never issue the next request.
+    HYR_CHECK(waitFor([&] { return run.source->requestCalls() >= 2; }));
+    HYR_CHECK_EQ(run.session->stats().maxInFlightObserved, std::size_t{1});
+
+    HYR_CHECK(run.source->deliver(makeFrame()));
+    HYR_CHECK(waitFor([&] { return run.session->stats().framesAccepted >= 1; }));
+}
+
 HYR_TEST(coreCaptureEventCallbackContainsAllocationFailure)
 {
     // Same starting point as above, for the same measured reason: the harness costs no allocation per
