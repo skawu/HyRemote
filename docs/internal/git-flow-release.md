@@ -157,6 +157,7 @@ Local Developer Agent/physical hosts are used only for genuinely local-only evid
 | `V0.1.0.0` | `release/v0.1.0.0` | `docs/releases/v0.1.0.0.md` | `v0.1.0.0` |
 | `V0.2.0.0` | `release/v0.2.0.0` | `docs/releases/v0.2.0.0.md` | `v0.2.0.0` |
 | `V0.3.0.0` | `release/v0.3.0.0` | `docs/releases/v0.3.0.0.md` | `v0.3.0.0` |
+| `V0.3.6.0` | `release/v0.3.6.0` | `docs/releases/v0.3.6.0.md` | `v0.3.6.0` |
 | `V0.4.0.0` (+ `V0.4.0.x`) | `release/v0.4.0.0` | `docs/releases/v0.4.0.0.md` | `v0.4.0.0` |
 | `V1.0.0.0` | `release/v1.0.0.0` | `docs/releases/v1.0.0.0.md` | `v1.0.0.0` |
 
