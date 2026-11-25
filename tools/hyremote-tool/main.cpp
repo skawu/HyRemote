@@ -504,9 +504,11 @@ protected:
     void changeEvent(QEvent *event) override
     {
         // FocusOut is delivered to the child frame view, not necessarily to this
-        // top-level widget. WindowDeactivate is the reliable signal that the user
-        // switched away from the Tool; never preserve a local input request then.
-        if (event && event->type() == QEvent::WindowDeactivate)
+        // top-level widget. Switching to another application sends ApplicationDeactivate;
+        // switching windows inside the Tool sends WindowDeactivate. Both must revoke the
+        // local input request while the wire is still allowed to release held keys/buttons.
+        if (event && (event->type() == QEvent::WindowDeactivate
+                      || event->type() == QEvent::ApplicationDeactivate))
             setLocalControlRequested(false);
         QWidget::changeEvent(event);
     }
@@ -1015,12 +1017,19 @@ bool ClientWindow::verifyServerNameMetadata()
                                    && !m_view->inputEnabled()
                                    && !m_client->remoteControlEnabled();
     setLocalControlRequested(true);
-    QEvent deactivated(QEvent::WindowDeactivate);
-    changeEvent(&deactivated);
-    const bool deactivationReadOnly = !m_control->isChecked()
-                                      && !m_view->inputEnabled()
-                                      && !m_client->remoteControlEnabled()
-                                      && !m_diagnostics.report().snapshot().remoteControlRequested;
+    QEvent windowDeactivated(QEvent::WindowDeactivate);
+    changeEvent(&windowDeactivated);
+    bool deactivationReadOnly = !m_control->isChecked()
+                                && !m_view->inputEnabled()
+                                && !m_client->remoteControlEnabled()
+                                && !m_diagnostics.report().snapshot().remoteControlRequested;
+    setLocalControlRequested(true);
+    QEvent applicationDeactivated(QEvent::ApplicationDeactivate);
+    changeEvent(&applicationDeactivated);
+    deactivationReadOnly = deactivationReadOnly && !m_control->isChecked()
+                           && !m_view->inputEnabled()
+                           && !m_client->remoteControlEnabled()
+                           && !m_diagnostics.report().snapshot().remoteControlRequested;
     applyState(RfbClient::State::Disconnected);
     const bool ok = metadataOnly && optedIn && withdrawn && reconnectReadOnly
                     && deactivationReadOnly;
