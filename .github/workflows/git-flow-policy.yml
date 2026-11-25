@@ -14,6 +14,7 @@ on:
       - reopened
       - ready_for_review
       - converted_to_draft
+      - edited # Issue metadata changes must revalidate the topology gate.
   push:
     branches:
       - main
@@ -189,19 +190,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
-          topic="${HEAD_REF#feature/}"
-          topic="${topic#hotfix/}"
-          issue="${topic%%-*}"
-          if [[ -z "$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq .number 2>/dev/null || true)" ]]; then
-            echo "${HEAD_REF} references issue #${issue}, which does not exist" >&2
+          issue="$(bash .github/scripts/check-pr-branch-name.sh --issue "${HEAD_REF}" "${PR_BODY}")" || {
+            echo "::error::semantic branch requires exactly one same-repository Issue: #N line"
             exit 1
-          fi
-          # Pull requests are issues in the REST API, so the reference has to be checked against the pulls endpoint too:
-          # a branch named after a pull request number would otherwise pass as if it named an issue.
-          if gh api "repos/${GITHUB_REPOSITORY}/pulls/${issue}" --jq .number >/dev/null 2>&1; then
-            echo "${HEAD_REF} references #${issue}, which is a pull request, not an issue" >&2
+          }
+          # GitHub REST issues also contain pull requests. Validate both
+          # properties from the same successful API response, fail closed.
+          actual="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue}" --jq 'select(has("pull_request") | not) | .number')"
+          if [[ "$actual" != "$issue" ]]; then
+            echo "::error::Issue #${issue} is missing or is a pull request"
             exit 1
           fi
           echo "issue reference accepted: #${issue}"

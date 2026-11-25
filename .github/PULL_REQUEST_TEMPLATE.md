@@ -1,6 +1,7 @@
 ## Product result
 <!-- Link the owning Issue. One paragraph: observed problem, intended user behavior, and the minimum changed layers. -->
 Issue: #
+<!-- Exactly one owning same-repository Issue: #N line for a semantic branch. Additional WBS references may follow separately. -->
 
 ## Change scope (review the diff, not the checklist count)
 - Production implementation: 
@@ -19,3 +20,4 @@ Issue: #
 - Commands / results (canonical `build.cmd` for HyRemote, existing bounded selectors for iteration):
 - Actual environment and remaining NOT_RUN cells:
 - Reviewer: reject duplicate infrastructure, speculative error handling, or tests that only restate another test; preserve real safety/compatibility obligations.
+- Existing owning Issue result: completed/remaining WBS, actual build/test/CI counts and repeated-test reasons; implementation/test/rework/blocked time and Human interventions if measured, otherwise NOT_MEASURED; one improvement or none. Link the result, do not duplicate a report.

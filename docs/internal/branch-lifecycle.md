@@ -63,11 +63,13 @@ If the historical script is run for audit purposes, use dry-run first and do not
 Use only the branch families defined by `docs/internal/git-flow-release.md`:
 
 ```text
-feature/<issue>-<topic>
+feature/<topic>
 release/vX.Y.Z.W
 backmerge/vX.Y.Z.W
-hotfix/<issue>-<topic>
+hotfix/<topic>
 ```
+
+New ordinary topics are semantic lowercase kebab-case; use exactly one `Issue: #N` line in the PR body. Existing numbered branches and exact protected release-preparation branches remain supported; no history rewrite or bulk renaming.
 
 Temporary experiment branches may be used for bounded work, but once the conclusion is recorded and the related PR/Issue is closed, the branch ref follows the same deletion rule.
 
