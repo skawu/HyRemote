@@ -210,19 +210,16 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
-# Qualified Qt6.8.3 OpenGL-RHI PBO/Fence capture is a product path with an
-# always-available public grabToImage fallback. Unsupported Qt versions keep the
-# fallback; an explicit unsupported opt-in remains rejected below.
+# Qualified Qt6.8.3 OpenGL-RHI PBO/Fence capture is a product path, but it is
+# enabled only by an explicit qualified-build opt-in. The public grabToImage
+# route remains the default everywhere so an unqualified GL environment cannot
+# silently inherit a backend that has not been qualified on that host.
 set(HYREMOTE_QUICK_GL_PBO_EXPLICIT FALSE)
 if(DEFINED HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     set(HYREMOTE_QUICK_GL_PBO_EXPLICIT TRUE)
-elseif(HYREMOTE_BUILD_QUICK_ADAPTER AND NOT HYREMOTE_QT_MAJOR STREQUAL "5"
-       AND Qt6Core_VERSION VERSION_EQUAL 6.8.3)
-    set(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO ON CACHE BOOL
-        "Enable qualified Qt6.8.3 OpenGL RHI PBO CaptureSource")
 endif()
 option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
-    "Enable qualified Qt6.8.3 OpenGL RHI PBO CaptureSource (public fallback retained)" OFF)
+    "Opt in to qualified Qt6.8.3 OpenGL RHI PBO capture (public fallback retained)" OFF)
 option(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING
     "TEST ONLY: enable Windows Qt6.8.3 public-native D3D11 staging CaptureSource" OFF)
 option(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE
