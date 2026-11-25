@@ -15,9 +15,7 @@ poller, evidence archivist, or message courier between two Agents.**
 
 - **Cloud Owner is accountable** for product outcome, issue/task backlog, task authorization,
   cloud code changes, independent review, scope/risk decisions, release eligibility and
-  communicating the *verified* overall state. It must create machine-readable task
-  orders, then check ACK/result/evidence through a real connection. Publishing a comment
-  is not dispatch.
+  communicating the *verified* overall state. For unattended work it must create machine-readable task orders and verify ACK/result/evidence. For Human-started interactive continuation it maintains the fixed dispatch entry and verifies actual receipt. Publishing a comment alone is not confirmed delivery.
 - **Local Owner is accountable** for the configured Windows machine and its qualified
   Kit, local agent/worker provisioning within authorized privileges, exact-SHA builds,
   local G6, installed examples, physical Viewer coordination, data minimization and
@@ -54,7 +52,13 @@ The Local Owner cannot change the product roadmap, release authorization or publ
 support/crypto claims. Cloud Owner cannot assert local physical evidence from hosted CI.
 Human should never become the fallback worker merely because an Agent stopped asking.
 
-## 3. The only approved handoff route
+## 3. Approved handoff routes
+
+### Human-started interactive Agent
+
+A Human message “继续工作” starts an interactive Codebuddy session, not the unattended worker. As required by root `AGENTS.md`, the Agent reads the current #768 dispatch and #594 version authority, checks task ownership and actual results, posts a task/version/base-SHA receipt in the owning Issue, then implements the authorized scope and reports there. Cloud owns dispatch and verifies actual receipt/results. Human does not relay task text. Do not execute arbitrary shell from Issue comments; all existing privileges, product gates and release restrictions remain. If GitHub is unavailable, report the blocker. This path does not grant a machine worker ACK or unattended execution.
+
+### Unattended machine worker (unchanged)
 
 ```text
 Cloud Owner: selects scope/Issue/immutable candidate SHA and gates
