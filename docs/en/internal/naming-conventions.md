@@ -20,6 +20,10 @@ Placement rules (which directory a new thing belongs in) live in [`repository-la
 
 A new globally exposed C-style symbol or macro carries the `HYREMOTE_` prefix. Public C++ types inside `HyRemote::` keep normal PascalCase names and are **not** additionally prefixed (no `HYRemoteAccess`-style duplication). Internal types stay normally scoped inside their own namespace or class.
 
+## New project-owned files (current requirement)
+
+New project-owned source files (including headers and test sources) and technical documents use the lowercase `hy` filename prefix, for example `hyframebuffer.hpp`, `hyframebuffer.cpp` and `hycapture-design.md`. Preserve module extensions and namespaces. Fixed entries such as `AGENTS.md` and `CMakeLists.txt`, standard build/configuration/release paths, third-party files and existing public API/ABI or installation compatibility contracts are exceptions. No bulk renaming and no change to type names, public symbols or wire protocol from filename policy. The #969 P0 inventory is research, not approval of type-name migration.
+
 ## C++
 
 - Namespace: `hyremote` for the implementation, `HyRemote::` as the public alias namespace.
@@ -28,7 +32,7 @@ A new globally exposed C-style symbol or macro carries the `HYREMOTE_` prefix. P
 - Functions and methods: `camelCase`.
 - Private data members: `m_` followed by camelCase, with the implementation behind a `struct Impl` pimpl in the files that use one; member-name style therefore rarely appears in public headers.
 - Public headers: the file name may follow the public type it declares, as in `src/cpp/include/HyRemote/RemoteAccess.h`. This is the one place where a `.h`/PascalCase file name is the convention.
-- New internal source and test files: `snake_case`.
+- New internal source and test files: follow the `hy` prefix above and the module's lowercase naming style.
 
 ### The two public-header forms are deliberate
 

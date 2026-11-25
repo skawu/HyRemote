@@ -18,8 +18,7 @@ Root `AGENTS.md` remains the single execution entry.
   first, and never repeatedly restart the same window. Prefer offscreen, CLI
   diagnostics or CI evidence. Keep a single instance, close it when done, and
   report it. Do not steal focus (`SetForegroundWindow`/`AttachThreadInput`).
-- Do not use fixed long sleeps to wait for CI; use
-  `gh pr checks --watch --interval 10` / `gh run watch` and exit on completion.
+- Do not poll or block on CI while independent authorized work exists. Inspect required checks at merge/release milestones; only when no nondependent work remains may a bounded existing watch be used. Do not rerun passing checks to satisfy a ritual.
 - Windows physical work: `.ps1` files with ASCII content invoked via
   `-File`; cross-call long-lived processes via
   `Invoke-CimMethod -ClassName Win32_Process -MethodName Create`;
