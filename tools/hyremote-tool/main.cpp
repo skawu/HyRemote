@@ -909,9 +909,15 @@ bool ClientWindow::verifyDiagnosticsUi(    const QString &testCase)
                               && parsed().value(QStringLiteral("endpoint")).toString()
                                      == QStringLiteral("[redacted]");
     copy->click(); // only this explicit action may write the clipboard
-    const bool safeCopy = clipboard && clipboard->text() == preview->toPlainText()
-                          && !clipboard->text().contains(QStringLiteral("10.10.12.8"))
-                          && !clipboard->text().contains(QStringLiteral("not an RFB"));
+    // Windows clipboard ownership can normalize a trailing newline; compare the
+    // report content without that terminal whitespace while still requiring an
+    // explicit copy and no redacted fact to leak.
+    const QString copied = clipboard ? clipboard->text() : QString();
+    const QString previewText = preview ? preview->toPlainText() : QString();
+    const bool safeCopy = clipboard && !copied.isEmpty()
+                          && copied.trimmed() == previewText.trimmed()
+                          && !copied.contains(QStringLiteral("10.10.12.8"))
+                          && !copied.contains(QStringLiteral("not an RFB"));
     m_diagnostics.beginAttempt(QStringLiteral("C:private.txt"), 5921);
     m_diagDialog->resetEndpointSelection();
     reveal->setChecked(true);
