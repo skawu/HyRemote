@@ -488,6 +488,9 @@ public:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
+        // Switching to another application is delivered here, not to QWidget::changeEvent().
+        if (event && event->type() == QEvent::ApplicationDeactivate)
+            setLocalControlRequested(false);
         if (event && event->type() == QEvent::KeyPress && isActiveWindow()) {
             auto *widget = qobject_cast<QWidget *>(watched);
             if (widget && (widget == this || isAncestorOf(widget))) {
@@ -504,11 +507,10 @@ protected:
     void changeEvent(QEvent *event) override
     {
         // FocusOut is delivered to the child frame view, not necessarily to this
-        // top-level widget. Switching to another application sends ApplicationDeactivate;
-        // switching windows inside the Tool sends WindowDeactivate. Both must revoke the
-        // local input request while the wire is still allowed to release held keys/buttons.
-        if (event && (event->type() == QEvent::WindowDeactivate
-                      || event->type() == QEvent::ApplicationDeactivate))
+        // top-level widget. WindowDeactivate revokes control when another window of
+        // this application takes focus; cross-application deactivation is handled by
+        // the application event filter above.
+        if (event && event->type() == QEvent::WindowDeactivate)
             setLocalControlRequested(false);
         QWidget::changeEvent(event);
     }
@@ -1025,7 +1027,7 @@ bool ClientWindow::verifyServerNameMetadata()
                                 && !m_diagnostics.report().snapshot().remoteControlRequested;
     setLocalControlRequested(true);
     QEvent applicationDeactivated(QEvent::ApplicationDeactivate);
-    changeEvent(&applicationDeactivated);
+    QCoreApplication::sendEvent(QApplication::instance(), &applicationDeactivated);
     deactivationReadOnly = deactivationReadOnly && !m_control->isChecked()
                            && !m_view->inputEnabled()
                            && !m_client->remoteControlEnabled()
