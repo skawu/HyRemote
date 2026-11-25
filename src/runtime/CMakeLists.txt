@@ -210,11 +210,16 @@ if(HYREMOTE_BUILD_WIDGETS_ADAPTER)
     endif()
 endif()
 
-# Diagnostic only: true Qt6.8.3 OpenGL-RHI PBO/Fence frame capture path.
-# The public grabToImage route stays the default for all products. This flag
-# is not enabled in releases and NEVER extends QtGuiPrivate permissions.
+# Qualified Qt6.8.3 OpenGL-RHI PBO/Fence capture is a product path, but it is
+# enabled only by an explicit qualified-build opt-in. The public grabToImage
+# route remains the default everywhere so an unqualified GL environment cannot
+# silently inherit a backend that has not been qualified on that host.
+set(HYREMOTE_QUICK_GL_PBO_EXPLICIT FALSE)
+if(DEFINED HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+    set(HYREMOTE_QUICK_GL_PBO_EXPLICIT TRUE)
+endif()
 option(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO
-    "TEST ONLY: enable Qt6.8.3 public OpenGL RHI PBO CaptureSource" OFF)
+    "Opt in to qualified Qt6.8.3 OpenGL RHI PBO capture (public fallback retained)" OFF)
 option(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING
     "TEST ONLY: enable Windows Qt6.8.3 public-native D3D11 staging CaptureSource" OFF)
 option(HYREMOTE_EXPERIMENTAL_QUICK_ACTIVITY_WAKE
@@ -249,16 +254,22 @@ if(HYREMOTE_BUILD_QUICK_ADAPTER)
                 message(WARNING
                     "TEST ONLY Qt5.15 direct-OpenGL PBO CaptureSource is ON; not product qualified")
             elseif(NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)
-                message(FATAL_ERROR
-                    "Experimental Qt6 OpenGL PBO source requires exact Qt6.8.3 research Kit")
+                if(HYREMOTE_QUICK_GL_PBO_EXPLICIT)
+                    message(FATAL_ERROR
+                        "OpenGL PBO product capture requires exact Qt6.8.3; this Qt Kit is not qualified")
+                endif()
+                set(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO OFF CACHE BOOL
+                    "Enable qualified Qt6.8.3 OpenGL RHI PBO CaptureSource (public fallback retained)" FORCE)
+                message(STATUS "  Qualified GL PBO capture unavailable on this Qt Kit; public fallback retained")
             else()
-                message(WARNING
-                    "TEST ONLY Qt6 OpenGL PBO CaptureSource is ON; not approved for release")
+                message(STATUS "  Qualified Qt6.8.3 OpenGL PBO capture enabled; public fallback retained")
             endif()
-            target_sources(hyremote-remoteaccess PRIVATE
-                src/quick/quick_gl_pbo_capture_source.cpp)
-            target_compile_definitions(hyremote-remoteaccess PRIVATE
-                HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=1)
+            if(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
+                target_sources(hyremote-remoteaccess PRIVATE
+                    src/quick/quick_gl_pbo_capture_source.cpp)
+                target_compile_definitions(hyremote-remoteaccess PRIVATE
+                    HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=1)
+            endif()
         endif()
         if(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
             if(NOT WIN32 OR NOT Qt6Core_VERSION VERSION_EQUAL 6.8.3)

@@ -1,5 +1,6 @@
 #include "quick/quick_target.hpp"
 
+#include <QByteArray>
 #include <QCoreApplication>
 #include <QImage>
 #include <QInputMethodEvent>
@@ -974,27 +975,34 @@ TargetComponents createQuickTargetComponents(
 
     result.supported = true;
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO) || defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
+    // Operational fallback: an operator can force the public Qt route without
+    // rebuilding. Capability admission below still guards every native frame.
+    const QByteArray backendOverride = qgetenv("HYREMOTE_QUICK_CAPTURE_BACKEND");
+    const bool publicOnly = qEnvironmentVariableIsSet("HYREMOTE_QUICK_DISABLE_GL_PBO")
+        || backendOverride == "public" || backendOverride == "grab";
     const auto *ri = window->rendererInterface();
     const auto selection = selectQuickCaptureRoute(
         ri ? ri->graphicsApi() : QSGRendererInterface::Unknown,
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
-        true,
+        !publicOnly,
 #else
         false,
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
-        true,
+        !publicOnly,
 #else
         false,
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
-        true
+        !publicOnly
 #else
         false
 #endif
     );
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
+        qInfo() << "HYREMOTE_QUICK_CAPTURE=GL_PBO";
+        // Compatibility token for existing qualification evidence.
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
         result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
             window, createExperimentalQuickGlPboCaptureSource(window),
@@ -1012,6 +1020,8 @@ TargetComponents createQuickTargetComponents(
     }
 #endif
     if (!result.capture) {
+        qInfo() << "HYREMOTE_QUICK_CAPTURE=PUBLIC_QT";
+        // Compatibility token for existing qualification evidence.
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=PUBLIC_QT_FALLBACK";
         result.capture = std::make_unique<QuickCaptureSource>(
             window, logicalPixelsForComposite);
