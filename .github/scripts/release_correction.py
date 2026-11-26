@@ -231,6 +231,85 @@ def validate_v035_numeric_watermark(*, git, version, notes_name,
 
 # ---------------------------------------------------------------- self test
 
+# #95/#1076: repair one malformed, unpublished V0.3.6.0 candidate note.
+# Both gate files must be separately reviewed on develop before release use.
+V036_NOTES_BASE_SHA = "75e2d2fff0500fcc6bb301dd0b81ba7f03e280e0"
+V036_NOTES_HEAD_REF = "feature/95-release-preparation"
+V036_NOTES_OLD_BLOB = "e85f60fcf90098331ac854cc8e9350fa245cf538"
+V036_NOTES_NEW_BLOB = "46a560e4de98d9bd3b175bcebc0eb84f55304740"
+
+
+def validate_v036_notes(*, git, version, notes_name, head_notes, base_cmake,
+                        head_cmake, actual_base_sha, head_ref,
+                        governance_ref=DEVELOP_REF):
+    """Admit only the exact reviewed note repair and its two reviewed gate files."""
+    if version != "0.3.6.0" or actual_base_sha != V036_NOTES_BASE_SHA:
+        raise SystemExit("V036 notes correction denied: unapproved version/base")
+    if head_ref != V036_NOTES_HEAD_REF or notes_name != "docs/releases/v0.3.6.0.md":
+        raise SystemExit("V036 notes correction denied: unauthorized branch/notes path")
+    if head_cmake != base_cmake:
+        raise SystemExit("V036 notes correction denied: VERSION/CMake changed")
+    if not head_notes.startswith(CANDIDATE_MARKER):
+        raise SystemExit("V036 notes correction denied: missing pending marker")
+    if git("ls-remote", "--tags", "origin", "refs/tags/v0.3.6.0").strip():
+        raise SystemExit("V036 notes correction denied: version already tagged")
+    if (git("rev-parse", f"{actual_base_sha}:{notes_name}").decode("ascii").strip()
+            != V036_NOTES_OLD_BLOB
+            or git("rev-parse", f"HEAD:{notes_name}").decode("ascii").strip()
+            != V036_NOTES_NEW_BLOB):
+        raise SystemExit("V036 notes correction denied: unapproved notes blob")
+    expected = V035_NUMERIC_GOVERNANCE_FILES | {notes_name}
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD")
+                  .decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit("V036 notes correction denied: changed-file scope")
+    for file_name in sorted(V035_NUMERIC_GOVERNANCE_FILES):
+        if git("show", f"HEAD:{file_name}") != git("show", f"{governance_ref}:{file_name}"):
+            raise SystemExit("V036 notes correction denied: unreviewed gate blob")
+    return "v036-exact-candidate-notes-repair"
+
+
+
+# #1086: exact maintenance-line correction after the first G6 failure.
+# The maintenance tree is deliberately not the current develop product tree.
+V0351_BASE_SHA = "73c0a7ce115d6f530f86ca3316f1d23c524374db"
+V0351_HEAD_REF = "feature/1086-release-preparation"
+V0351_FIXED_BLOBS = {
+    ".github/release/release-trains.json": "b1bcb1d1776bc908e9210184c5b3518a5f7473e9",
+    "src/runtime/src/transport/rfb_transport.cpp": "4258f622cc685b95d6ea6bcbc747cf3d8e31b0c4",
+    "src/runtime/tests/test_rfb_wire_robustness.cpp": "6d83931919ad43bc62470d64c7258f289966eb2d",
+}
+
+
+def validate_v0351_maintenance(*, git, version, notes_name, base_notes,
+                               head_notes, base_cmake, head_cmake,
+                               actual_base_sha, head_ref, governance_ref=DEVELOP_REF):
+    """Admit only the reviewed H01.8b maintenance blobs and reviewed gate."""
+    if version != "0.3.5.1" or actual_base_sha != V0351_BASE_SHA:
+        raise SystemExit("V0351 correction denied: unapproved version/base")
+    if head_ref != V0351_HEAD_REF or notes_name != "docs/releases/v0.3.5.1.md":
+        raise SystemExit("V0351 correction denied: unauthorized branch/notes path")
+    if not base_notes.startswith(CANDIDATE_MARKER) or head_notes != base_notes:
+        raise SystemExit("V0351 correction denied: pending notes must be unchanged")
+    if head_cmake != base_cmake:
+        raise SystemExit("V0351 correction denied: VERSION/CMake changed")
+    if git("ls-remote", "--tags", "origin", "refs/tags/v0.3.5.1").strip():
+        raise SystemExit("V0351 correction denied: version already tagged")
+    expected = set(V0351_FIXED_BLOBS) | V035_NUMERIC_GOVERNANCE_FILES
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD")
+                  .decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit("V0351 correction denied: changed-file scope")
+    for path, blob in V0351_FIXED_BLOBS.items():
+        if git("rev-parse", f"HEAD:{path}").decode("ascii").strip() != blob:
+            raise SystemExit("V0351 correction denied: unreviewed maintenance blob " + path)
+    for path in V035_NUMERIC_GOVERNANCE_FILES:
+        if git("show", f"HEAD:{path}") != git("show", f"{governance_ref}:{path}"):
+            raise SystemExit("V0351 correction denied: unreviewed gate blob " + path)
+    return "v0351-exact-maintenance-correction"
+
+
+
 def _run(cwd: Path, *args: str) -> bytes:
     return subprocess.check_output(args, cwd=cwd, stderr=subprocess.DEVNULL)
 
@@ -545,6 +624,115 @@ def self_test() -> int:
                   expect_error="unreviewed governance blob")
     v035_scenario("V035 already-tagged version denied", tagged=True,
                   expect_error="version already tagged")
+
+
+    # #1076 exact note repair: keep the existing self-test identity.
+    v036_path = "docs/releases/v0.3.6.0.md"
+    v036_cmake = b"project(HyRemote VERSION 0.3.6.0)\n"
+
+    def v036_scenario(name, *, wrong_base=False, wrong_branch=False,
+                      bad_old=False, bad_new=False, extra=False,
+                      bad_gate=False, tagged=False, wrong_cmake=False,
+                      missing_marker=False, expect_error=None):
+        nonlocal cases, failures
+        cases += 1
+        files = V035_NUMERIC_GOVERNANCE_FILES | {v036_path}
+        if extra:
+            files = files | {"src/runtime/src/access_instance.cpp"}
+
+        def git_fixture(*args):
+            if args == ("ls-remote", "--tags", "origin", "refs/tags/v0.3.6.0"):
+                return b"tagged\n" if tagged else b""
+            if args == ("rev-parse", f"{V036_NOTES_BASE_SHA}:{v036_path}"):
+                return (("0" * 40 if bad_old else V036_NOTES_OLD_BLOB) + "\n").encode("ascii")
+            if args == ("rev-parse", f"HEAD:{v036_path}"):
+                return (("0" * 40 if bad_new else V036_NOTES_NEW_BLOB) + "\n").encode("ascii")
+            if args[:2] == ("diff", "--name-only"):
+                return "\n".join(sorted(files)).encode("utf-8")
+            if args[0] == "show":
+                ref, file_name = args[1].split(":", 1)
+                if file_name in V035_NUMERIC_GOVERNANCE_FILES:
+                    return b"altered" if ref == "HEAD" and bad_gate else b"reviewed"
+            raise AssertionError("unexpected Git query: " + repr(args))
+
+        try:
+            validate_v036_notes(
+                git=git_fixture, version="0.3.6.0", notes_name=v036_path,
+                head_notes="" if missing_marker else CANDIDATE_MARKER,
+                base_cmake=v036_cmake,
+                head_cmake=v036_cmake + b"changed" if wrong_cmake else v036_cmake,
+                actual_base_sha="0" * 40 if wrong_base else V036_NOTES_BASE_SHA,
+                head_ref="feature/789-release-preparation" if wrong_branch else V036_NOTES_HEAD_REF)
+            if expect_error is not None:
+                print(f"FAIL {name}: expected {expect_error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+        except SystemExit as error:
+            if expect_error is None or expect_error not in str(error):
+                print(f"FAIL {name}: {error}")
+                failures += 1
+            else:
+                print(f"ok: {name}")
+
+    v036_scenario("V036 exact candidate notes correction accepted")
+    v036_scenario("V036 wrong frozen candidate denied", wrong_base=True, expect_error="unapproved version/base")
+    v036_scenario("V036 wrong branch denied", wrong_branch=True, expect_error="unauthorized branch")
+    v036_scenario("V036 wrong old notes denied", bad_old=True, expect_error="unapproved notes blob")
+    v036_scenario("V036 wrong new notes denied", bad_new=True, expect_error="unapproved notes blob")
+    v036_scenario("V036 extra product edit denied", extra=True, expect_error="changed-file scope")
+    v036_scenario("V036 altered gate denied", bad_gate=True, expect_error="unreviewed gate blob")
+    v036_scenario("V036 tagged version denied", tagged=True, expect_error="version already tagged")
+    v036_scenario("V036 version change denied", wrong_cmake=True, expect_error="VERSION/CMake")
+    v036_scenario("V036 missing candidate marker denied", missing_marker=True, expect_error="missing pending marker")
+
+    # Reuse the existing self-test entry, exercising each exact-correction boundary.
+    for fault, expected_error in (
+        ("none", None), ("version", "version/base"), ("base", "version/base"),
+        ("branch", "branch/notes"), ("notes", "pending notes"),
+        ("cmake", "VERSION/CMake"), ("tag", "already tagged"),
+        ("extra", "changed-file scope"), ("missing", "changed-file scope"),
+        ("blob", "unreviewed maintenance blob"), ("gate", "unreviewed gate blob"),
+    ):
+        cases += 1
+        files = set(V0351_FIXED_BLOBS) | V035_NUMERIC_GOVERNANCE_FILES
+        if fault == "extra":
+            files.add("src/runtime/src/access_instance.cpp")
+        if fault == "missing":
+            files.remove("src/runtime/tests/test_rfb_wire_robustness.cpp")
+
+        def maintenance_git(*args):
+            if args == ("ls-remote", "--tags", "origin", "refs/tags/v0.3.5.1"):
+                return b"tagged" if fault == "tag" else b""
+            if args[:2] == ("diff", "--name-only"):
+                return "\n".join(sorted(files)).encode()
+            if args[0] == "rev-parse" and args[1].startswith("HEAD:"):
+                blob = V0351_FIXED_BLOBS[args[1][5:]]
+                return ("0" * 40 if fault == "blob" else blob).encode()
+            if args[0] == "show":
+                ref, path = args[1].split(":", 1)
+                if path in V035_NUMERIC_GOVERNANCE_FILES:
+                    return b"altered" if ref == "HEAD" and fault == "gate" else b"reviewed"
+            raise AssertionError("unexpected Git query: " + repr(args))
+
+        try:
+            validate_v0351_maintenance(
+                git=maintenance_git, version="0.3.5.0" if fault == "version" else "0.3.5.1",
+                notes_name="docs/releases/v0.3.5.1.md", base_notes=CANDIDATE_MARKER,
+                head_notes="" if fault == "notes" else CANDIDATE_MARKER,
+                base_cmake=b"version", head_cmake=b"changed" if fault == "cmake" else b"version",
+                actual_base_sha="0" * 40 if fault == "base" else V0351_BASE_SHA,
+                head_ref="feature/95-release-preparation" if fault == "branch" else V0351_HEAD_REF)
+            error = None
+        except SystemExit as exc:
+            error = str(exc)
+        if (expected_error is None and error is not None
+                or expected_error is not None and (error is None or expected_error not in error)):
+            print(f"FAIL V0351 {fault}: {error}")
+            failures += 1
+        else:
+            print(f"ok: V0351 {fault}")
+
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")

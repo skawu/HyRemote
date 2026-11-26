@@ -2549,6 +2549,112 @@ void testContinuousUpdatesForcedRefreshBounds()
     transport->stop();
 }
 
+void testPointerViewportTracksAdvertisedFramebuffer()
+{
+    const quint16 port = freePort();
+    CHECK(port != 0);
+    if (!port)
+        return;
+    Recorder recorder;
+    std::atomic<int> compared{0};
+    auto transport = startTransport(
+        port, recorder, makeFrame(64, 48, 0x203040U), {}, {},
+        [&](bool) { compared.fetch_add(1); });
+    CHECK(transport != nullptr);
+    if (!transport)
+        return;
+
+    QTcpSocket socket;
+    std::uint16_t width = 0, height = 0;
+    const bool connected = connectRawRfb(socket, port, false, &width, &height);
+    CHECK(connected && width == 64 && height == 48);
+    if (!connected) {
+        transport->stop();
+        return;
+    }
+    CHECK(sendSetEncodings(socket, {-312, -223, 0}));
+    CHECK(readFence(socket) == makeFence(0U));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, width, height));
+    TestFramebuffer shown;
+    shown.resize(width, height);
+    std::vector<UpdateRect> rectangles;
+    CHECK(readFramebufferUpdate(socket, shown, rectangles));
+
+    const int before = compared.load();
+    transport->enqueueFrame(makeFrame(96, 80, 0x508060U));
+    QElapsedTimer timeout;
+    timeout.start();
+    while (compared.load() == before && timeout.elapsed() < 3000)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(compared.load() > before);
+    // The fence proves the worker processed that latest frame, but there
+    // is still no pending FBU request capable of delivering DesktopSize.
+    const QByteArray barrier("resize-pending", 14);
+    CHECK(writeAll(socket, makeFence(0x80000000U, barrier)));
+    CHECK(readFence(socket) == makeFence(0U, barrier));
+    CHECK(noFramebufferData(socket));
+
+    CHECK(sendPointerButton(socket, false, 17, 19));
+    CHECK(recorder.waitFor([](const auto &inputs, const auto &) {
+        return std::any_of(inputs.begin(), inputs.end(), [](const auto &e) {
+            return e.kind == hyremote::InputEventKind::PointerMove
+                && e.x == 17.0F && e.y == 19.0F;
+        });
+    }));
+    {
+        std::lock_guard<std::mutex> lock(recorder.mutex);
+        const auto it = std::find_if(recorder.inputs.rbegin(), recorder.inputs.rend(),
+            [](const auto &e) {
+                return e.kind == hyremote::InputEventKind::PointerMove
+                    && e.x == 17.0F && e.y == 19.0F;
+            });
+        CHECK(it != recorder.inputs.rend());
+        if (it != recorder.inputs.rend()) {
+            CHECK(it->sourceViewport.width == 64U);
+            CHECK(it->sourceViewport.height == 48U);
+        }
+    }
+
+    CHECK(sendUpdateRequest(socket, true, 0, 0, width, height));
+    CHECK(readFramebufferUpdate(socket, shown, rectangles));
+    // This maintenance line delivers the new producer geometry as a Raw FBU
+    // for an incremental request; the viewport transition is proved by the
+    // input events below, not by the develop-line DesktopSize optimization.
+    // This maintenance line sends DesktopSize followed by the Raw contents of
+    // the newly advertised framebuffer for an incremental sized request.
+    CHECK(rectangles.size() == 2U && rectangles.front().encoding == -223
+          && rectangles.at(1).encoding == 0);
+    CHECK(shown.width == 96 && shown.height == 80);
+    CHECK(sendPointerButton(socket, false, 18, 19));
+    CHECK(recorder.waitFor([](const auto &inputs, const auto &) {
+        return std::any_of(inputs.begin(), inputs.end(), [](const auto &e) {
+            return e.kind == hyremote::InputEventKind::PointerMove
+                && e.x == 18.0F && e.y == 19.0F;
+        });
+    }));
+    {
+        std::lock_guard<std::mutex> lock(recorder.mutex);
+        const auto it = std::find_if(recorder.inputs.rbegin(), recorder.inputs.rend(),
+            [](const auto &e) {
+                return e.kind == hyremote::InputEventKind::PointerMove
+                    && e.x == 18.0F && e.y == 19.0F;
+            });
+        CHECK(it != recorder.inputs.rend());
+        if (it != recorder.inputs.rend()) {
+            CHECK(it->sourceViewport.width == 96U);
+            CHECK(it->sourceViewport.height == 80U);
+        }
+    }
+    CHECK(noFramebufferData(socket));
+    CHECK(sendUpdateRequest(socket, false, 0, 0, 96, 80));
+    CHECK(readFramebufferUpdate(socket, shown, rectangles));
+    CHECK(rectangles.size() == 1U && rectangles.front().encoding == 0);
+    CHECK(shown.get(15, 15) == 0x508060U);
+    socket.disconnectFromHost();
+    waitForDisconnected(socket);
+    transport->stop();
+}
+
 void testFragmentedHandshakeAndInput()
 {
     const quint16 port = freePort();
@@ -4105,6 +4211,7 @@ int main(int argc, char **argv)
     testRequestPausedViewerDoesNotStallContinuousPeer();
     testContinuousUpdatesForcedRefreshBounds();
     testForcedRefreshHonorsExplicitRegion();
+    testPointerViewportTracksAdvertisedFramebuffer();
     testFragmentedHandshakeAndInput();
     testNegotiatedFenceAndRequestFallback();
     testOversizedSetEncodingsFailsClosed();

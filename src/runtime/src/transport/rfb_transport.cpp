@@ -1649,13 +1649,14 @@ private:
         return true;
     }
 
-    hyremote::InputViewport currentViewport() const
+    hyremote::InputViewport currentViewport(const ClientState &client) const
     {
+        // RFB pointer coordinates are relative to the per-Viewer framebuffer
+        // already advertised by ServerInit/DesktopSize, not a newer producer
+        // frame that the Viewer has not requested/received.
         hyremote::InputViewport viewport;
-        if (const auto frame = latestFrame()) {
-            viewport.width = frame->geometry.size.width;
-            viewport.height = frame->geometry.size.height;
-        }
+        viewport.width = client.framebufferWidth;
+        viewport.height = client.framebufferHeight;
         viewport.devicePixelRatio = 1.0F;
         return viewport;
     }
@@ -1665,7 +1666,7 @@ private:
                         std::uint16_t x,
                         std::uint16_t y)
     {
-        const hyremote::InputViewport viewport = currentViewport();
+        const hyremote::InputViewport viewport = currentViewport(client);
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
