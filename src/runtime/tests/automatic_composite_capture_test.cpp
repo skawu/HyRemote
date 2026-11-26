@@ -326,6 +326,50 @@ int main(int argc, char **argv)
         return 4;
     }
 
+    // #1086: hiding every surface must clear pixels without collapsing the
+    // framebuffer to 1x1; restoring visibility must publish genuinely new pixels.
+    composite.setSurfaceVisible(1, false);
+    composite.setSurfaceVisible(2, false);
+    frames.clear();
+    if (!check(components.capture->requestFrame({2, hyremote::Clock::now()}),
+               "hidden composite accepts refresh")
+        || !check(waitForFrame(frames, 1), "hidden composite publishes clear frame")) {
+        components.capture->stop();
+        return 5;
+    }
+    const QImage cleared = imageView(frames.front());
+    bool fullyCleared = cleared.size() == QSize(4, 2);
+    for (int y = 0; fullyCleared && y < cleared.height(); ++y) {
+        for (int x = 0; x < cleared.width(); ++x)
+            fullyCleared = cleared.pixelColor(x, y) == QColor(0, 0, 0, 0);
+    }
+    if (!check(fullyCleared, "hidden composite clears every pixel at the last valid size")
+        || !check(frames.front().requestId == hyremote::CaptureRequestId{2}
+                      && frames.front().damage.kind == hyremote::DamageKind::FullFrame,
+                  "hidden clear frame carries fresh request identity and full damage")) {
+        components.capture->stop();
+        return 6;
+    }
+
+    composite.setSurfaceVisible(1, true);
+    composite.setSurfaceVisible(2, true);
+    frames.clear();
+    if (!check(components.capture->requestFrame({3, hyremote::Clock::now()}),
+               "restored composite accepts refresh")
+        || !check(waitForFrame(frames, 1), "restored composite publishes new frame")) {
+        components.capture->stop();
+        return 7;
+    }
+    const QImage restored = imageView(frames.front());
+    if (!check(restored.size() == QSize(4, 2)
+                   && restored.pixelColor(0, 0) == QColor(255, 0, 0, 255)
+                   && restored.pixelColor(3, 0) == QColor(0, 255, 0, 255)
+                   && frames.front().requestId == hyremote::CaptureRequestId{3},
+               "restored composite publishes fresh visible pixels")) {
+        components.capture->stop();
+        return 8;
+    }
+
     components.capture->stop();
     std::cout << "PASS: automatic runtime composes multiple application surfaces into one capture target\n";
 

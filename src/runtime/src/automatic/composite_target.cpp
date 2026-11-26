@@ -98,6 +98,7 @@ public:
             target = m_state->target;
             surfaceUnavailableHandler = m_state->surfaceUnavailableHandler;
             m_state->surfaceUnavailableHandler = 0;
+            m_state->lastCanvasSize = {};
 
             m_state->cv.wait(lock, [state = m_state] {
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
@@ -236,7 +237,6 @@ private:
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         std::unordered_map<hyremote::CaptureRequestId, PendingRequest> pending;
-        std::optional<hyremote::RemoteFrame> lastFrame;
         QSize lastCanvasSize;
     };
 
@@ -365,46 +365,27 @@ private:
     static void composeAndPublish(const std::shared_ptr<State> &state, PendingRequest pending)
     {
         if (pending.canvasBounds.isEmpty()) {
-            std::optional<hyremote::RemoteFrame> last;
+            // No visible source must not resurrect pixels from a previously
+            // visible/authorized composite. Preserve the last framebuffer
+            // geometry only, so a legacy RFB Viewer need not support a 1x1
+            // DesktopSize transition when the entire scene is hidden.
+            QSize clearSize(1, 1);
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame)
-                    last = *state->lastFrame;
+                if (!state->lastCanvasSize.isEmpty())
+                    clearSize = state->lastCanvasSize;
             }
-            if (last) {
-                last->timing.ptsSource = hyremote::PtsSource::Completion;
-                last->timing.requestTime = pending.request.requestTime;
-                last->timing.completionTime = hyremote::Clock::now();
-                last->requestId = pending.request.id;
-                last->damage = hyremote::Damage::fullFrame();
-                publishFrame(state, std::move(*last));
-                return;
-            }
-            publishFrame(state, transparentFrame(pending.request, QSize(1, 1)));
+            publishFrame(state, transparentFrame(pending.request, clearSize));
             return;
         }
 
         if (pending.frames.empty()) {
-            std::optional<hyremote::RemoteFrame> last;
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame
-                    && state->lastFrame->geometry.size.width
-                           == static_cast<std::uint32_t>(pending.canvasBounds.width())
-                    && state->lastFrame->geometry.size.height
-                           == static_cast<std::uint32_t>(pending.canvasBounds.height())) {
-                    last = *state->lastFrame;
-                }
-            }
-            if (last) {
-                last->timing.ptsSource = hyremote::PtsSource::Completion;
-                last->timing.requestTime = pending.request.requestTime;
-                last->timing.completionTime = hyremote::Clock::now();
-                last->requestId = pending.request.id;
-                last->damage = hyremote::Damage::fullFrame();
-                publishFrame(state, std::move(*last));
-                return;
-            }
+            // Every child failed/vanished: sending lastFrame with a new
+            // request ID, new completion timestamp, and full damage falsely
+            // advertises old pixels as fresh. Clear the actual canvas instead.
+            // Valid children automatically recover on a later request.
+            publishFrame(state, transparentFrame(pending.request, pending.canvasBounds.size()));
+            return;
         }
 
         // #609: exactly one already-premultiplied, full-canvas CPU frame needs
