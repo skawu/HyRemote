@@ -23,6 +23,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QFontMetrics>
 #include <QFormLayout>
 #include <QInputDialog>
 #include <QMessageBox>
@@ -34,6 +35,8 @@
 #include <QMainWindow>
 #include <QStackedWidget>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QPushButton>
 #include <QPixmap>
 #include <QLocale>
@@ -91,7 +94,95 @@ QString stateText(RfbClient::State state, Language language)
     return zh ? QStringLiteral("未知") : QStringLiteral("Unknown");
 }
 
+QString diagStageText(ToolDiagStage stage, Language language)
+{
+    const bool zh = isChinese(language);
+    switch (stage) {
+    case ToolDiagStage::Disconnected:
+        return zh ? QStringLiteral("未连接") : QStringLiteral("Disconnected");
+    case ToolDiagStage::Connecting:
+        return zh ? QStringLiteral("连接中") : QStringLiteral("Connecting");
+    case ToolDiagStage::Handshaking:
+        return zh ? QStringLiteral("握手中") : QStringLiteral("Handshaking");
+    case ToolDiagStage::Connected:
+        return zh ? QStringLiteral("已连接") : QStringLiteral("Connected");
+    case ToolDiagStage::Failed:
+        return zh ? QStringLiteral("失败") : QStringLiteral("Failed");
+    }
+    return zh ? QStringLiteral("未知") : QStringLiteral("Unknown");
+}
+
+QString diagFailureText(ToolDiagFailure failure, Language language)
+{
+    const bool zh = isChinese(language);
+    switch (failure) {
+    case ToolDiagFailure::None:
+        return zh ? QStringLiteral("无") : QStringLiteral("None");
+    case ToolDiagFailure::ConnectionRefused:
+        return zh ? QStringLiteral("连接被拒绝") : QStringLiteral("Connection refused");
+    case ToolDiagFailure::DnsFailure:
+        return zh ? QStringLiteral("主机未找到") : QStringLiteral("Host not found");
+    case ToolDiagFailure::Timeout:
+        return zh ? QStringLiteral("超时") : QStringLiteral("Timeout");
+    case ToolDiagFailure::SecurityMismatch:
+        return zh ? QStringLiteral("安全类型不匹配") : QStringLiteral("Security mismatch");
+    case ToolDiagFailure::MalformedWire:
+        return zh ? QStringLiteral("端点协议不符") : QStringLiteral("Malformed endpoint");
+    case ToolDiagFailure::RemoteClosed:
+        return zh ? QStringLiteral("远端关闭连接") : QStringLiteral("Remote closed");
+    case ToolDiagFailure::Other:
+        return zh ? QStringLiteral("其他本机观察错误") : QStringLiteral("Other local error");
+    }
+    return zh ? QStringLiteral("未知") : QStringLiteral("Unknown");
+}
+
+QString diagAdviceText(ToolDiagFailure failure, Language language)
+{
+    const bool zh = isChinese(language);
+    switch (failure) {
+    case ToolDiagFailure::ConnectionRefused:
+        return zh ? QStringLiteral("确认远程应用正在监听该端点，然后重试。")
+                  : QStringLiteral("Verify the application is listening on this endpoint, then retry.");
+    case ToolDiagFailure::DnsFailure:
+        return zh ? QStringLiteral("检查 IP 或主机名拼写。")
+                  : QStringLiteral("Check the IP address or host name.");
+    case ToolDiagFailure::Timeout:
+        return zh ? QStringLiteral("检查本机网络与防火墙后重试。")
+                  : QStringLiteral("Check local networking/firewall, then retry.");
+    case ToolDiagFailure::SecurityMismatch:
+        return zh ? QStringLiteral("此客户端仅支持 RFB None；确认端点允许未加密访问。")
+                  : QStringLiteral("This client supports RFB None only; confirm the endpoint allows unencrypted access.");
+    case ToolDiagFailure::MalformedWire:
+        return zh ? QStringLiteral("确认端点是否为兼容的 RFB 服务。")
+                  : QStringLiteral("Verify that the endpoint provides compatible RFB.");
+    case ToolDiagFailure::RemoteClosed:
+        return zh ? QStringLiteral("检查会话和网络连接后重试。")
+                  : QStringLiteral("Check the session and network, then retry.");
+    case ToolDiagFailure::Other:
+        return zh ? QStringLiteral("检查本机连接设置及受信任的网络。")
+                  : QStringLiteral("Review local connection settings and trusted network.");
+    case ToolDiagFailure::None:
+        return zh ? QStringLiteral("目前没有可采取的具体排查步骤。")
+                  : QStringLiteral("No specific next step from current evidence.");
+    }
+    return zh ? QStringLiteral("没有足够证据判断。") : QStringLiteral("Insufficient evidence.");
+}
+
+bool textFits(const QWidget *widget, const QString &value)
+{
+    if (!widget || value.isEmpty())
+        return false;
+    const QFontMetrics metrics(widget->font());
+#if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+    const int width = metrics.horizontalAdvance(value);
+#else
+    const int width = metrics.width(value);
+#endif
+    return widget->width() >= width && widget->height() >= metrics.height();
+}
+
 class ClientWindow final : public QMainWindow
+
 {
 public:
     explicit ClientWindow(Language language, ToolLanguagePreference preference,
@@ -109,57 +200,47 @@ public:
     {
         auto *central = new QWidget(this);
         setCentralWidget(central);
-        auto *root = new QHBoxLayout(central);
-        root->setContentsMargins(6, 6, 6, 6);
-        root->setSpacing(6);
+        auto *root = new QVBoxLayout(central);
+        root->setContentsMargins(12, 8, 12, 8);
+        root->setSpacing(8);
 
-        // S1 exposes only the three task entries that are actually usable.
-        auto *nav = new QVBoxLayout;
-        m_connectPageButton = new QPushButton(this);
-        m_sessionPageButton = new QPushButton(this);
-        m_diagnosticsPageButton = new QPushButton(this);
-        m_connectPageButton->setCheckable(true);
-        m_sessionPageButton->setCheckable(true);
-        m_diagnosticsPageButton->setCheckable(true);
-        m_connectPageButton->setMaximumWidth(40);
-        m_sessionPageButton->setMaximumWidth(40);
-        m_diagnosticsPageButton->setMaximumWidth(40);
-        nav->addWidget(m_connectPageButton);
-        nav->addWidget(m_sessionPageButton);
-        nav->addWidget(m_diagnosticsPageButton);
-        nav->addStretch(1);
-        root->addLayout(nav);
+        const auto actionButton = [](QPushButton *button) {
+            button->setMinimumHeight(34);
+            button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        };
 
-        auto *right = new QVBoxLayout;
+        m_topBar = new QWidget(central);
+        auto *top = new QVBoxLayout(m_topBar);
+        top->setContentsMargins(0, 0, 0, 0);
+        top->setSpacing(4);
         auto *brandRow = new QHBoxLayout;
-        m_brand = new QLabel(this);
+        brandRow->setSpacing(8);
+        m_brand = new QLabel(m_topBar);
         const QPixmap brandImage(QStringLiteral(":/hyremote/branding/huayan-logo-single.png"));
         if (brandImage.isNull())
             qFatal("BRANDING_ASSET_MISSING");
-        m_brand->setPixmap(brandImage.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        m_brand->setPixmap(brandImage.scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        m_brandText = new QLabel(QStringLiteral("HyRemoteTool"), m_topBar);
         brandRow->addWidget(m_brand);
-        brandRow->addWidget(new QLabel(QStringLiteral("HyRemoteTool"), this));
+        brandRow->addWidget(m_brandText);
         brandRow->addStretch(1);
-        right->addLayout(brandRow);
+        top->addLayout(brandRow);
 
-        m_pages = new QStackedWidget(this);
-        right->addWidget(m_pages, 1);
-        root->addLayout(right, 1);
-
-        auto *connectPage = new QWidget(m_pages);
-        auto *connectLayout = new QVBoxLayout(connectPage);
-        auto *connectionRow = new QHBoxLayout;
-        m_remoteLabel = new QLabel(connectPage);
-        m_host = new QLineEdit(connectPage);
-        m_host->setPlaceholderText(QStringLiteral("192.168.1.6"));
-        m_host->setClearButtonEnabled(true);
-        m_portLabel = new QLabel(connectPage);
-        m_port = new QSpinBox(connectPage);
-        m_port->setRange(1, 65535);
-        m_port->setValue(5921);
-        m_connect = new QPushButton(connectPage);
-        m_status = new QLabel(connectPage);
-        m_languageBox = new QComboBox(connectPage);
+        auto *navRow = new QHBoxLayout;
+        navRow->setSpacing(8);
+        m_connectPageButton = new QPushButton(m_topBar);
+        m_sessionPageButton = new QPushButton(m_topBar);
+        m_diagnosticsPageButton = new QPushButton(m_topBar);
+        for (QPushButton *button : {m_connectPageButton, m_sessionPageButton,
+                                    m_diagnosticsPageButton}) {
+            button->setCheckable(true);
+            button->setAutoExclusive(true);
+            actionButton(button);
+            navRow->addWidget(button);
+        }
+        navRow->addStretch(1);
+        top->addLayout(navRow);
+        m_languageBox = new QComboBox(m_topBar);
         m_languageBox->addItem(QString()); // Auto follows the local OS
         m_languageBox->addItem(QStringLiteral("简体中文"));
         m_languageBox->addItem(QStringLiteral("English"));
@@ -170,106 +251,198 @@ public:
                         : (preference == ToolLanguagePreference::Auto
                                ? 0
                                : preference == ToolLanguagePreference::Chinese ? 1 : 2));
-        connectionRow->addWidget(m_remoteLabel);
-        connectionRow->addWidget(m_host, 1);
-        connectionRow->addWidget(m_portLabel);
-        connectionRow->addWidget(m_port);
-        connectionRow->addWidget(m_connect);
-        connectionRow->addWidget(m_status);
-        connectionRow->addWidget(m_languageBox);
-        connectLayout->addLayout(connectionRow);
+        m_languageBox->setMinimumHeight(34);
+        m_aboutButton = new QPushButton(m_topBar);
+        actionButton(m_aboutButton);
+        brandRow->addWidget(m_languageBox);
+        brandRow->addWidget(m_aboutButton);
+        root->addWidget(m_topBar);
 
-        // Local non-secret bookmarks. Selection only fills host/port; a
-        // network attempt requires a separate explicit Connect action.
-        auto *profilesRow = new QHBoxLayout;
+        m_pages = new QStackedWidget(central);
+        root->addWidget(m_pages, 1);
+
+        auto *connectPage = new QWidget(m_pages);
+        auto *connectLayout = new QVBoxLayout(connectPage);
+        connectLayout->setContentsMargins(0, 0, 0, 0);
+        m_connectTitle = new QLabel(connectPage);
+        m_connectIntro = new QLabel(connectPage);
+        m_connectIntro->setWordWrap(true);
+        connectLayout->addWidget(m_connectTitle);
+        connectLayout->addWidget(m_connectIntro);
+        auto *connectContent = new QHBoxLayout;
+        connectContent->setSpacing(12);
+
+        auto *profilesPanel =new QVBoxLayout;
         m_profilesLabel = new QLabel(connectPage);
-        m_profilesBox = new QComboBox(connectPage);
-        m_profilesBox->setObjectName(QStringLiteral("tool-saved-connections"));
-        m_profilesBox->setMinimumContentsLength(18);
-        m_profilesBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        m_profilesList = new QListWidget(connectPage);
+        m_profilesList->setObjectName(QStringLiteral("tool-saved-connections"));
+        m_profilesList->setSelectionBehavior(QAbstractItemView::SelectRows);
+        m_profilesList->setSelectionMode(QAbstractItemView::SingleSelection);
+        m_profilesList->setAlternatingRowColors(true);
+        m_profilesEmpty = new QLabel(connectPage);
+        m_profilesEmpty->setWordWrap(true);
         m_profileSave = new QPushButton(connectPage);
         m_profileEdit = new QPushButton(connectPage);
         m_profileDelete = new QPushButton(connectPage);
-        m_profileConnect = new QPushButton(connectPage);
         m_profileRecover = new QPushButton(connectPage);
+        for (QPushButton *button : {m_profileSave, m_profileEdit, m_profileDelete,
+                                    m_profileRecover}) {
+            actionButton(button);
+        }
         m_profileRecover->hide();
-        profilesRow->addWidget(m_profilesLabel);
-        profilesRow->addWidget(m_profilesBox, 1);
-        profilesRow->addWidget(m_profileSave);
-        profilesRow->addWidget(m_profileEdit);
-        profilesRow->addWidget(m_profileDelete);
-        profilesRow->addWidget(m_profileConnect);
-        profilesRow->addWidget(m_profileRecover);
-        connectLayout->addLayout(profilesRow);
+        auto *profileActions = new QHBoxLayout;
+        profileActions->setSpacing(6);
+        for (QPushButton *button : {m_profileSave, m_profileEdit, m_profileDelete,
+                                    m_profileRecover}) {
+            profileActions->addWidget(button);
+        }
+        profilesPanel->addWidget(m_profilesLabel);
+        profilesPanel->addWidget(m_profilesList, 1);
+        profilesPanel->addWidget(m_profilesEmpty);
+        profilesPanel->addLayout(profileActions);
+        connectContent->addLayout(profilesPanel, 1);
+
+        auto *formPanel = new QVBoxLayout;
+        auto *form = new QFormLayout;
+        form->setLabelAlignment(Qt::AlignRight);
+        form->setSpacing(8);
+        m_remoteLabel = new QLabel(connectPage);
+        m_host = new QLineEdit(connectPage);
+        m_host->setPlaceholderText(QStringLiteral("192.168.1.6"));
+        m_host->setClearButtonEnabled(true);
+        m_portLabel = new QLabel(connectPage);
+        m_port = new QSpinBox(connectPage);
+        m_port->setRange(1, 65535);
+        m_port->setValue(5921);
+        m_profileNameLabel = new QLabel(connectPage);
+        m_profileName = new QLineEdit(connectPage);
+        m_profileName->setClearButtonEnabled(true);
+        form->addRow(m_remoteLabel, m_host);
+        form->addRow(m_portLabel, m_port);
+        form->addRow(m_profileNameLabel, m_profileName);
+        formPanel->addLayout(form);
+        m_connect = new QPushButton(connectPage);
+        actionButton(m_connect);
+        formPanel->addWidget(m_connect);
+        m_status = new QLabel(connectPage);
+        m_status->setWordWrap(true);
+        m_nextStep = new QLabel(connectPage);
+        m_nextStep->setWordWrap(true);
+        formPanel->addWidget(m_status);
+        formPanel->addWidget(m_nextStep);
+        m_connectionError = new QLabel(connectPage);
+        m_connectionError->setWordWrap(true);
+        m_connectionError->setStyleSheet(QStringLiteral("color: #b00020;"));
+        m_connectionError->setVisible(false);
+        formPanel->addWidget(m_connectionError);
+        m_connectionDiagnosticsButton = new QPushButton(connectPage);
+        actionButton(m_connectionDiagnosticsButton);
+        formPanel->addWidget(m_connectionDiagnosticsButton);
+        formPanel->addStretch(1);
+        connectContent->addLayout(formPanel, 2);
+        connectLayout->addLayout(connectContent, 1);
 
         m_profileWarning = new QLabel(connectPage);
         m_profileWarning->setWordWrap(true);
         m_profileWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_profileWarning->hide();
         connectLayout->addWidget(m_profileWarning);
-
-        // Persisted settings may fail (read-only profile, disk/permission
-        // errors). Warn in the GUI instead of claiming the selection survived
-        // a restart. The language still applies to this running process.
         m_languageWarning = new QLabel(connectPage);
         m_languageWarning->setWordWrap(true);
         m_languageWarning->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_languageWarning->hide();
         connectLayout->addWidget(m_languageWarning);
-        m_connectionError = new QLabel(connectPage);
-        m_connectionError->setWordWrap(true);
-        m_connectionError->setStyleSheet(QStringLiteral("color: #b00020;"));
-        m_connectionError->setVisible(false);
-        connectLayout->addWidget(m_connectionError);
-        connectLayout->addStretch(1);
         m_pages->addWidget(connectPage);
 
         auto *sessionPage = new QWidget(m_pages);
         auto *sessionLayout = new QVBoxLayout(sessionPage);
+        sessionLayout->setContentsMargins(0, 0, 0, 0);
+        m_sessionHeader = new QLabel(sessionPage);
+        m_sessionHeader->setWordWrap(true);
+        sessionLayout->addWidget(m_sessionHeader);
+        m_operationBar = new QWidget(sessionPage);
+        auto *operations = new QVBoxLayout(m_operationBar);
+        operations->setContentsMargins(0, 0, 0, 0);
+        operations->setSpacing(4);
+        auto *controlRow = new QHBoxLayout;
+        controlRow->setSpacing(6);
+        auto *viewRow = new QHBoxLayout;
+        viewRow->setSpacing(6);
+        m_control = new QCheckBox(m_operationBar);
+        m_fitButton = new QPushButton(m_operationBar);
+        m_nativeButton = new QPushButton(m_operationBar);
+        m_fullscreenButton = new QPushButton(m_operationBar);
+        m_reconnectButton = new QPushButton(m_operationBar);
+        m_disconnectButton = new QPushButton(m_operationBar);
+        m_sessionDiagnosticsButton = new QPushButton(m_operationBar);
+        for (QPushButton *button : {m_fitButton, m_nativeButton, m_fullscreenButton,
+                                    m_reconnectButton, m_disconnectButton,
+                                    m_sessionDiagnosticsButton}) {
+            actionButton(button);
+        }
+        m_fitButton->setCheckable(true);
+        m_nativeButton->setCheckable(true);
+        m_fitButton->setChecked(true);
+        controlRow->addWidget(m_control);
+        controlRow->addWidget(m_fullscreenButton);
+        controlRow->addWidget(m_disconnectButton);
+        controlRow->addStretch(1);
+        viewRow->addWidget(m_fitButton);
+        viewRow->addWidget(m_nativeButton);
+        viewRow->addWidget(m_reconnectButton);
+        viewRow->addWidget(m_sessionDiagnosticsButton);
+        viewRow->addStretch(1);
+        operations->addLayout(controlRow);
+        operations->addLayout(viewRow);
+        sessionLayout->addWidget(m_operationBar);
+
         m_viewScroll = new QScrollArea(sessionPage);
         m_viewScroll->setWidgetResizable(true);
         m_viewScroll->setWidget(m_view);
         sessionLayout->addWidget(m_viewScroll, 1);
-        auto *telemetryRow = new QHBoxLayout;
-        m_control = new QCheckBox(sessionPage);
-        m_fitButton = new QPushButton(sessionPage);
-        m_nativeButton = new QPushButton(sessionPage);
-        m_fullscreenButton = new QPushButton(sessionPage);
-        m_fitButton->setCheckable(true);
-        m_nativeButton->setCheckable(true);
-        m_fitButton->setChecked(true);
-        m_fitButton->setMaximumWidth(36);
-        m_nativeButton->setMaximumWidth(40);
-        m_fullscreenButton->setMaximumWidth(40);
-        m_fps = new QLabel(sessionPage);
-        m_mbps = new QLabel(sessionPage);
-        m_frames = new QLabel(sessionPage);
-        m_bytes = new QLabel(sessionPage);
-        m_resolution = new QLabel(sessionPage);
-        telemetryRow->addWidget(m_control);
-        telemetryRow->addWidget(m_fitButton);
-        telemetryRow->addWidget(m_nativeButton);
-        telemetryRow->addWidget(m_fullscreenButton);
-        telemetryRow->addWidget(m_fps);
-        telemetryRow->addWidget(m_mbps);
-        telemetryRow->addWidget(m_frames);
-        telemetryRow->addWidget(m_bytes);
-        telemetryRow->addWidget(m_resolution);
-        telemetryRow->addStretch(1);
-        sessionLayout->addLayout(telemetryRow);
         m_error = new QLabel(sessionPage);
         m_error->setWordWrap(true);
         m_error->setStyleSheet(QStringLiteral("color: #b00020;"));
         m_error->setVisible(false);
         sessionLayout->addWidget(m_error);
+        m_statusRow = new QWidget(sessionPage);
+        auto *statusRow = new QHBoxLayout(m_statusRow);
+        statusRow->setContentsMargins(0, 0, 0, 0);
+        statusRow->setSpacing(12);
+        m_securityLabel = new QLabel(m_statusRow);
+        m_resolution = new QLabel(m_statusRow);
+        m_fps = new QLabel(m_statusRow);
+        m_mbps = new QLabel(m_statusRow);
+        for (QLabel *label : {m_securityLabel, m_resolution, m_fps, m_mbps})
+            statusRow->addWidget(label);
+        statusRow->addStretch(1);
+        sessionLayout->addWidget(m_statusRow);
         m_pages->addWidget(sessionPage);
 
         auto *diagnosticsPage = new QWidget(m_pages);
         auto *diagnosticsLayout = new QVBoxLayout(diagnosticsPage);
+        diagnosticsLayout->setContentsMargins(0, 0, 0, 0);
+        m_diagTitle = new QLabel(diagnosticsPage);
+        m_diagSummary = new QLabel(diagnosticsPage);
+        m_diagMetrics = new QLabel(diagnosticsPage);
+        m_diagFrames = new QLabel(diagnosticsPage);
+        m_diagBytes = new QLabel(diagnosticsPage);
+        m_diagEvents = new QLabel(diagnosticsPage);
+        for (QLabel *label : {m_diagSummary, m_diagMetrics, m_diagFrames,
+                              m_diagBytes, m_diagEvents}) {
+            label->setWordWrap(true);
+            label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        }
         m_diagnosticsAction = new QPushButton(diagnosticsPage);
         m_diagnosticsAction->setObjectName(QStringLiteral("tool-open-diagnostics"));
+        actionButton(m_diagnosticsAction);
+        diagnosticsLayout->addWidget(m_diagTitle);
+        diagnosticsLayout->addWidget(m_diagSummary);
+        diagnosticsLayout->addWidget(m_diagMetrics);
+        diagnosticsLayout->addWidget(m_diagFrames);
+        diagnosticsLayout->addWidget(m_diagBytes);
+        diagnosticsLayout->addWidget(m_diagEvents, 1);
         diagnosticsLayout->addWidget(m_diagnosticsAction);
-        diagnosticsLayout->addStretch(1);
         m_pages->addWidget(diagnosticsPage);
 
         m_connectPageButton->setChecked(true);
@@ -279,6 +452,15 @@ public:
                 [this] { m_pages->setCurrentIndex(1); });
         connect(m_diagnosticsPageButton, &QPushButton::clicked, this,
                 [this] { m_pages->setCurrentIndex(2); });
+        connect(m_pages, &QStackedWidget::currentChanged, this, [this](int index) {
+            m_connectPageButton->setChecked(index == 0);
+            m_sessionPageButton->setChecked(index == 1);
+            m_diagnosticsPageButton->setChecked(index == 2);
+            if (index != 1)
+                setLocalControlRequested(false);
+            if (index == 2)
+                refreshDiagnosticsSummary();
+        });
 
         m_view->onPointer = [this](quint8 mask, quint16 x, quint16 y) {
             m_client->sendPointer(mask, x, y);
@@ -297,24 +479,30 @@ public:
         connect(m_fullscreenButton, &QPushButton::clicked, this, [this] {
             toggleFullscreen();
         });
+        connect(m_reconnectButton, &QPushButton::clicked, this, [this] {
+            reconnectSession();
+        });
+        connect(m_disconnectButton, &QPushButton::clicked, this, [this] {
+            toggleConnection();
+        });
+        connect(m_sessionDiagnosticsButton, &QPushButton::clicked, this, [this] {
+            m_pages->setCurrentIndex(2);
+        });
+        connect(m_connectionDiagnosticsButton, &QPushButton::clicked, this, [this] {
+            m_pages->setCurrentIndex(2);
+        });
 
         connect(m_connect, &QPushButton::clicked, this, [this] { toggleConnection(); });
         connect(m_diagnosticsAction, &QPushButton::clicked, this, [this] {
             openDiagnostics();
         });
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-        connect(m_profilesBox, &QComboBox::activated, this, [this](int index) {
-#else
-        connect(m_profilesBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) {
-#endif
-            selectProfile(index);
+        connect(m_aboutButton, &QPushButton::clicked, this, [this] { openAbout(); });
+        connect(m_profilesList, &QListWidget::currentRowChanged, this, [this](int row) {
+            selectProfile(row);
         });
         connect(m_profileSave, &QPushButton::clicked, this, [this] { promptSaveProfile(); });
         connect(m_profileEdit, &QPushButton::clicked, this, [this] { promptEditProfile(); });
         connect(m_profileDelete, &QPushButton::clicked, this, [this] { promptDeleteProfile(); });
-        connect(m_profileConnect, &QPushButton::clicked, this, [this] {
-            connectSavedProfile();
-        });
         connect(m_profileRecover, &QPushButton::clicked, this, [this] {
             promptRecoverProfiles();
         });
@@ -348,7 +536,7 @@ public:
             m_view->setFrame(frame);
             m_frameSize = frame.size();
             m_diagnostics.observeFrame(frame.size());
-            retranslateUi();
+            refreshDynamicText();
             std::cout << "TOOL_CLIENT_FRAME " << frame.width() << 'x' << frame.height() << std::endl;
         });
         connect(m_client, &RfbClient::cursorUpdated, this, [this](const QImage &cursor, const QPoint &hotspot) {
@@ -371,7 +559,7 @@ public:
         connect(m_client, &RfbClient::statsUpdated, this, [this](const RfbClient::Stats &stats) {
             m_lastStats = stats;
             m_diagnostics.observeStats(stats);
-            retranslateUi();
+            refreshDynamicText();
             std::cout << "TOOL_CLIENT_STATS fps=" << stats.fps
                       << " mbit=" << stats.mbitPerSecond
                       << " frames=" << stats.frames
@@ -382,7 +570,7 @@ public:
             m_diagnostics.observeError(message);
             if (m_diagDialog && m_diagDialog->isVisible())
                 m_diagDialog->refresh();
-            retranslateUi();
+            refreshDynamicText();
             std::cerr << "TOOL_CLIENT_ERROR " << message.toStdString() << std::endl;
         });
 
@@ -398,7 +586,7 @@ public:
             m_profileError = profileError;
         rebuildProfiles();
         applyState(RfbClient::State::Disconnected);
-        resize(1000, 700);
+        resize(1366, 768);
     }
 
     void connectTo(const QString &host, quint16 port)
@@ -443,42 +631,159 @@ public:
     void setLocalControlRequested(bool requested);
     void setViewMode(FramebufferView::DisplayMode mode);
     void toggleFullscreen();
+    void reconnectSession();
+    void openAbout();
+
+    bool verifyLayoutAt(const QSize &viewport, Language language, bool scaledFont)
+    {
+        const Language originalLanguage = m_language;
+        const QFont originalFont = QApplication::font();
+        QFont checkFont = originalFont;
+        if (scaledFont)
+            checkFont.setPointSizeF(checkFont.pointSizeF() * 1.15);
+        QApplication::setFont(checkFont);
+        m_language = language;
+        retranslateUi();
+        showNormal();
+        resize(viewport);
+        show();
+        QApplication::processEvents();
+        QApplication::processEvents();
+
+        const QRect windowRect = rect();
+        const auto inWindow = [this](const QWidget *widget) {
+            return QRect(widget->mapTo(this, QPoint(0, 0)), widget->size());
+        };
+        bool sizeOk = size() == viewport && m_pages->count() == 3;
+        bool navOk = true;
+        const QVector<QPushButton *> nav = {m_connectPageButton, m_sessionPageButton,
+                                            m_diagnosticsPageButton};
+        for (int i = 0; i < nav.size(); ++i) {
+            navOk = navOk && nav.at(i) && !nav.at(i)->text().isEmpty()
+                            && textFits(nav.at(i), nav.at(i)->text())
+                            && windowRect.contains(inWindow(nav.at(i)));
+            for (int j = i + 1; j < nav.size(); ++j)
+                navOk = navOk && !inWindow(nav.at(i)).intersects(inWindow(nav.at(j)));
+        }
+
+        struct PageCheck {
+            int index;
+            QPushButton *button;
+            QVector<QWidget *> controls;
+        };
+        const QVector<PageCheck> pages = {
+            {0, m_connectPageButton, {m_profilesList, m_profileSave, m_profileEdit,
+                                      m_profileDelete, m_host, m_port, m_profileName,
+                                      m_connect, m_status, m_nextStep,
+                                      m_connectionDiagnosticsButton}},
+            {1, m_sessionPageButton, {m_control, m_fitButton, m_nativeButton,
+                                      m_fullscreenButton, m_reconnectButton,
+                                      m_disconnectButton, m_sessionDiagnosticsButton,
+                                      m_viewScroll, m_securityLabel, m_resolution,
+                                      m_fps, m_mbps}},
+            {2, m_diagnosticsPageButton, {m_diagTitle, m_diagSummary, m_diagMetrics,
+                                          m_diagFrames, m_diagBytes, m_diagEvents,
+                                          m_diagnosticsAction}}
+        };
+        bool pagesOk = true;
+        bool controlsOk = true;
+        bool viewAreaOk = true;
+        bool overlapOk = true;
+        for (const PageCheck &page : pages) {
+            page.button->click();
+            QApplication::processEvents();
+            pagesOk = pagesOk && m_pages->currentIndex() == page.index
+                                && m_pages->currentWidget()
+                                && m_pages->currentWidget()->isVisibleTo(this);
+            int checked = 0;
+            for (QPushButton *button : nav)
+                checked += button->isChecked() ? 1 : 0;
+            pagesOk = pagesOk && checked == 1 && page.button->isChecked();
+            for (QWidget *control : page.controls) {
+                controlsOk = controlsOk && control && control->isVisibleTo(this)
+                             && windowRect.contains(inWindow(control))
+                             && control->width() > 0 && control->height() > 0;
+                if (auto *button = qobject_cast<QPushButton *>(control))
+                    controlsOk = controlsOk && textFits(button, button->text());
+            }
+            if (page.index == 1) {
+                const double viewArea = static_cast<double>(m_viewScroll->width())
+                                        * m_viewScroll->height();
+                const double clientArea = static_cast<double>(width()) * height();
+                viewAreaOk = viewArea >= clientArea * 0.60;
+                const QVector<QPushButton *> actions = {m_fitButton, m_nativeButton,
+                                                        m_fullscreenButton, m_reconnectButton,
+                                                        m_disconnectButton,
+                                                        m_sessionDiagnosticsButton};
+                for (int i = 0; i < actions.size(); ++i)
+                    for (int j = i + 1; j < actions.size(); ++j)
+                        overlapOk = overlapOk
+                            && !inWindow(actions.at(i)).intersects(inWindow(actions.at(j)));
+            }
+        }
+
+        m_language = originalLanguage;
+        QApplication::setFont(originalFont);
+        retranslateUi();
+        QApplication::processEvents();
+        return sizeOk && navOk && pagesOk && controlsOk && viewAreaOk && overlapOk;
+    }
 
     bool verifyUi()
     {
-        const bool modeControls = m_viewScroll && m_fitButton && m_nativeButton
-                                  && m_fullscreenButton;
+        const bool base = m_brand && m_brandText && m_topBar && m_pages
+                          && m_pages->count() == 3 && !QGuiApplication::windowIcon().isNull()
+                          && m_host && m_port && m_connect && m_view && m_viewScroll
+                          && m_status && m_nextStep && m_securityLabel
+                          && m_control && m_fps && m_mbps && m_diagFrames && m_diagBytes
+                          && m_resolution && m_error && m_connectionError
+                          && m_languageBox && m_languageWarning && m_aboutButton
+                          && m_profilesLabel && m_profilesList && m_profilesEmpty
+                          && m_profileName && m_profileSave && m_profileEdit
+                          && m_profileDelete && m_profileRecover && m_profileWarning
+                          && m_diagTitle && m_diagSummary && m_diagMetrics
+                          && m_diagEvents && m_diagnosticsAction
+                          && m_reconnectButton && m_disconnectButton;
         bool nativeMode = false;
         bool fitMode = false;
-        if (modeControls) {
+        if (base) {
             setViewMode(FramebufferView::DisplayMode::Native);
             nativeMode = m_view->displayMode() == FramebufferView::DisplayMode::Native
-                         && m_nativeButton->isChecked()
-                         && !m_viewScroll->widgetResizable();
+                         && m_nativeButton->isChecked() && !m_viewScroll->widgetResizable();
             setViewMode(FramebufferView::DisplayMode::Fit);
             fitMode = m_view->displayMode() == FramebufferView::DisplayMode::Fit
-                      && m_fitButton->isChecked()
-                      && m_viewScroll->widgetResizable();
+                      && m_fitButton->isChecked() && m_viewScroll->widgetResizable();
         }
-        const bool ok = m_brand && m_pages && m_connectPageButton && m_sessionPageButton
-                        && m_diagnosticsPageButton && m_pages->count() == 3
-                        && !QGuiApplication::windowIcon().isNull()
-                        && m_host && m_port && m_connect && m_view && m_status
-                        && m_control && m_fps && m_mbps && m_frames && m_bytes
-                        && m_resolution && m_error && m_connectionError
-                        && m_languageBox && m_languageWarning
-                        && m_profilesLabel && m_profilesBox && m_profileSave
-                        && m_profileEdit && m_profileDelete && m_profileConnect
-                        && m_profileRecover && m_profileWarning
-                        && m_diagnosticsAction && modeControls && nativeMode && fitMode;
+        const bool layouts = base
+            && verifyLayoutAt(QSize(800, 600), Language::English, false)
+            && verifyLayoutAt(QSize(1366, 768), Language::Chinese, false)
+            && verifyLayoutAt(QSize(900, 600), Language::English, true);
+        m_host->setText(QString(240, QLatin1Char('h')) + QStringLiteral(".example"));
+        m_lastErrorRaw = QString(240, QLatin1Char('e'));
+        refreshDynamicText();
+        const bool longText = m_connectionError->wordWrap() && m_error->wordWrap()
+                              && textFits(m_connect, m_connect->text())
+                              && textFits(m_connectPageButton, m_connectPageButton->text());
+        m_host->clear();
+        m_lastErrorRaw.clear();
+        refreshDynamicText();
+        applyState(RfbClient::State::Connected);
+        const bool actions = m_control->isEnabled() && !m_control->isChecked()
+                             && m_disconnectButton->isEnabled()
+                             && m_disconnectButton->isVisibleTo(this)
+                             && !m_view->inputEnabled();
+        applyState(RfbClient::State::Disconnected);
+        const bool disconnected = !m_control->isEnabled() && m_connect->isEnabled()
+                                  && !m_disconnectButton->isEnabled()
+                                  && !m_view->inputEnabled();
+        const bool ok = base && layouts && longText && nativeMode && fitMode
+                        && actions && disconnected;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
-                  << " host=" << (m_host != nullptr)
-                  << " port=" << (m_port != nullptr)
-                  << " view=" << (m_view != nullptr)
                   << " view-modes=" << (nativeMode && fitMode)
+                  << " layouts=" << layouts
+                  << " long-text=" << longText
+                  << " actions=" << (actions && disconnected)
                   << " task-pages=" << (m_pages ? m_pages->count() : 0)
-                  << " telemetry=" << (m_fps != nullptr && m_mbps != nullptr)
-                  << " language=" << (m_languageBox != nullptr)
                   << " lang=" << (isChinese(m_language) ? "zh" : "en")
                   << " title=" << windowTitle().toStdString()
                   << std::endl;
@@ -532,7 +837,6 @@ private:
                            QString *idOut = nullptr);
     bool editProfileRecord(const QString &id, QString name, QString host, quint16 port);
     bool removeProfileRecord(const QString &id);
-    bool connectSavedProfile();
     void promptSaveProfile();
     void promptEditProfile();
     void promptDeleteProfile();
@@ -607,72 +911,146 @@ private:
     {
         setWindowTitle(text("HyRemoteTool - 远程访问客户端",
                             "HyRemoteTool - Remote access client"));
-        m_connectPageButton->setText(text("连接", "Connect"));
-        m_sessionPageButton->setText(text("会话", "Session"));
-        m_diagnosticsPageButton->setText(text("诊断", "Diag"));
+        m_brandText->setText(QStringLiteral("HyRemoteTool"));
+        m_aboutButton->setText(text("关于", "About"));
+        m_connectPageButton->setText(text("连接", "Connections"));
+        m_sessionPageButton->setText(text("远程会话", "Session"));
+        m_diagnosticsPageButton->setText(text("诊断", "Diagnostics"));
+        m_connectTitle->setText(text("连接已知端点", "Connect to a known endpoint"));
+        m_connectIntro->setText(text(
+            "选择本机档案或输入远程应用地址；连接默认只读，不会自动发送本机输入。",
+            "Select a local bookmark or enter a remote application address. Connections start view-only."));
         m_remoteLabel->setText(text("远程", "Remote"));
         m_portLabel->setText(text("端口", "Port"));
-        m_connect->setText((m_state == RfbClient::State::Connected
-                            || m_state == RfbClient::State::Connecting
-                            || m_state == RfbClient::State::Handshaking)
-                               ? text("断开", "Disconnect")
-                               : text("连接", "Connect"));
-        QString status = stateText(m_state, m_language);
-        if (m_state == RfbClient::State::Connected) {
-            status += m_control->isChecked()
-                ? text(" · 已请求控制（设备未确认）",
-                       " · control requested (device not confirmed)")
-                : text(" · 只读", " · view-only");
-        }
-        m_status->setText(status);
-        m_control->setText(text("请求远程控制", "Request control"));
-        m_fitButton->setText(text("适应", "Fit"));
+        m_profileNameLabel->setText(text("名称（可选）", "Name (optional)"));
+        m_control->setText(m_control->isChecked()
+            ? text("本地输入已启用（远端权限未知）", "Local input enabled (remote grant unknown)")
+            : text("只读 · 请求控制", "View-only · Request control"));
+        m_fitButton->setText(text("适应窗口", "Fit"));
         m_nativeButton->setText(QStringLiteral("100%"));
-        m_fullscreenButton->setText(isFullScreen()
-                                        ? text("退出全屏", "Exit")
-                                        : text("全屏", "Full"));
+        m_reconnectButton->setText(text("重连", "Reconnect"));
+        m_disconnectButton->setText(text("断开", "Disconnect"));
+        m_sessionDiagnosticsButton->setText(text("诊断", "Diagnostics"));
+        m_connectionDiagnosticsButton->setText(text("诊断详情", "Diagnostics"));
         m_control->setToolTip(text(
             "默认只读。勾选后仅允许本机发送输入；远端是否接受由设备策略决定，RFB 名称不能证明授权。",
             "View-only by default. Checking only permits local input sending; "
             "device policy decides whether it is accepted. RFB name is not a grant."));
-        m_control->setEnabled(m_state == RfbClient::State::Connected);
         m_languageBox->setItemText(0, text("自动（本机系统）", "Auto (local system)"));
-        m_diagnosticsAction->setText(text("诊断", "Diagnostics"));
+        m_languageBox->setToolTip(text("界面语言；选择时尝试保存到本机。命令行仅覆盖本次启动。",
+                                       "UI language; selections are saved locally when writable. CLI applies to this launch only."));
+        m_diagnosticsAction->setText(text("打开诊断报告", "Open diagnostics report"));
+        m_diagTitle->setText(text("本机诊断事实", "Local diagnostic facts"));
         if (m_diagDialog)
             m_diagDialog->setChinese(isChinese(m_language));
-        m_profilesLabel->setText(text("已保存", "Saved"));
+        m_profilesLabel->setText(text("已保存 / 最近使用", "Saved / recently used"));
         m_profileSave->setText(text("保存", "Save"));
         m_profileEdit->setText(text("编辑", "Edit"));
         m_profileDelete->setText(text("删除", "Delete"));
-        m_profileConnect->setText(text("连接档案", "Connect saved"));
         m_profileRecover->setText(text("恢复", "Recover"));
-        m_profilesBox->setItemText(0, text("选择已保存的连接", "Select saved connection"));
-        updateProfileButtons();
-        m_languageBox->setToolTip(text("界面语言；选择时尝试保存到本机。命令行仅覆盖本次启动。",
-                                       "UI language; selections are saved locally when writable. CLI applies to this launch only."));
+        m_profilesEmpty->setText(text("尚无本机档案。填写右侧地址后可保存。",
+                                      "No local bookmarks yet. Enter an address and save it."));
         m_languageWarning->setText(
             text("界面语言保存失败；本次选择只对当前运行有效。",
                  "Could not save the UI language; this choice applies only to this session."));
+        updateProfileButtons();
+        refreshDynamicText();
+        refreshDiagnosticsSummary();
+    }
+
+    void refreshDynamicText()
+    {
+        const bool busy = m_state == RfbClient::State::Connecting
+                          || m_state == RfbClient::State::Handshaking;
+        const bool connected = m_state == RfbClient::State::Connected;
+        m_connect->setText(busy ? text("取消", "Cancel")
+            : connected ? text("断开", "Disconnect")
+            : m_state == RfbClient::State::Failed
+                ? text("重试（只读）", "Retry (read-only)")
+                : text("连接（只读）", "Connect (read-only)"));
+
+        QString status = stateText(m_state, m_language);
+        if (connected)
+            status += m_control->isChecked()
+                ? text(" · 已请求控制（设备未确认）",
+                       " · control requested (device not confirmed)")
+                : text(" · 只读", " · view-only");
+        m_status->setText(status);
+        const QString endpoint = m_host->text().trimmed().isEmpty()
+            ? text("未指定端点", "no endpoint")
+            : m_host->text().trimmed() + QStringLiteral(":")
+                  + QString::number(m_port->value());
+        m_sessionHeader->setText(text("会话：", "Session: ") + endpoint
+            + QStringLiteral(" · ") + status);
+        m_nextStep->setText(m_state == RfbClient::State::Failed
+            ? diagAdviceText(m_diagnostics.report().snapshot().lastFailure, m_language)
+            : text("后续操作保持只读；可在会话页显式请求控制。",
+                   "Follow-up actions remain view-only; request control explicitly on the session page."));
+        m_control->setEnabled(connected);
+        m_fullscreenButton->setText(isFullScreen()
+            ? text("退出全屏", "Exit fullscreen")
+            : text("全屏", "Fullscreen"));
+        m_reconnectButton->setEnabled(!busy && !m_host->text().trimmed().isEmpty());
+        m_disconnectButton->setEnabled(busy || connected);
         m_languageWarning->setVisible(m_languageSaveFailed);
         m_fps->setText(QStringLiteral("FPS %1").arg(m_lastStats.fps, 0, 'f', 1));
         m_mbps->setText(QStringLiteral("%1 Mbit/s").arg(m_lastStats.mbitPerSecond, 0, 'f', 2));
-        m_frames->setText(text("帧数 %1", "Frames %1").arg(m_lastStats.frames));
-        m_bytes->setText(text("字节 %1", "Bytes %1").arg(humanBytes(m_lastStats.bytes)));
         m_resolution->setText(m_frameSize.isEmpty()
                                   ? text("无画面", "No frame")
                                   : QStringLiteral("%1 × %2").arg(m_frameSize.width()).arg(m_frameSize.height()));
-        m_error->setText(localizedError(m_lastErrorRaw));
-        m_error->setVisible(!m_lastErrorRaw.isEmpty());
-        m_connectionError->setText(localizedError(m_lastErrorRaw));
-        m_connectionError->setVisible(!m_lastErrorRaw.isEmpty());
-        if (m_view && m_view->hasFrame() == false)
+        m_securityLabel->setText(text("未加密 · 仅受信任网络", "Unencrypted · trusted network only"));
+        const QString error = localizedError(m_lastErrorRaw);
+        m_error->setText(error);
+        m_error->setVisible(!error.isEmpty());
+        m_connectionError->setText(error);
+        m_connectionError->setVisible(!error.isEmpty());
+        if (m_view && !m_view->hasFrame())
             m_view->setPlaceholder(placeholderText());
+        if (m_pages->currentIndex() == 2)
+            refreshDiagnosticsSummary();
     }
 
-    void toggleConnection(bool fromProfile = false)
+    void refreshDiagnosticsSummary()
     {
-        if (!fromProfile)
-            m_pendingProfileId.clear();
+        const auto &facts = m_diagnostics.report().snapshot();
+        const auto &events = m_diagnostics.report().recentEvents();
+        m_diagSummary->setText(
+            text("阶段：", "Stage: ") + diagStageText(facts.stage, m_language)
+            + QStringLiteral(" · ") + text("失败分类：", "Failure: ")
+            + diagFailureText(facts.lastFailure, m_language)
+            + QStringLiteral("\n") + text("下一步：", "Next step: ")
+            + diagAdviceText(facts.lastFailure, m_language)
+            + QStringLiteral("\n") + text("端点：", "Endpoint: ")
+            + text("[默认隐藏]", "[hidden by default]")
+            + QStringLiteral("\n") + text("来源：本机客户端观察，不代表远端身份、CPU 或业务结果。",
+                                          "Source: local client observations only; not remote identity, CPU or outcome."));
+        m_diagMetrics->setText(
+            text("客户端支持范围：RFB 3.x / None；协商版本与安全类型：未知（本机未暴露）。",
+                 "Client support: RFB 3.x / None; negotiated version and security type: unknown (not exposed locally).")
+            + QStringLiteral("\n") + text("画面：", "Frame: ") + m_resolution->text()
+            + QStringLiteral(" · FPS ") + QString::number(facts.localFps, 'f', 1)
+            + QStringLiteral(" · ") + QString::number(facts.localMbitPerSecond, 'f', 2)
+            + QStringLiteral(" Mbit/s"));
+        m_diagFrames->setText(text("累计帧数：", "Cumulative frames: ")
+                              + QString::number(facts.receivedFrames));
+        m_diagBytes->setText(text("累计字节：", "Cumulative bytes: ")
+                             + humanBytes(facts.receivedBytes));
+        QStringList lines;
+        for (int i = 0; i < events.size() && i < ToolBasicDiagnostics::kMaxEvents; ++i) {
+            const auto &event = events.at(i);
+            const QDateTime when = QDateTime::fromMSecsSinceEpoch(
+                event.observedUtcMs, Qt::UTC);
+            lines << when.toString(Qt::ISODate) + QStringLiteral(" · ")
+                       + diagStageText(event.stage, m_language)
+                       + QStringLiteral(" · ") + diagFailureText(event.reason, m_language);
+        }
+        m_diagEvents->setText(text("最近事件：", "Recent events: ")
+            + (lines.isEmpty() ? text("暂无", "none") : lines.join(QLatin1Char('\n'))));
+    }
+
+    void toggleConnection()
+    {
+        m_pendingProfileId.clear();
         const auto state = m_client->state();
         if (state == RfbClient::State::Connected || state == RfbClient::State::Connecting
             || state == RfbClient::State::Handshaking) {
@@ -683,14 +1061,14 @@ private:
         const QString host = m_host->text().trimmed();
         if (host.isEmpty()) {
             m_lastErrorRaw = QStringLiteral("enter-host");
-            retranslateUi();
+            refreshDynamicText();
             return;
         }
         m_lastErrorRaw.clear();
         m_diagnostics.beginAttempt(host, static_cast<quint16>(m_port->value()));
         if (m_diagDialog)
             m_diagDialog->resetEndpointSelection();
-        retranslateUi();
+        refreshDynamicText();
         m_client->connectToHost(host, static_cast<quint16>(m_port->value()));
     }
 
@@ -706,8 +1084,6 @@ private:
             // A successful connection has a usable session task page; move there
             // without implying that remote input was granted.
             m_pages->setCurrentIndex(1);
-            m_sessionPageButton->setChecked(true);
-            m_connectPageButton->setChecked(false);
         }
         if (connected && !m_pendingProfileId.isEmpty()) {
             QString error;
@@ -762,28 +1138,41 @@ private:
     QSize m_frameSize;
     QString m_lastErrorRaw;
 
+    QWidget *m_topBar = nullptr;
     QLabel *m_brand = nullptr;
+    QLabel *m_brandText = nullptr;
+    QPushButton *m_aboutButton = nullptr;
     QStackedWidget *m_pages = nullptr;
     QPushButton *m_connectPageButton = nullptr;
     QPushButton *m_sessionPageButton = nullptr;
     QPushButton *m_diagnosticsPageButton = nullptr;
+    QLabel *m_connectTitle = nullptr;
+    QLabel *m_connectIntro = nullptr;
     QLabel *m_remoteLabel = nullptr;
     QLineEdit *m_host = nullptr;
     QLabel *m_portLabel = nullptr;
     QSpinBox *m_port = nullptr;
+    QLabel *m_profileNameLabel = nullptr;
+    QLineEdit *m_profileName = nullptr;
     QPushButton *m_connect = nullptr;
     QLabel *m_status = nullptr;
+    QLabel *m_nextStep = nullptr;
     QComboBox *m_languageBox = nullptr;
     QLabel *m_languageWarning = nullptr;
     QLabel *m_connectionError = nullptr;
+    QPushButton *m_connectionDiagnosticsButton = nullptr;
     QLabel *m_profilesLabel = nullptr;
-    QComboBox *m_profilesBox = nullptr;
+    QListWidget *m_profilesList = nullptr;
+    QLabel *m_profilesEmpty = nullptr;
     QPushButton *m_profileSave = nullptr;
     QPushButton *m_profileEdit = nullptr;
     QPushButton *m_profileDelete = nullptr;
-    QPushButton *m_profileConnect = nullptr;
     QPushButton *m_profileRecover = nullptr;
     QLabel *m_profileWarning = nullptr;
+    QWidget *m_operationBar = nullptr;
+    QWidget *m_statusRow = nullptr;
+    QLabel *m_sessionHeader = nullptr;
+    QLabel *m_securityLabel = nullptr;
     QLabel *m_error = nullptr;
     QLabel *m_fps = nullptr;
     QLabel *m_mbps = nullptr;
@@ -795,6 +1184,16 @@ private:
     QPushButton *m_fitButton = nullptr;
     QPushButton *m_nativeButton = nullptr;
     QPushButton *m_fullscreenButton = nullptr;
+    QPushButton *m_reconnectButton = nullptr;
+    QPushButton *m_disconnectButton = nullptr;
+    QPushButton *m_sessionDiagnosticsButton = nullptr;
+    QLabel *m_diagTitle = nullptr;
+    QLabel *m_diagSummary = nullptr;
+    QLabel *m_diagMetrics = nullptr;
+    QLabel *m_diagFrames = nullptr;
+    QLabel *m_diagBytes = nullptr;
+    QLabel *m_diagEvents = nullptr;
+    QRect m_normalGeometry;
 };
 
 
@@ -962,7 +1361,7 @@ void ClientWindow::setLocalControlRequested(bool requested)
         m_view->setInputEnabled(false);
         m_client->setRemoteControlEnabled(false);
     }
-    retranslateUi(); // show local intent, not an invented Host grant
+    refreshDynamicText(); // show local intent, not an invented Host grant
 }
 
 void ClientWindow::setViewMode(FramebufferView::DisplayMode mode)
@@ -973,16 +1372,63 @@ void ClientWindow::setViewMode(FramebufferView::DisplayMode mode)
     m_view->setDisplayMode(mode);
     m_fitButton->setChecked(mode == FramebufferView::DisplayMode::Fit);
     m_nativeButton->setChecked(mode == FramebufferView::DisplayMode::Native);
-    retranslateUi();
+    refreshDynamicText();
 }
 
 void ClientWindow::toggleFullscreen()
 {
-    if (isFullScreen())
+    if (isFullScreen()) {
         showNormal();
-    else
+        if (!m_normalGeometry.isNull())
+            setGeometry(m_normalGeometry);
+        m_topBar->show();
+        m_sessionHeader->show();
+        m_statusRow->show();
+    } else {
+        m_normalGeometry = geometry();
+        m_pages->setCurrentIndex(1);
+        m_topBar->hide();
+        m_sessionHeader->hide();
+        m_statusRow->hide();
         showFullScreen();
-    retranslateUi();
+    }
+    refreshDynamicText();
+}
+
+void ClientWindow::reconnectSession()
+{
+    const QString host = m_host->text().trimmed();
+    if (host.isEmpty()) {
+        m_lastErrorRaw = QStringLiteral("enter-host");
+        refreshDynamicText();
+        return;
+    }
+    const quint16 port = static_cast<quint16>(m_port->value());
+    setLocalControlRequested(false);
+    m_lastErrorRaw.clear();
+    const auto state = m_client->state();
+    if (state == RfbClient::State::Connected || state == RfbClient::State::Connecting
+        || state == RfbClient::State::Handshaking) {
+        m_client->disconnectFromHost();
+        QTimer::singleShot(0, this, [this, host, port] {
+            m_diagnostics.beginAttempt(host, port);
+            m_client->connectToHost(host, port);
+            refreshDynamicText();
+        });
+    } else {
+        connectTo(host, port);
+    }
+}
+
+void ClientWindow::openAbout()
+{
+    QMessageBox::about(this, text("关于 HyRemoteTool", "About HyRemoteTool"),
+        text("HyRemoteTool：本机 RFB 联调与诊断工具。\n"
+             "版本以已安装目录 HYREMOTE-MANIFEST.txt 为准，源码开发构建不声称发行版本。\n"
+             "已知限制：支持 RFB 3.x / None；无传输加密、凭据保存、远端身份判定或多会话。",
+             "HyRemoteTool: local RFB integration and diagnostics tool.\n"
+             "The installed HYREMOTE-MANIFEST.txt is authoritative for version; a source build claims no release version.\n"
+             "Known limits: RFB 3.x / None only; no transport encryption, credential storage, remote identity proof or multi-session."));
 }
 
 bool ClientWindow::verifyServerNameMetadata()
@@ -1053,7 +1499,9 @@ bool ClientWindow::verifyServerNameMetadata()
 
 QString ClientWindow::selectedProfileId() const
 {
-    return m_profilesBox ? m_profilesBox->currentData().toString() : QString();
+    if (!m_profilesList || !m_profilesList->currentItem())
+        return {};
+    return m_profilesList->currentItem()->data(Qt::UserRole).toString();
 }
 
 const ToolConnectionProfile *ClientWindow::selectedProfile() const
@@ -1070,17 +1518,17 @@ const ToolConnectionProfile *ClientWindow::selectedProfile() const
 
 void ClientWindow::updateProfileButtons()
 {
-    if (!m_profilesBox)
+    if (!m_profilesList)
         return;
     const bool busy = m_state == RfbClient::State::Connecting
                       || m_state == RfbClient::State::Handshaking
                       || m_state == RfbClient::State::Connected;
     const bool hasProfile = selectedProfile() != nullptr;
-    m_profilesBox->setEnabled(m_profilesLoaded && !busy && m_profilesBox->count() > 1);
+    m_profilesList->setEnabled(m_profilesLoaded && !busy);
     m_profileSave->setEnabled(m_profilesLoaded && !busy);
     m_profileEdit->setEnabled(m_profilesLoaded && !busy && hasProfile);
     m_profileDelete->setEnabled(m_profilesLoaded && !busy && hasProfile);
-    m_profileConnect->setEnabled(m_profilesLoaded && !busy && hasProfile);
+    m_profilesEmpty->setVisible(m_profilesList->count() == 0);
     m_profileRecover->setVisible(m_profilesCorrupt);
     m_profileRecover->setEnabled(m_profilesCorrupt && !busy);
     m_profileWarning->setText(m_profileError.isEmpty()
@@ -1094,26 +1542,39 @@ void ClientWindow::rebuildProfiles(const QString &preferredId)
 {
     const QString keepId = preferredId.isEmpty() ? selectedProfileId() : preferredId;
     {
-        QSignalBlocker blocker(m_profilesBox);
-        m_profilesBox->clear();
-        m_profilesBox->addItem(text("选择已保存的连接", "Select saved connection"), QString());
+        const QSignalBlocker blocker(m_profilesList);
+        m_profilesList->clear();
+        m_profilesList->setSortingEnabled(false);
         for (const auto &p : m_profileStore.profiles()) {
-            const QString label = QStringLiteral("%1 · %2:%3")
-                                      .arg(p.name, p.host, QString::number(p.port));
-            m_profilesBox->addItem(label, p.id);
-            m_profilesBox->setItemData(m_profilesBox->count() - 1, label, Qt::ToolTipRole);
+            const QString endpoint = p.host + QStringLiteral(":") + QString::number(p.port);
+            const QString lastUsed = p.lastUsedUtcMs > 0
+                ? QDateTime::fromMSecsSinceEpoch(p.lastUsedUtcMs, Qt::UTC)
+                      .toString(Qt::ISODate)
+                : text("从未连接", "never used");
+            const QString label = p.name + QStringLiteral(" · ") + endpoint;
+            auto *item = new QListWidgetItem(p.name + QStringLiteral("\n") + endpoint
+                                             + QStringLiteral("\n") + lastUsed);
+            item->setData(Qt::UserRole, p.id);
+            item->setData(Qt::ToolTipRole, label + QStringLiteral("\n") + lastUsed);
+            m_profilesList->addItem(item);
         }
-        const int index = m_profilesBox->findData(keepId);
-        m_profilesBox->setCurrentIndex(index > 0 ? index : 0);
+        int preferredRow = -1;
+        for (int i = 0; i < m_profilesList->count(); ++i) {
+            if (m_profilesList->item(i)->data(Qt::UserRole).toString() == keepId) {
+                preferredRow = i;
+                break;
+            }
+        }
+        m_profilesList->setCurrentRow(preferredRow);
     }
     updateProfileButtons();
 }
 
 void ClientWindow::selectProfile(int index)
 {
-    if (index < 0 || index >= m_profilesBox->count())
+    if (index < 0 || index >= m_profilesList->count())
         return;
-    const auto id = m_profilesBox->itemData(index).toString();
+    const auto id = m_profilesList->item(index)->data(Qt::UserRole).toString();
     const bool busy = m_state == RfbClient::State::Connecting
                       || m_state == RfbClient::State::Handshaking
                       || m_state == RfbClient::State::Connected;
@@ -1122,6 +1583,7 @@ void ClientWindow::selectProfile(int index)
             if (p.id == id) {
                 m_host->setText(p.host);
                 m_port->setValue(p.port);
+                m_profileName->setText(p.name);
                 break;
             }
         }
@@ -1176,28 +1638,6 @@ bool ClientWindow::removeProfileRecord(const QString &id)
     return true;
 }
 
-bool ClientWindow::connectSavedProfile()
-{
-    if (!m_profilesLoaded || !m_profileConnect->isEnabled())
-        return false;
-    const auto *profile = selectedProfile();
-    if (!profile)
-        return false;
-    const QString id = profile->id;
-    m_host->setText(profile->host);
-    m_port->setValue(profile->port);
-    // A saved bookmark is never a ControlGrant; each new RFB session
-    // explicitly begins view-only, regardless of any previous connection.
-    m_control->setChecked(false);
-    m_view->setInputEnabled(false);
-    m_client->setRemoteControlEnabled(false);
-    m_pendingProfileId = id;
-    m_startingProfileConnection = true;
-    toggleConnection(true);
-    m_startingProfileConnection = false;
-    return true;
-}
-
 void ClientWindow::promptSaveProfile()
 {
     const QString host = m_host->text().trimmed();
@@ -1206,13 +1646,8 @@ void ClientWindow::promptSaveProfile()
         updateProfileButtons();
         return;
     }
-    bool accepted = false;
-    const QString name = QInputDialog::getText(
-        this, text("保存连接", "Save connection"),
-        text("本机显示名称", "Local display name"),
-        QLineEdit::Normal, host, &accepted);
-    if (!accepted)
-        return;
+    const QString enteredName = m_profileName->text().trimmed();
+    const QString name = enteredName.isEmpty() ? host : enteredName;
     if (!saveProfileRecord(name, host, static_cast<quint16>(m_port->value())))
         QMessageBox::warning(this, text("保存失败", "Save failed"), m_profileError);
 }
@@ -1291,22 +1726,30 @@ void ClientWindow::promptRecoverProfiles()
 
 bool ClientWindow::verifyProfileUi()
 {
-    const bool empty = m_profilesLoaded && !m_profilesCorrupt && m_profilesBox
-                       && m_profilesBox->count() == 1
+    const bool empty = m_profilesLoaded && !m_profilesCorrupt && m_profilesList
+                       && m_profilesList->count() == 0
                        && selectedProfileId().isEmpty()
                        && m_client->state() == RfbClient::State::Disconnected
                        && !m_view->inputEnabled();
     QString id;
     const bool saved = saveProfileRecord(QStringLiteral("Factory A"),
                                          QStringLiteral("192.168.1.6"), 5921, &id);
-    const bool listed = m_profilesBox->count() == 2 && selectedProfileId() == id;
+    const bool listed = m_profilesList->count() == 1 && selectedProfileId() == id;
     m_host->setText(QStringLiteral("unsaved.example"));
     m_port->setValue(6000);
-    const int index = m_profilesBox->findData(id);
-    const bool activated = index > 0 && QMetaObject::invokeMethod(
-        m_profilesBox, "activated", Qt::DirectConnection, Q_ARG(int, index));
+    m_profilesList->setCurrentRow(-1);
+    const int index = [this, &id] {
+        for (int i = 0; i < m_profilesList->count(); ++i)
+            if (m_profilesList->item(i)->data(Qt::UserRole).toString() == id)
+                return i;
+        return -1;
+    }();
+    m_profilesList->setCurrentRow(index); // genuine production currentRowChanged signal
+    QApplication::processEvents();
+    const bool activated = index >= 0 && selectedProfileId() == id;
     const bool selected = m_host->text() == QStringLiteral("192.168.1.6")
                           && m_port->value() == 5921
+                          && m_profileName->text() == QStringLiteral("Factory A")
                           && m_client->state() == RfbClient::State::Disconnected;
     // State-machine regression only (NO real socket): the RFB client
     // performs a synchronous internal Disconnected during a Failed retry.
@@ -1336,12 +1779,17 @@ bool ClientWindow::verifyProfileUi()
                                         5930, &secondId)
                       && saveProfileRecord(QStringLiteral("Factory C"),
                                            QStringLiteral("10.0.0.9"), 5940, &thirdId)
-                      && m_profilesBox->count() == 4;
-    const int longIndex = m_profilesBox->findData(secondId);
-    if (longIndex > 0)
-        m_profilesBox->setCurrentIndex(longIndex);
-    const bool longActivated = longIndex > 0 && QMetaObject::invokeMethod(
-        m_profilesBox, "activated", Qt::DirectConnection, Q_ARG(int, longIndex));
+                      && m_profilesList->count() == 3;
+    const int longIndex = [this, &secondId] {
+        for (int i = 0; i < m_profilesList->count(); ++i)
+            if (m_profilesList->item(i)->data(Qt::UserRole).toString() == secondId)
+                return i;
+        return -1;
+    }();
+    if (longIndex >= 0)
+        m_profilesList->setCurrentRow(longIndex);
+    QApplication::processEvents();
+    const bool longActivated = longIndex >= 0 && selectedProfileId() == secondId;
     const bool longSelected = longActivated
                               && m_host->text() == longHost
                               && m_port->value() == 5930
@@ -1351,17 +1799,21 @@ bool ClientWindow::verifyProfileUi()
     QString percentId;
     const bool percentSaved = saveProfileRecord(
         QStringLiteral("Lab %1"), QStringLiteral("fe80::1%2"), 5921, &percentId);
-    const int percentIndex = m_profilesBox->findData(percentId);
-    const bool percentLabel = percentSaved && percentIndex > 0
-                              && m_profilesBox->itemText(percentIndex)
-                                 == QStringLiteral("Lab %1 · fe80::1%2:5921")
-                              && m_profilesBox->itemData(percentIndex, Qt::ToolTipRole).toString()
-                                 == QStringLiteral("Lab %1 · fe80::1%2:5921");
+    const int percentIndex = [this, &percentId] {
+        for (int i = 0; i < m_profilesList->count(); ++i)
+            if (m_profilesList->item(i)->data(Qt::UserRole).toString() == percentId)
+                return i;
+        return -1;
+    }();
+    const bool percentLabel = percentSaved && percentIndex >= 0
+                              && m_profilesList->item(percentIndex)
+                                     ->data(Qt::ToolTipRole).toString()
+                                     .startsWith(QStringLiteral("Lab %1 · fe80::1%2:5921"));
     const bool deleted = removeProfileRecord(percentId)
                          && removeProfileRecord(secondId)
                          && removeProfileRecord(thirdId)
                          && removeProfileRecord(id)
-                         && m_profilesBox->count() == 1
+                         && m_profilesList->count() == 0
                          && m_profileStore.profiles().isEmpty()
                          && m_client->state() == RfbClient::State::Disconnected;
     const bool ok = empty && saved && listed && activated && selected
