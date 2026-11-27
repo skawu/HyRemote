@@ -84,23 +84,8 @@ jobs:
           fi
           echo "release-authority changed: ${authority_changed}"
           echo "authority_changed=${authority_changed}" >> "$GITHUB_OUTPUT"
-      # #571: cheap CI classifier regression only if its authority changed; no Qt runner.
-      # The full CI workflow deliberately does not subscribe to ordinary PR commits.
-      - name: Self-test CI selector when its authority changes (no Qt)
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          if git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
-               .github/scripts/resolve-ci-scope.py .github/workflows/ci.yml | grep -q .; then
-            python3 .github/scripts/resolve-ci-scope.py --self-test
-          else
-            echo "CI selector unchanged; no Qt or CI checks needed before merge"
-          fi
-
+      # #982: the CI classifier self-test belongs to ci.yml's Classify changes job.
+      # Running it here duplicated the same deterministic check on selector/authority PRs.
   release-tag-audit-self-test:
     # #380: the resolver's self test is release-authority evidence, not a per-event ritual. It runs when the
     # release-audit authority changed, or on a deliberate dispatch. Ordinary PR/develop policy events skip it; a
@@ -349,7 +334,8 @@ jobs:
                       sys.path.insert(0, ".github/scripts")
                       from release_correction import validate as validate_correction
                       from release_correction import validate_reopen, validate_reopen_rc7
-                      from release_correction import validate_v035_numeric_watermark
+                      from release_correction import validate_v035_numeric_watermark, validate_v036_notes
+                      from release_correction import validate_v0351_maintenance
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
                           # Only two exact independently reviewed exceptions exist:
                           # #806 accepted RC6->RC7, and #812/#768 accepted RC7->next
@@ -380,6 +366,19 @@ jobs:
                                   base_notes=old_notes, head_notes=notes,
                                   base_cmake=old_cmake, head_cmake=new_cmake,
                                   actual_base_sha=actual_accepted_base, head_ref=head)
+                      elif (actual_base == "73c0a7ce115d6f530f86ca3316f1d23c524374db"
+                            and head == "feature/1086-release-preparation"):
+                          stage = validate_v0351_maintenance(
+                              git=git, version=version, notes_name=notes_name,
+                              base_notes=old_notes, head_notes=notes,
+                              base_cmake=old_cmake, head_cmake=new_cmake,
+                              actual_base_sha=actual_base, head_ref=head)
+                      elif (actual_base == "75e2d2fff0500fcc6bb301dd0b81ba7f03e280e0"
+                            and head == "feature/95-release-preparation"):
+                          stage = validate_v036_notes(
+                              git=git, version=version, notes_name=notes_name,
+                              head_notes=notes, base_cmake=old_cmake, head_cmake=new_cmake,
+                              actual_base_sha=actual_base, head_ref=head)
                       elif (actual_base == "b0680d5df4f76d8b84b02a1b950030a65a89ddca"
                             and head == "feature/589-release-preparation"):
                           # One exact pre-publication P2 repair (#1047). The
@@ -523,6 +522,9 @@ jobs:
             requested="${requested#backmerge/v}"
           fi
           echo "requested release version: ${requested}"
+          # Apply the same fail-closed selector used by the tag audit before exporting lifecycle fields.
+          cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_RELEASE_VERSION="${requested}" \
+            -P tests/release-readiness/release_scope.cmake
           python - "${authority_file}" "${requested}" <<'PY'
           import json, re, sys
           authority_path, requested = sys.argv[1], sys.argv[2]

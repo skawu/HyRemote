@@ -52,6 +52,7 @@ public:
     void clearActiveSurface();
 
     CompositeTargetSnapshot captureSnapshot() const;
+    QSize initialFramebufferPixelSize() const override;
     std::optional<CompositeSurfaceSnapshot> surfaceById(SurfaceId id) const;
     std::optional<CompositeSurfaceSnapshot> activeSurface() const;
     std::optional<CompositeRoutedPoint> routeCanvasPoint(const QPoint &canvasPosition) const;

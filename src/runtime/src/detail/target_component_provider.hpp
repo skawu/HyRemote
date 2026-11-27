@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <QSize>
 
 #include "detail/component_factories.hpp"
 
@@ -28,6 +29,13 @@ public:
     virtual TargetComponents createTargetComponents(
         bool remoteInputEnabled,
         const BuiltinTargetResolver &resolveBuiltinTarget) = 0;
+
+    // Runtime-private, optional *output pixel grid* known before capture.
+    // A producer-backed RFB session may use it for early ServerInit and
+    // zero-viewer raw-frame reclamation; absent/invalid geometry stays opt-out.
+    // The default keeps existing custom providers/source-only configurations
+    // compatible without changing the installed SDK public interface.
+    virtual QSize initialFramebufferPixelSize() const { return {}; }
 };
 
 }  // namespace HyRemote::detail

@@ -11,6 +11,7 @@
 //   fatal/target loss: ErrorChanged(non-recoverable), StateChanged(Faulted)
 
 #include "access_instance.hpp"
+#include "detail/target_component_provider.hpp"
 #include "detail/component_factories.hpp"
 #include "hyremote/core/storage.hpp"
 
@@ -133,7 +134,22 @@ struct RuntimeState
     // between synthetic synchronous frames.
     std::atomic<bool> holdCaptureRequests{false};
     std::atomic<int> framesQueued{0};
+    // #790: number of zero-viewer idle-resource releases the Shared Runtime
+    // delivered to the capture source.
+    std::atomic<int> idleCaptureReleases{0};
+    // Deterministic stop-versus-scheduler handoff for the idle release hook.
+    std::atomic<bool> blockIdleRelease{false};
+    std::atomic<bool> idleReleaseEntered{false};
+    std::atomic<bool> idleReleaseInProgress{false};
+    std::atomic<bool> allowIdleReleaseExit{false};
+    std::atomic<bool> stopOverlappedIdleRelease{false};
     std::atomic<int> transportStops{0};
+    // Capture the actual RFB policy handed to transport by AccessInstance.
+    // Generic's CompositeTarget must get the same idle raw-frame release
+    // admission as direct Widget/Quick, but an empty composite must not.
+    std::atomic<bool> rfbReleasesIdleFrameBuffers{false};
+    std::atomic<int> rfbInitialWidth{0};
+    std::atomic<int> rfbInitialHeight{0};
     bool emitOneBootstrapFrame = false;
     bool oversizedBootstrapFirst = false;
     bool oversizedAfterValid = false;
@@ -144,6 +160,25 @@ struct RuntimeState
     hyremote::InputHandler inputHandler;
     hyremote::CaptureEventHandler captureEventHandler;
     hyremote::TransportEventHandler transportEventHandler;
+};
+
+// A private target provider can supply its output pixel grid without the
+// test executable constructing hidden-in-the-DLL CompositeTarget symbols.
+class SizedProviderTarget final : public QObject, public HyRemote::detail::TargetComponentProvider
+{
+public:
+    explicit SizedProviderTarget(QSize pixels) : m_pixels(pixels) {}
+
+    QSize initialFramebufferPixelSize() const override { return m_pixels; }
+
+    HyRemote::detail::TargetComponents createTargetComponents(
+        bool, const HyRemote::detail::BuiltinTargetResolver &) override
+    {
+        return {}; // existing test factory owns the synthetic capture source
+    }
+
+private:
+    QSize m_pixels;
 };
 
 class FakeInput final : public hyremote::InputSink
@@ -196,11 +231,29 @@ public:
 
     void stop() noexcept override
     {
+        if (m_state->idleReleaseInProgress.load(std::memory_order_acquire))
+            m_state->stopOverlappedIdleRelease.store(true, std::memory_order_release);
         ++m_state->captureStops;
         m_state->captureEventHandler = {};
         // Session joins its scheduler after stop(); do not mutate this
         // callback while requestFrame might still be unwinding.
         // The fake's Core callback gate already makes late delivery inert.
+    }
+
+    // #790: default-no-op hook implemented by a real product source; the fake
+    // only counts deliveries so the Runtime wiring can be asserted end to end.
+    void releaseIdleResources() noexcept override
+    {
+        ++m_state->idleCaptureReleases;
+        if (m_state->blockIdleRelease.load(std::memory_order_acquire)) {
+            m_state->idleReleaseInProgress.store(true, std::memory_order_release);
+            m_state->idleReleaseEntered.store(true, std::memory_order_release);
+            // Test-only pause on the scheduler thread. A separate releaser
+            // unblocks it while the lifecycle thread invokes stop().
+            while (!m_state->allowIdleReleaseExit.load(std::memory_order_acquire))
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            m_state->idleReleaseInProgress.store(false, std::memory_order_release);
+        }
     }
 
     bool requestFrame(const hyremote::CaptureRequest &) override
@@ -309,7 +362,10 @@ void installRuntime(const std::shared_ptr<RuntimeState> &state, bool captureSupp
     });
 
     HyRemote::detail::setTransportFactory([state](const QHostAddress &, quint16,
-                                                  const HyRemote::detail::RfbSecurityConfig &) {
+                                                  const HyRemote::detail::RfbSecurityConfig &security) {
+        state->rfbReleasesIdleFrameBuffers.store(security.releaseIdleFrameBuffers);
+        state->rfbInitialWidth.store(security.initialFramebufferWidth);
+        state->rfbInitialHeight.store(security.initialFramebufferHeight);
         HyRemote::detail::TransportComponent result;
         result.transport = std::make_unique<FakeTransport>(state);
         return result;
@@ -509,6 +565,138 @@ void testCaptureSleepsWithoutViewersAndResumesOnConnect()
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(state->captureRequests.load() > restartedRequests);
     instance.stop();
+    HyRemote::detail::resetFactories();
+}
+
+// #790: the one zero-viewer edge is owned by the Shared Runtime and delivered on
+// the capture scheduler thread, so every CaptureSource technology gets the same
+// release signal without its own viewer count or platform check.
+void testZeroViewerEdgeReleasesIdleCaptureResourcesOnce()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+
+    CHECK(instance.start());
+    for (int i = 0; i < 400 && state->framesQueued.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->framesQueued.load() == 1);
+    // #996/#967 review P2: a clientless bootstrap frame can fill a source's
+    // idle pixel/GPU cache. With no >0->0 transition ever happening, the
+    // common gate must deliver ONE release after a usable bootstrap; the
+    // transport has already recorded the ServerInit geometry by then.
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 1);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 400 && state->captureRequests.load() < 1; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() >= 1);
+
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 2);
+
+    // A duplicate/unreachable disconnect is not a second edge: one transition
+    // must not ask the source to release twice.
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    CHECK(state->idleCaptureReleases.load() == 2);
+
+    // Reconnecting Viewer requires capture again, and the next disconnect is a
+    // new edge: the release contract is per transition, not one-shot forever.
+    const int idleRequests = state->captureRequests.load();
+    emitTransport(state, hyremote::TransportEventCode::ClientConnected);
+    for (int i = 0; i < 400 && state->captureRequests.load() <= idleRequests; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->captureRequests.load() > idleRequests);
+    emitTransport(state, hyremote::TransportEventCode::ClientDisconnected);
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 3; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 3);
+
+    instance.stop();
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+// Core deliberately invokes source->stop() before joining the scheduler.
+// This must not invoke the underlying backend stop() concurrently with a
+// zero-viewer idle release already entered by that scheduler.
+void testStopDrainsInProgressIdleRelease()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    state->emitOneBootstrapFrame = true;
+    state->blockIdleRelease.store(true, std::memory_order_release);
+    installRuntime(state);
+    QObject target;
+    AccessInstance instance(&target);
+    CHECK(instance.start());
+
+    for (int i = 0; i < 400
+         && !state->idleReleaseEntered.load(std::memory_order_acquire); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(state->idleReleaseEntered.load(std::memory_order_acquire));
+
+    // A bounded release helper prevents deadlock in either implementation.
+    // With the old ordering, backend stop occurs during the held hook and
+    // the helper can release it immediately. With the fixed ordering, stop
+    // waits for this helper to release the hook before invoking backend stop.
+    std::thread releaseIdle([state] {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        while (std::chrono::steady_clock::now() < deadline
+               && state->captureStops.load(std::memory_order_acquire) == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        state->allowIdleReleaseExit.store(true, std::memory_order_release);
+    });
+    instance.stop();
+    releaseIdle.join();
+
+    CHECK(instance.state() == AccessState::Stopped);
+    CHECK(state->captureStops.load() == 1);
+    CHECK(!state->idleReleaseInProgress.load(std::memory_order_acquire));
+    CHECK(!state->stopOverlappedIdleRelease.load(std::memory_order_acquire));
+
+    // The lifecycle gate must reset on a subsequent start. No stale
+    // stopping state may reject a second bootstrap/zero-viewer release.
+    state->blockIdleRelease.store(false, std::memory_order_release);
+    CHECK(instance.start());
+    for (int i = 0; i < 400 && state->idleCaptureReleases.load() < 2; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(state->idleCaptureReleases.load() == 2);
+    instance.stop();
+    CHECK(state->captureStops.load() == 2);
+    CHECK(instance.state() == AccessState::Stopped);
+    HyRemote::detail::resetFactories();
+}
+
+// #790 The common AccessInstance must honor an instance-scoped provider's
+// known output grid. An absent grid must preserve the safe RFB opt-out.
+void testCompositeCanvasEnablesRfbIdleFrameRelease()
+{
+    const auto state = std::make_shared<RuntimeState>();
+    installRuntime(state);
+    SizedProviderTarget valid(QSize(640, 360));
+    AccessInstance instance(&valid);
+    CHECK(instance.start());
+    CHECK(state->rfbInitialWidth.load() == 640);
+    CHECK(state->rfbInitialHeight.load() == 360);
+    CHECK(state->rfbReleasesIdleFrameBuffers.load());
+    instance.stop();
+
+    SizedProviderTarget empty(QSize{});
+    AccessInstance emptyInstance(&empty);
+    CHECK(emptyInstance.start());
+    CHECK(state->rfbInitialWidth.load() == 0);
+    CHECK(state->rfbInitialHeight.load() == 0);
+    CHECK(!state->rfbReleasesIdleFrameBuffers.load());
+    emptyInstance.stop();
     HyRemote::detail::resetFactories();
 }
 
@@ -1169,6 +1357,9 @@ int main(int argc, char **argv)
     testEncryptedSecurityFailsClosedInDiagnostics();
     testClientCountIsEventDrivenAndNotRepeated();
     testCaptureSleepsWithoutViewersAndResumesOnConnect();
+    testZeroViewerEdgeReleasesIdleCaptureResourcesOnce();
+    testStopDrainsInProgressIdleRelease();
+    testCompositeCanvasEnablesRfbIdleFrameRelease();
     testSlowCaptureIsBoundedWithViewerInputAndStopRestart();
     testTargetDestroyedWhileCaptureIsIdle();
     testTargetLossReportedOnceAcrossWatcherAndPendingCapture();

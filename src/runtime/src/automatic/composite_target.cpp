@@ -66,7 +66,12 @@ public:
         if (m_state->target->thread() != application->thread())
             return false;
 
-        m_state->onFrame = std::move(onFrame);
+        // The accepted per-run handler is allocated once at start. Keeping a
+        // shared owner lets idle cancellation copy the handle without asking
+        // std::function to allocate under memory pressure, while stop() still
+        // drains all callbacks before releasing this per-run owner.
+        m_state->onFrame =
+            std::make_shared<const hyremote::FrameReadyHandler>(std::move(onFrame));
         m_state->onEvent = std::move(onEvent);
         m_state->active = true;
 
@@ -93,6 +98,7 @@ public:
             target = m_state->target;
             surfaceUnavailableHandler = m_state->surfaceUnavailableHandler;
             m_state->surfaceUnavailableHandler = 0;
+            m_state->lastCanvasSize = {};
 
             m_state->cv.wait(lock, [state = m_state] {
                 return state->processingRequests == 0 && state->parentCallbacksInFlight == 0;
@@ -132,6 +138,75 @@ public:
             Qt::QueuedConnection);
     }
 
+    // #790: a composite can own CPU images even when each child has released
+    // its own caches: an already completed child is stored in PendingRequest
+    // while a sibling async Qt grab is still outstanding. On 1->0 Viewer
+    // release those *parent-owned* frames as well; otherwise the same pixels
+    // may remain pinned indefinitely if the sibling never completes.
+    //
+    // Every admitted parent request still needs exactly one terminal callback
+    // to return its Core in-flight credit. An empty completion is rejected as
+    // non-image by Core and cannot be mislabelled as newly captured pixels.
+    // Late child completions find no pending request and are discarded.
+    void releaseIdleResources() noexcept override
+    {
+        // Never allocate to drain outstanding parent requests in a noexcept
+        // idle cleanup path. Extract one existing map node at a time and
+        // destroy its owned frames outside State::mutex; child callbacks and
+        // parent callbacks may re-enter the state while cleanup progresses.
+        std::size_t remaining = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (!m_state->active)
+                return;
+            remaining = m_state->pending.size();
+        }
+        while (remaining-- > 0) {
+            decltype(m_state->pending)::node_type canceled;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active || m_state->pending.empty())
+                    break;
+                canceled = m_state->pending.extract(m_state->pending.begin());
+            }
+            const hyremote::CaptureRequest request = canceled.mapped().request;
+            canceled = {}; // release any completed child QImages before callback
+            hyremote::RemoteFrame terminal;
+            terminal.requestId = request.id;
+            terminal.timing.ptsSource = hyremote::PtsSource::Completion;
+            terminal.timing.requestTime = request.requestTime;
+            terminal.timing.completionTime = hyremote::Clock::now();
+            try {
+                publishFrame(m_state, std::move(terminal));
+            } catch (...) {
+                // A failing callback copy must never terminate the host in
+                // the noexcept idle path. The extracted pixels are gone.
+            }
+        }
+
+        // A child owns other idle pixel/GPU caches. Snapshot child handles
+        // under the lock but call backend hooks outside it: no allocation
+        // failure or reentrant callback may unwind through this noexcept API.
+        try {
+            std::vector<std::shared_ptr<ChildRuntime>> children;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (!m_state->active)
+                    return;
+                children.reserve(m_state->children.size());
+                for (const auto &entry : m_state->children)
+                    children.push_back(entry.second);
+            }
+            for (const auto &child : children) {
+                if (child && child->capture)
+                    child->capture->releaseIdleResources();
+            }
+        } catch (...) {
+            // Existing safe behavior: a failed child snapshot keeps those
+            // child-owned caches until the next edge or source stop().
+        }
+    }
+
 private:
     struct ChildRuntime
     {
@@ -158,11 +233,11 @@ private:
         std::size_t processingRequests = 0;
         std::size_t parentCallbacksInFlight = 0;
         quint64 surfaceUnavailableHandler = 0;
-        hyremote::FrameReadyHandler onFrame;
+        std::shared_ptr<const hyremote::FrameReadyHandler> onFrame;
         hyremote::CaptureEventHandler onEvent;
         std::unordered_map<SurfaceId, std::shared_ptr<ChildRuntime>> children;
         std::unordered_map<hyremote::CaptureRequestId, PendingRequest> pending;
-        std::optional<hyremote::RemoteFrame> lastFrame;
+        QSize lastCanvasSize;
     };
 
     class ProcessingGuard
@@ -229,18 +304,24 @@ private:
 
     static void publishFrame(const std::shared_ptr<State> &state, hyremote::RemoteFrame frame)
     {
-        hyremote::FrameReadyHandler callback;
+        std::shared_ptr<const hyremote::FrameReadyHandler> callback;
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->active || !state->onFrame)
+            if (!state->active || !state->onFrame || !*state->onFrame)
                 return;
-            state->lastFrame = frame;
-            callback = state->onFrame;
+            // An empty terminal completion is a cancellation, not a new
+            // framebuffer. Preserve the last valid canvas geometry so a
+            // reconnect does not inherit a spurious 0x0 ServerInit size.
+            if (frame.geometry.size.width > 0 && frame.geometry.size.height > 0) {
+                state->lastCanvasSize = QSize(static_cast<int>(frame.geometry.size.width),
+                                              static_cast<int>(frame.geometry.size.height));
+            }
+            callback = state->onFrame; // shared_ptr copy is noexcept
             ++state->parentCallbacksInFlight;
         }
 
         try {
-            callback(std::move(frame));
+            (*callback)(std::move(frame));
         } catch (...) {
         }
 
@@ -284,45 +365,63 @@ private:
     static void composeAndPublish(const std::shared_ptr<State> &state, PendingRequest pending)
     {
         if (pending.canvasBounds.isEmpty()) {
-            std::optional<hyremote::RemoteFrame> last;
+            // No visible source must not resurrect pixels from a previously
+            // visible/authorized composite. Preserve the last framebuffer
+            // geometry only, so a legacy RFB Viewer need not support a 1x1
+            // DesktopSize transition when the entire scene is hidden.
+            QSize clearSize(1, 1);
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame)
-                    last = *state->lastFrame;
+                if (!state->lastCanvasSize.isEmpty())
+                    clearSize = state->lastCanvasSize;
             }
-            if (last) {
-                last->timing.ptsSource = hyremote::PtsSource::Completion;
-                last->timing.requestTime = pending.request.requestTime;
-                last->timing.completionTime = hyremote::Clock::now();
-                last->requestId = pending.request.id;
-                last->damage = hyremote::Damage::fullFrame();
-                publishFrame(state, std::move(*last));
-                return;
-            }
-            publishFrame(state, transparentFrame(pending.request, QSize(1, 1)));
+            publishFrame(state, transparentFrame(pending.request, clearSize));
             return;
         }
 
         if (pending.frames.empty()) {
-            std::optional<hyremote::RemoteFrame> last;
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                if (state->lastFrame
-                    && state->lastFrame->geometry.size.width
-                           == static_cast<std::uint32_t>(pending.canvasBounds.width())
-                    && state->lastFrame->geometry.size.height
-                           == static_cast<std::uint32_t>(pending.canvasBounds.height())) {
-                    last = *state->lastFrame;
+            // Every child failed/vanished: sending lastFrame with a new
+            // request ID, new completion timestamp, and full damage falsely
+            // advertises old pixels as fresh. Clear the actual canvas instead.
+            // Valid children automatically recover on a later request.
+            publishFrame(state, transparentFrame(pending.request, pending.canvasBounds.size()));
+            return;
+        }
+
+        // #609: exactly one already-premultiplied, full-canvas CPU frame needs
+        // neither a second 1080p allocation nor a transparent fill + drawImage.
+        // QPainter SourceOver onto transparent pixels preserves premultiplied
+        // samples exactly. Share the immutable frame's lifetime anchor instead.
+        // All scaling, mixed-DPR, clipping, multi-surface and format cases
+        // continue through the existing compositor unchanged.
+        if (pending.backToFront.size() == 1 && pending.frames.size() == 1) {
+            const SurfacePlacement &surface = pending.backToFront.front();
+            const auto it = pending.frames.find(surface.id);
+            if (it != pending.frames.end() && surface.globalGeometry == pending.canvasBounds) {
+                hyremote::RemoteFrame &child = it->second;
+                const auto &geometry = child.geometry;
+                const std::size_t width = static_cast<std::size_t>(pending.canvasBounds.width());
+                const std::size_t height = static_cast<std::size_t>(pending.canvasBounds.height());
+                if (geometry.pixelFormat == hyremote::PixelFormat::Rgba8888
+                    && geometry.alphaMode == hyremote::AlphaMode::Premultiplied
+                    && geometry.planeCount == 1 && geometry.devicePixelRatio == 1.0F
+                    && geometry.transform.rotation == hyremote::Rotation::Rotate0
+                    && !geometry.transform.mirrorX && !geometry.transform.mirrorY
+                    && geometry.size.width == width && geometry.size.height == height
+                    && child.storage && child.storage->kind() == hyremote::StorageKind::Cpu
+                    && child.storage->planeCount() == 1) {
+                    const auto plane = child.storage->mapRead(0);
+                    if (plane && plane->data && plane->stride >= width * 4U
+                        && height <= plane->bytes / plane->stride) {
+                        child.timing.ptsSource = hyremote::PtsSource::Completion;
+                        child.timing.requestTime = pending.request.requestTime;
+                        child.timing.completionTime = hyremote::Clock::now();
+                        child.damage = hyremote::Damage::fullFrame();
+                        child.requestId = pending.request.id;
+                        publishFrame(state, std::move(child));
+                        return;
+                    }
                 }
-            }
-            if (last) {
-                last->timing.ptsSource = hyremote::PtsSource::Completion;
-                last->timing.requestTime = pending.request.requestTime;
-                last->timing.completionTime = hyremote::Clock::now();
-                last->requestId = pending.request.id;
-                last->damage = hyremote::Damage::fullFrame();
-                publishFrame(state, std::move(*last));
-                return;
             }
         }
 
@@ -676,6 +775,15 @@ CompositeTargetSnapshot CompositeTarget::captureSnapshot() const
     if (!haveBounds)
         snapshot.canvasBounds = QRect{};
     return snapshot;
+}
+
+QSize CompositeTarget::initialFramebufferPixelSize() const
+{
+    const CompositeTargetSnapshot snapshot = captureSnapshot();
+    // The composite owns a logical-DPR=1 canvas; use the union of visible
+    // surfaces, not any one child's physical DPR or absolute screen offset.
+    // An empty canvas cannot safely enable idle RFB pixel reclamation.
+    return snapshot.backToFront.isEmpty() ? QSize{} : snapshot.canvasBounds.size();
 }
 
 ::HyRemote::detail::TargetComponents CompositeTarget::createTargetComponents(

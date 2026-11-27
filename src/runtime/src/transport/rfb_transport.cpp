@@ -512,13 +512,46 @@ public:
             socket->deleteLater();
         }
         m_clients.clear();
+        publishCaptureBackpressure();
         m_observedFrame.reset();
         m_servedFrame.reset();
+        m_lastComparedFrameUnchanged = false;
         m_decorationFailed = false;
         m_keyHolderCounts.fill(0);
         m_buttonHolderCounts.fill(0);
         m_onInput = {};
         m_onEvent = {};
+    }
+
+    void publishCaptureBackpressure()
+    {
+        if (!m_security.frameBackpressureObserver)
+            return;
+        bool haveNormalViewer = false;
+        bool anyReadyForFreshFrame = false;
+        bool allNoDemandAndDrained = true;
+        for (const auto &entry : m_clients) {
+            const ClientState &client = *entry.second;
+            if (client.phase != ClientPhase::Normal || !client.socket)
+                continue;
+            haveNormalViewer = true;
+            const bool readyToConsume =
+                client.socket != m_encodingSocket && client.socket->bytesToWrite() == 0;
+            const bool requested = client.delivery.hasOutstandingRequest();
+            if (requested || !readyToConsume)
+                allNoDemandAndDrained = false;
+            // One fast requesting viewer keeps shared capture active even if
+            // other viewers are still decoding/receiving their prior update.
+            if (requested && readyToConsume)
+                anyReadyForFreshFrame = true;
+        }
+        const bool blocked = haveNormalViewer && !anyReadyForFreshFrame;
+        const bool noDemand = blocked && allNoDemandAndDrained;
+        if (blocked == m_backpressureReported && noDemand == m_noDemandReported)
+            return;
+        m_backpressureReported = blocked;
+        m_noDemandReported = noDemand;
+        m_security.frameBackpressureObserver(blocked, noDemand);
     }
 
     void releaseIdleFrameCaches()
@@ -528,6 +561,7 @@ public:
         // incremental damage, even when no Viewer is connected.
         m_observedFrame.reset();
         m_servedFrame.reset();
+        m_lastComparedFrameUnchanged = false;
         std::lock_guard<std::mutex> lock(m_frames->mutex);
         m_frames->latest.reset();
     }
@@ -550,6 +584,22 @@ public:
                 = static_cast<std::uint16_t>(frame->geometry.size.width);
             m_security.initialFramebufferHeight
                 = static_cast<std::uint16_t>(frame->geometry.size.height);
+        }
+
+        // #790/#609: producer-backed Runtime intentionally discards frame
+        // pixels when no Viewer is connected. Do that BEFORE allocating
+        // and painting the (possibly multi-MB) server-side watermark: the
+        // old ordering generated a complete decorated frame and dropped it
+        // immediately. Geometry above is retained for RFB ServerInit.
+        //
+        // Standalone transports are NOT opted in; they still retain a
+        // decorated bootstrap for immediate reconnect. Once a Viewer joins,
+        // the Runtime's capture-demand edge supplies a fresh frame and
+        // normal fail-closed watermark validation applies before any pixels
+        // reach RFB. Only the RFB worker thread owns m_clients.
+        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
+            releaseIdleFrameCaches();
+            return;
         }
 
         // #589: compose once per captured frame, on the transport thread, and let every viewer share the same
@@ -579,19 +629,18 @@ public:
             m_clients.begin(), m_clients.end(), [](const auto &entry) {
                 return entry.second->phase == ClientPhase::Normal;
             });
-        // #790: ONLY the producer-backed Shared Runtime opts into dropping raw
-        // pixels at zero clients. Standalone RFB retains the exact old behavior,
-        // including its original observed frame baseline for tile-damage diff.
-        if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
-            releaseIdleFrameCaches();
-            return;
-        }
         std::optional<RfbDamageRegion> damage;
         if (hasNormalClient && !geometryChanged) {
             // Damage is measured on what viewers actually saw, including the watermark pixels, so a decorated
             // frame never reports "nothing changed" while the stream is missing an update.
-            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr, *served);
+            damage = changedRfbTiles(m_observedFrame ? &*m_observedFrame : nullptr,
+                                     *served, m_lastComparedFrameUnchanged);
         }
+        // Reset whenever there is no complete comparable frame (new client,
+        // resize, unavailable capture, or all viewers disconnected). This is
+        // a performance hint only, never a claim that Qt content is unchanged.
+        m_lastComparedFrameUnchanged = hasNormalClient && !geometryChanged
+                                      && damage && damage->empty();
 
         // Exact served-pixel equality is already computed for damage; feed it back to the
         // producer's bounded idle gate without introducing a second full-frame comparison.
@@ -609,7 +658,8 @@ public:
                 client.delivery.invalidateFull(served->geometry.size.width, served->geometry.size.height);
             else if (damage)
                 client.delivery.accumulate(*damage);
-            trySendUpdate(client);
+            // #567: encode the exact frame the damage was computed from.
+            trySendUpdate(client, &*served);
         }
         m_observedFrame = *served;
     }
@@ -623,6 +673,7 @@ public:
         m_decorationFailed = true;
         m_servedFrame.reset();
         m_observedFrame.reset();
+        m_lastComparedFrameUnchanged = false;
 
         // Drop the viewers with the same bookkeeping as an ordinary disconnect. Closing the sockets here without it
         // would skip releaseHeldInput() and the ClientDisconnected accounting, so a composition failure while a
@@ -737,8 +788,13 @@ private:
             connect(socket, &QTcpSocket::readyRead, this, [this, socket] { readClient(socket); });
             connect(socket, &QTcpSocket::bytesWritten, this, [this, socket](qint64) {
                 const auto it = m_clients.find(socket);
-                if (it != m_clients.end())
+                if (it != m_clients.end()) {
+                    // Notify the producer before a possible next FBU write:
+                    // this drain is the chance to capture a fresher frame.
+                    publishCaptureBackpressure();
                     trySendUpdate(*it->second);
+                    publishCaptureBackpressure();
+                }
             });
             connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
                 const auto it = m_clients.find(socket);
@@ -749,6 +805,7 @@ private:
                     releaseHeldInput(*it->second);
                 m_clients.erase(it);
                 socket->deleteLater();
+                publishCaptureBackpressure();
                 if (m_clients.empty() && m_security.releaseIdleFrameBuffers) {
                     // 2→1 always retains, 1→0 releases true raw bytes only for
                     // a producer-backed Runtime which wakes on ClientConnected.
@@ -1188,11 +1245,13 @@ private:
                     // The latest enable message replaces the active area.
                     client.continuousRegion = region;
                     armContinuousRequest(client);
+                    publishCaptureBackpressure();
                     trySendUpdate(client);
                 } else if (!endContinuousUpdates(client)) {
                     // A disable acknowledgment is mandatory even if already disabled.
                     return;
                 }
+                publishCaptureBackpressure();
                 continue;
             }
 
@@ -1241,6 +1300,13 @@ private:
                      static_cast<std::int32_t>(readU16(client.input, 6)),
                      static_cast<std::int32_t>(readU16(client.input, 8))});
                 consumeClientMessage(client, 10);
+                // This request is the transport's source-demand edge; wake a
+                // producer that was correctly sleeping while no client asked
+                // for a framebuffer update. A full request also gets a
+                // one-shot capture even when the previous FBU is backlogged.
+                publishCaptureBackpressure();
+                if (!incremental && m_security.frameFullRefreshObserver)
+                    m_security.frameFullRefreshObserver();
                 trySendUpdate(client);
                 continue;
             }
@@ -1318,6 +1384,7 @@ private:
         client.producedUsefulMessage = false;
         client.connectedEventSent = true;
         publishEvent(hyremote::TransportEventCode::ClientConnected, "RFB client connected");
+        publishCaptureBackpressure();
 
 
     }
@@ -1582,13 +1649,14 @@ private:
         return true;
     }
 
-    hyremote::InputViewport currentViewport() const
+    hyremote::InputViewport currentViewport(const ClientState &client) const
     {
+        // RFB pointer coordinates are relative to the per-Viewer framebuffer
+        // already advertised by ServerInit/DesktopSize, not a newer producer
+        // frame that the Viewer has not requested/received.
         hyremote::InputViewport viewport;
-        if (const auto frame = latestFrame()) {
-            viewport.width = frame->geometry.size.width;
-            viewport.height = frame->geometry.size.height;
-        }
+        viewport.width = client.framebufferWidth;
+        viewport.height = client.framebufferHeight;
         viewport.devicePixelRatio = 1.0F;
         return viewport;
     }
@@ -1598,7 +1666,7 @@ private:
                         std::uint16_t x,
                         std::uint16_t y)
     {
-        const hyremote::InputViewport viewport = currentViewport();
+        const hyremote::InputViewport viewport = currentViewport(client);
         if (!hyremote::isValidInputViewport(viewport))
             return;
 
@@ -1755,7 +1823,8 @@ private:
         return appendRawRectangle(message, frame, client.pixels, x, y, width, height);
     }
 
-    void trySendUpdate(ClientState &client)
+    void trySendUpdate(ClientState &client,
+                       const hyremote::RemoteFrame *frameSnapshot = nullptr)
     {
         if (!client.socket || client.phase != ClientPhase::Normal)
             return;
@@ -1767,7 +1836,10 @@ private:
             return;
 
         // #589: encode only what viewers may see; with a watermark installed the raw capture is never sent.
-        const auto frame = servedFrame();
+        // #567: use the caller's snapshot when present so damage and pixels are from one frame.
+        std::optional<hyremote::RemoteFrame> frame =
+            frameSnapshot ? std::optional<hyremote::RemoteFrame>(*frameSnapshot)
+                          : servedFrame();
         if (!frame)
             return;
         if (frame->geometry.size.width == 0 || frame->geometry.size.height == 0
@@ -1811,6 +1883,11 @@ private:
             return;
         }
 
+        // Keep the GUI/Core capture scheduler out of an already saturated
+        // single-viewer encoding interval; the worker itself is non-reentrant.
+        m_encodingSocket = client.socket;
+        publishCaptureBackpressure();
+
         QByteArray update;
         update.append(char(0));
         update.append(char(0));
@@ -1824,12 +1901,18 @@ private:
         }
         for (const RfbRect &rect : selected.rects()) {
             if (!appendFramebufferRectangle(update, *frame, client, rect)) {
+                m_encodingSocket = nullptr;
+                publishCaptureBackpressure();
                 protocolFailure(client, "RFB transport could not map/encode the current RemoteFrame");
                 return;
             }
         }
 
         const qint64 queued = client.socket->write(update);
+        // From this point any remaining pressure belongs to Qt's outbound queue,
+        // not to CPU encoding. Release the producer once both clear.
+        m_encodingSocket = nullptr;
+        publishCaptureBackpressure();
         if (queued != update.size()) {
             protocolFailure(client, "RFB socket write failed");
             return;
@@ -1841,6 +1924,7 @@ private:
         armContinuousRequest(client);
         client.framebufferWidth = width;
         client.framebufferHeight = height;
+        publishCaptureBackpressure();
     }
 
     QHostAddress m_address;
@@ -1853,6 +1937,7 @@ private:
     QTimer *m_occupancySweep = nullptr;
     std::unordered_map<QTcpSocket *, std::unique_ptr<ClientState>> m_clients;
     std::optional<hyremote::RemoteFrame> m_observedFrame;
+    bool m_lastComparedFrameUnchanged = false; // worker-thread-only static hint
     // #589: the composed frame currently shared by every viewer, and the one-shot latch that stops the transport
     // from ever falling back to undecorated pixels after a composition failure.
     std::optional<hyremote::RemoteFrame> m_servedFrame;
@@ -1860,6 +1945,9 @@ private:
     std::array<std::size_t, kKeyCodeCount> m_keyHolderCounts{};
     std::array<std::size_t, kButtons.size()> m_buttonHolderCounts{};
     bool m_stopping = false;
+    bool m_backpressureReported = false;
+    bool m_noDemandReported = false;
+    QTcpSocket *m_encodingSocket = nullptr; // RFB worker-thread only, never retained
 };
 
 class RfbTransport final : public hyremote::Transport

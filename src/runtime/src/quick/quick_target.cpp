@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstring>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -29,6 +30,7 @@
 
 #include "detail/input_mailbox_admission.hpp"
 #include "detail/qt_window_system_input.hpp"
+#include "quick/quick_image_frame_storage.hpp"
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
 #include "hyremote/core/storage.hpp"
@@ -125,6 +127,10 @@ private:
         bool finished = false;
         QSharedPointer<QQuickItemGrabResult> result;
         QMetaObject::Connection readyConnection;
+        QPointer<QTimer> timeoutTimer; // GUI-thread-only, cancelled when ready
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+        std::chrono::steady_clock::time_point p1GrabStart{};
+#endif
     };
 
     static bool isActive(const std::shared_ptr<State> &state)
@@ -231,29 +237,60 @@ private:
             return;
         }
 
-        const QImage image = grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+        QImage image;
+        {
+            // Qt 6 may already expose the Core's exact premultiplied RGBA layout;
+            // Qt 5's ARGB32_Premultiplied still needs a conversion.
+            image = grabbed.format() == QImage::Format_RGBA8888_Premultiplied
+                        ? grabbed
+                        : grabbed.convertToFormat(QImage::Format_RGBA8888_Premultiplied);
+        }
         if (image.isNull() || image.width() <= 0 || image.height() <= 0) {
             retryLater(state, request, attempt, 100);
             return;
         }
 
-        const std::size_t bytesPerLine = static_cast<std::size_t>(image.width()) * 4U;
-        std::shared_ptr<hyremote::CpuFrameStorage> storage =
-            hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine,
-                                                         static_cast<std::size_t>(image.height()));
-        if (!storage || !storage->mutablePlane(0)) {
-            publishEvent(state,
-                         hyremote::CaptureEventCode::BackendFailure,
-                         "failed to allocate owned Qt Quick frame storage",
-                         false);
-            return;
-        }
-
-        std::byte *destination = storage->mutablePlane(0);
-        for (int y = 0; y < image.height(); ++y) {
-            std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
-                        image.constScanLine(y),
-                        bytesPerLine);
+        // Retain Qt's implicitly shared CPU pixels instead of allocating and
+        // copying another full 1080p frame for every request.
+        std::shared_ptr<const hyremote::FrameStorage> storage =
+            QuickImageFrameStorage::create(image);
+        if (!storage) {
+            const std::size_t width = static_cast<std::size_t>(image.width());
+            const std::size_t height = static_cast<std::size_t>(image.height());
+            if (image.format() != QImage::Format_RGBA8888_Premultiplied
+                || width > std::numeric_limits<std::size_t>::max() / 4U
+                || image.bytesPerLine() <= 0 || image.sizeInBytes() <= 0
+                || !image.constBits()) {
+                publishEvent(state,
+                             hyremote::CaptureEventCode::BackendFailure,
+                             "invalid Qt Quick grab image format or storage",
+                             false);
+                return;
+            }
+            const std::size_t bytesPerLine = width * 4U;
+            const std::size_t sourceStride = static_cast<std::size_t>(image.bytesPerLine());
+            const std::size_t sourceBytes = static_cast<std::size_t>(image.sizeInBytes());
+            if (sourceStride < bytesPerLine || height > sourceBytes / sourceStride) {
+                publishEvent(state,
+                             hyremote::CaptureEventCode::BackendFailure,
+                             "invalid Qt Quick grab row stride",
+                             false);
+                return;
+            }
+            std::shared_ptr<hyremote::CpuFrameStorage> copied =
+                hyremote::CpuFrameStorage::createSinglePlane(bytesPerLine, height);
+            if (!copied || !copied->mutablePlane(0)) {
+                publishEvent(state,
+                             hyremote::CaptureEventCode::BackendFailure,
+                             "failed to allocate owned Qt Quick frame storage",
+                             false);
+                return;
+            }
+            std::byte *destination = copied->mutablePlane(0);
+            for (int y = 0; y < image.height(); ++y)
+                std::memcpy(destination + static_cast<std::size_t>(y) * bytesPerLine,
+                            image.constScanLine(y), bytesPerLine);
+            storage = std::move(copied);
         }
 
         const hyremote::TimePoint completion = hyremote::Clock::now();
@@ -328,12 +365,38 @@ private:
                     return;
                 grab->finished = true;
                 QObject::disconnect(grab->readyConnection);
+                // The old QTimer::singleShot(2000, ...) always stayed queued
+                // for two seconds even if the image completed in milliseconds.
+                // Under sustained captures this retains request/state closures
+                // and wakes the Qt event loop only to return immediately.
+                // A cancelable, dispatcher-owned timer releases them on ready.
+                if (grab->timeoutTimer) {
+                    grab->timeoutTimer->stop();
+                    grab->timeoutTimer->deleteLater();
+                    grab->timeoutTimer.clear();
+                }
+#if defined(HYREMOTE_ENABLE_CPU_PROBE) && HYREMOTE_ENABLE_CPU_PROBE
+                ::HyRemote::detail::p1perf::addAsyncWall(
+                    ::HyRemote::detail::p1perf::Stage::QuickGrabReadyWall,
+                    std::chrono::steady_clock::now() - grab->p1GrabStart);
+#endif
                 const QImage image = grab->result ? grab->result->image() : QImage();
                 grab->result.clear();
                 publishImage(state, request, attempt, image);
             });
 
-        QTimer::singleShot(2000, dispatcher, [state, request, attempt, grab] {
+        // The deadline is owned by the GUI dispatcher and uses Qt's normal
+        // QObject cancellation semantics on Qt 5.15 and Qt 6.x. The weak
+        // QPointer in GrabAttempt avoids timer/closure ownership cycles.
+        auto *deadline = new QTimer(dispatcher);
+        deadline->setSingleShot(true);
+        grab->timeoutTimer = deadline;
+        QObject::connect(deadline, &QTimer::timeout, dispatcher,
+                         [state, request, attempt, grab] {
+            if (grab->timeoutTimer) {
+                grab->timeoutTimer->deleteLater();
+                grab->timeoutTimer.clear();
+            }
             if (grab->finished)
                 return;
             grab->finished = true;
@@ -350,6 +413,7 @@ private:
             }
             retryLater(state, request, attempt, 100);
         });
+        deadline->start(2000);
     }
 
     std::shared_ptr<State> m_state;

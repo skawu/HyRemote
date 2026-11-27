@@ -77,6 +77,11 @@ public:
     // Returning false means the request was rejected before any work was scheduled; Core counts
     // it, keeps the Session running and retries after a bounded delay.
     virtual bool requestFrame(const CaptureRequest &request) = 0;
+
+    // Shared Runtime calls this at most once on the 1->0 viewer edge, on the
+    // capture scheduler thread, before the next requestFrame(). Implementations
+    // may release idle-only CPU/GPU storage; they must not block or allocate.
+    virtual void releaseIdleResources() noexcept {}
 };
 
 }  // namespace hyremote

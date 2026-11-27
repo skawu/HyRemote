@@ -317,12 +317,36 @@ struct Session::Impl
     // bookkeeping/enqueue work only and never touches the transport.
     static void onFrameReady(Impl &impl, RemoteFrame frame)
     {
-        const FrameValidationResult validation = validateFrame(frame);
-
+        FrameValidationResult validation;
         std::string timingReason;
         bool timingOk = false;
-        if (validation.ok)
-            timingOk = normalizeFrameTiming(frame, &timingReason);
+        try {
+            validation = validateFrame(frame);
+            if (validation.ok)
+                timingOk = normalizeFrameTiming(frame, &timingReason);
+        } catch (...) {
+            // Validation of an intentionally empty terminal completion can
+            // allocate a rejection string and throw under memory pressure.
+            // The adapter has ALREADY completed the request, so swallowing
+            // this exception at the outer callback boundary without retiring
+            // its credit would permanently exhaust maxInFlight after a few
+            // canceled Composite/Quick captures. Keep the normal validated
+            // frame's atomic debit+mailbox push below unchanged; only this
+            // exceptional path must settle its credit before returning.
+            {
+                std::lock_guard<std::mutex> lock(impl.mutex);
+                if (impl.inFlight > 0)
+                    --impl.inFlight;
+                impl.stats.inFlight = impl.inFlight;
+                if (impl.state != SessionState::Running || !impl.mailbox)
+                    ++impl.stats.framesArrivedAfterStop;
+                else
+                    ++impl.stats.framesRejectedInvalid;
+            }
+            impl.cv.notify_all();
+            reportCallbackFailure(impl, "capture frame validation failed");
+            return;
+        }
 
         {
             std::lock_guard<std::mutex> lock(impl.mutex);
