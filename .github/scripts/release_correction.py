@@ -270,6 +270,46 @@ def validate_v036_notes(*, git, version, notes_name, head_notes, base_cmake,
 
 
 
+# #1086: exact maintenance-line correction after the first G6 failure.
+# The maintenance tree is deliberately not the current develop product tree.
+V0351_BASE_SHA = "73c0a7ce115d6f530f86ca3316f1d23c524374db"
+V0351_HEAD_REF = "feature/1086-release-preparation"
+V0351_FIXED_BLOBS = {
+    ".github/release/release-trains.json": "b1bcb1d1776bc908e9210184c5b3518a5f7473e9",
+    "src/runtime/src/transport/rfb_transport.cpp": "4258f622cc685b95d6ea6bcbc747cf3d8e31b0c4",
+    "src/runtime/tests/test_rfb_wire_robustness.cpp": "6d83931919ad43bc62470d64c7258f289966eb2d",
+}
+
+
+def validate_v0351_maintenance(*, git, version, notes_name, base_notes,
+                               head_notes, base_cmake, head_cmake,
+                               actual_base_sha, head_ref, governance_ref=DEVELOP_REF):
+    """Admit only the reviewed H01.8b maintenance blobs and reviewed gate."""
+    if version != "0.3.5.1" or actual_base_sha != V0351_BASE_SHA:
+        raise SystemExit("V0351 correction denied: unapproved version/base")
+    if head_ref != V0351_HEAD_REF or notes_name != "docs/releases/v0.3.5.1.md":
+        raise SystemExit("V0351 correction denied: unauthorized branch/notes path")
+    if not base_notes.startswith(CANDIDATE_MARKER) or head_notes != base_notes:
+        raise SystemExit("V0351 correction denied: pending notes must be unchanged")
+    if head_cmake != base_cmake:
+        raise SystemExit("V0351 correction denied: VERSION/CMake changed")
+    if git("ls-remote", "--tags", "origin", "refs/tags/v0.3.5.1").strip():
+        raise SystemExit("V0351 correction denied: version already tagged")
+    expected = set(V0351_FIXED_BLOBS) | V035_NUMERIC_GOVERNANCE_FILES
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD")
+                  .decode("utf-8").splitlines())
+    if changed != expected:
+        raise SystemExit("V0351 correction denied: changed-file scope")
+    for path, blob in V0351_FIXED_BLOBS.items():
+        if git("rev-parse", f"HEAD:{path}").decode("ascii").strip() != blob:
+            raise SystemExit("V0351 correction denied: unreviewed maintenance blob " + path)
+    for path in V035_NUMERIC_GOVERNANCE_FILES:
+        if git("show", f"HEAD:{path}") != git("show", f"{governance_ref}:{path}"):
+            raise SystemExit("V0351 correction denied: unreviewed gate blob " + path)
+    return "v0351-exact-maintenance-correction"
+
+
+
 def _run(cwd: Path, *args: str) -> bytes:
     return subprocess.check_output(args, cwd=cwd, stderr=subprocess.DEVNULL)
 
@@ -289,6 +329,51 @@ def _git_in(root: Path):
     def git(*args: str) -> bytes:
         return _run(root, "git", *args)
     return git
+
+
+# #1076: preserve the reviewed V036 S1 tree while carrying the published maintenance history.
+V036_LINEAGE_BASE = "1f4db80bd683d8f5aebbf77fa5ecb7391e7e2749"
+V036_LINEAGE_PROPOSAL = "15238f4659111cbdc3a51a66ef3ad0a454d08d8d"
+V036_LINEAGE_TAG = "3cbc1cdcf6b6d2f9156ab139d7f88ed0225529de"
+V036_LINEAGE_BLOBS = {
+    ".github/release/release-trains.json": "ff936855886670be555140841e4e54d31cb1d530",
+    "docs/releases/v0.3.5.1.md": "ffc00d7b70c0bb657b9b7d022ee82b3fe140c9b8",
+}
+
+
+def validate_v036_lineage(*, git, version, notes_name, base_notes, head_notes,
+                          base_cmake, head_cmake, actual_base_sha, head_ref,
+                          governance_ref=DEVELOP_REF):
+    """Admit only the reviewed maintenance history and independently reviewed gate files."""
+    if version != "0.3.6.0" or actual_base_sha != V036_LINEAGE_BASE:
+        raise SystemExit("V036 lineage denied: version/base")
+    if head_ref != V036_NOTES_HEAD_REF or notes_name != "docs/releases/v0.3.6.0.md":
+        raise SystemExit("V036 lineage denied: branch/notes")
+    if not base_notes.startswith(CANDIDATE_MARKER) or head_notes != base_notes:
+        raise SystemExit("V036 lineage denied: pending notes")
+    if base_cmake != head_cmake:
+        raise SystemExit("V036 lineage denied: VERSION/CMake")
+    if git("ls-remote", "--tags", "origin", "refs/tags/v0.3.6.0").strip():
+        raise SystemExit("V036 lineage denied: already tagged")
+    peeled = git("ls-remote", "--tags", "origin", "refs/tags/v0.3.5.1^{}").decode().split()
+    if peeled != [V036_LINEAGE_TAG, "refs/tags/v0.3.5.1^{}"]:
+        raise SystemExit("V036 lineage denied: maintenance tag identity")
+    try:
+        git("merge-base", "--is-ancestor", V036_LINEAGE_PROPOSAL, "HEAD")
+        git("merge-base", "--is-ancestor", V036_LINEAGE_TAG, "HEAD")
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit("V036 lineage denied: missing reviewed ancestry") from exc
+    expected = set(V036_LINEAGE_BLOBS) | V035_NUMERIC_GOVERNANCE_FILES
+    changed = set(git("diff", "--name-only", actual_base_sha, "HEAD").decode().splitlines())
+    if changed != expected:
+        raise SystemExit("V036 lineage denied: changed-file scope")
+    for path, blob in V036_LINEAGE_BLOBS.items():
+        if git("rev-parse", f"HEAD:{path}").decode().strip() != blob:
+            raise SystemExit("V036 lineage denied: unreviewed lineage blob " + path)
+    for path in V035_NUMERIC_GOVERNANCE_FILES:
+        if git("show", f"HEAD:{path}") != git("show", f"{governance_ref}:{path}"):
+            raise SystemExit("V036 lineage denied: unreviewed gate blob " + path)
+    return "v036-exact-maintenance-lineage"
 
 
 def self_test() -> int:
@@ -645,6 +730,108 @@ def self_test() -> int:
     v036_scenario("V036 tagged version denied", tagged=True, expect_error="version already tagged")
     v036_scenario("V036 version change denied", wrong_cmake=True, expect_error="VERSION/CMake")
     v036_scenario("V036 missing candidate marker denied", missing_marker=True, expect_error="missing pending marker")
+
+    # Reuse the existing self-test entry, exercising each exact-correction boundary.
+    for fault, expected_error in (
+        ("none", None), ("version", "version/base"), ("base", "version/base"),
+        ("branch", "branch/notes"), ("notes", "pending notes"),
+        ("cmake", "VERSION/CMake"), ("tag", "already tagged"),
+        ("extra", "changed-file scope"), ("missing", "changed-file scope"),
+        ("blob", "unreviewed maintenance blob"), ("gate", "unreviewed gate blob"),
+    ):
+        cases += 1
+        files = set(V0351_FIXED_BLOBS) | V035_NUMERIC_GOVERNANCE_FILES
+        if fault == "extra":
+            files.add("src/runtime/src/access_instance.cpp")
+        if fault == "missing":
+            files.remove("src/runtime/tests/test_rfb_wire_robustness.cpp")
+
+        def maintenance_git(*args):
+            if args == ("ls-remote", "--tags", "origin", "refs/tags/v0.3.5.1"):
+                return b"tagged" if fault == "tag" else b""
+            if args[:2] == ("diff", "--name-only"):
+                return "\n".join(sorted(files)).encode()
+            if args[0] == "rev-parse" and args[1].startswith("HEAD:"):
+                blob = V0351_FIXED_BLOBS[args[1][5:]]
+                return ("0" * 40 if fault == "blob" else blob).encode()
+            if args[0] == "show":
+                ref, path = args[1].split(":", 1)
+                if path in V035_NUMERIC_GOVERNANCE_FILES:
+                    return b"altered" if ref == "HEAD" and fault == "gate" else b"reviewed"
+            raise AssertionError("unexpected Git query: " + repr(args))
+
+        try:
+            validate_v0351_maintenance(
+                git=maintenance_git, version="0.3.5.0" if fault == "version" else "0.3.5.1",
+                notes_name="docs/releases/v0.3.5.1.md", base_notes=CANDIDATE_MARKER,
+                head_notes="" if fault == "notes" else CANDIDATE_MARKER,
+                base_cmake=b"version", head_cmake=b"changed" if fault == "cmake" else b"version",
+                actual_base_sha="0" * 40 if fault == "base" else V0351_BASE_SHA,
+                head_ref="feature/95-release-preparation" if fault == "branch" else V0351_HEAD_REF)
+            error = None
+        except SystemExit as exc:
+            error = str(exc)
+        if (expected_error is None and error is not None
+                or expected_error is not None and (error is None or expected_error not in error)):
+            print(f"FAIL V0351 {fault}: {error}")
+            failures += 1
+        else:
+            print(f"ok: V0351 {fault}")
+
+
+    # Exact V036 lineage: reuse the existing release-correction self-test.
+    for fault, expected_error in (
+        ("none", None), ("version", "version/base"), ("base", "version/base"),
+        ("branch", "branch/notes"), ("notes", "pending notes"),
+        ("cmake", "VERSION/CMake"), ("tag", "already tagged"),
+        ("old-tag", "maintenance tag identity"), ("ancestry", "missing reviewed ancestry"),
+        ("extra", "changed-file scope"), ("missing", "changed-file scope"),
+        ("blob", "unreviewed lineage blob"), ("gate", "unreviewed gate blob"),
+    ):
+        cases += 1
+        files = set(V036_LINEAGE_BLOBS) | V035_NUMERIC_GOVERNANCE_FILES
+        if fault == "extra":
+            files.add("src/runtime/src/access_instance.cpp")
+        if fault == "missing":
+            files.remove("docs/releases/v0.3.5.1.md")
+
+        def lineage_git(*args):
+            if args == ("ls-remote", "--tags", "origin", "refs/tags/v0.3.6.0"):
+                return b"tagged" if fault == "tag" else b""
+            if args == ("ls-remote", "--tags", "origin", "refs/tags/v0.3.5.1^{}"):
+                return (("0" * 40 if fault == "old-tag" else V036_LINEAGE_TAG)
+                        + "\trefs/tags/v0.3.5.1^{}\n").encode()
+            if args[:2] == ("merge-base", "--is-ancestor"):
+                if fault == "ancestry":
+                    raise subprocess.CalledProcessError(1, args)
+                return b""
+            if args[:2] == ("diff", "--name-only"):
+                return "\n".join(sorted(files)).encode()
+            if args[0] == "rev-parse" and args[1].startswith("HEAD:"):
+                return ("0" * 40 if fault == "blob" else V036_LINEAGE_BLOBS[args[1][5:]]).encode()
+            if args[0] == "show":
+                ref, path = args[1].split(":", 1)
+                if path in V035_NUMERIC_GOVERNANCE_FILES:
+                    return b"altered" if ref == "HEAD" and fault == "gate" else b"reviewed"
+            raise AssertionError("unexpected Git query: " + repr(args))
+
+        try:
+            validate_v036_lineage(
+                git=lineage_git, version="0.3.5.1" if fault == "version" else "0.3.6.0",
+                notes_name="docs/releases/v0.3.6.0.md", base_notes=CANDIDATE_MARKER,
+                head_notes="" if fault == "notes" else CANDIDATE_MARKER,
+                base_cmake=b"version", head_cmake=b"changed" if fault == "cmake" else b"version",
+                actual_base_sha="0" * 40 if fault == "base" else V036_LINEAGE_BASE,
+                head_ref="feature/1086-release-preparation" if fault == "branch" else V036_NOTES_HEAD_REF)
+            error = None
+        except SystemExit as exc:
+            error = str(exc)
+        if (expected_error is None and error is not None
+                or expected_error is not None and (error is None or expected_error not in error)):
+            print(f"FAIL V036 lineage {fault}: {error}")
+            failures += 1
+        else:
+            print(f"ok: V036 lineage {fault}")
 
     if failures:
         print(f"release-correction self test: {failures} of {cases} case(s) failed")
