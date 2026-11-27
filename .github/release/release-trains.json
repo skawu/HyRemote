@@ -441,7 +441,9 @@
         "client-observed-bounded-redacted-basic-diagnostics",
         "local-auto-manual-language-and-cli-precedence",
         "real-installed-windows-qt6.8.3-s1-acceptance-at-candidate-sha",
-        "current-head-ci-l2-and-independent-review"
+        "current-head-ci-l2-and-independent-review",
+        "developer-workspace-sdk-kit-static-inspection-four-integration-guidance",
+        "actual-installed-developer-diagnostics-workflow-and-visual-acceptance"
       ],
       "cross_version_references": [
         57,
@@ -459,12 +461,13 @@
         605
       ],
       "notes": {
-        "579": "Approved D/A Tool S1 design; parent design is referenced, not a substitute for functional acceptance.",
-        "586": "Whole S1 clean-installed Windows acceptance is the candidate freeze authority; all six implementation children and actual acceptance must close.",
+        "579": "Human H-T01=B: developer and diagnostics workspace; no new remote-access client features. Legacy access remains compatible until qualified replacement and migration.",
+        "586": "Same-SHA installed developer workflow and legacy compatibility acceptance; retain all six implementation children and prior safety/compatibility evidence.",
         "592": "Docker is a separate conditional outcome."
       },
-      "rule": "V0.3.6.0 is the next admitted Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. The registered scope does not expand platform support. V0.4 remains inactive qualification-only."
+      "rule": "V0.3.6.0 is the admitted Feature on the accepted V0.3.5.0 lineage, with Human-approved H-T01=B scope: SDK developer and diagnostics workspace, static SDK/Qt Kit checks, four integration guidance, explicit protocol/frame observations, redacted reports and language. Existing RFB access/profile/viewport/control remain compatibility-only; no new remote client features. Full #586 exact-candidate acceptance and all current gates remain required. Registration enables implementation, not release approval; no platform scope expansion. V0.4 remains inactive qualification-only."
     },
+
     "1.0.0.0": {
       "authority_parent": 33,
       "scope_authority": 594,
