@@ -11,6 +11,10 @@ neither a Cloud nor Local ChatGPT conversation automatically runs in the backgro
 The [Local Owner inbox setup](tools/local-owner/README.md) is opt-in once per authorized Windows
 environment; until the first real ACK, report `RECORDED_UNDELIVERED` rather than "已下发".
 
+## Implementation economy (mandatory for agents)
+
+Read `.codebuddy/rules/lean-engineering.md` before designing or reviewing a code change. Favor the smallest correct implementation, existing Qt/runtime mechanisms, and reused risk-selected tests. No extra abstraction/test executable/CI workflow without a concrete uncovered product risk; do not invent a Human approval step for routine testing. This does **not** reduce current protected security/ABI/release gates. PRs must explain any new test identity and show actual product evidence, not test counts. This section is an execution constraint, not authorization to change approved V15/V8 architecture.
+
 ## Authority order
 
 When sources disagree, use this order:

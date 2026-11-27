@@ -62,6 +62,25 @@ inline bool containsRfbRect(const RfbRect &outer, const RfbRect &inner) noexcept
            && outer.right() >= inner.right() && outer.bottom() >= inner.bottom();
 }
 
+// Adjacent regions with identical horizontal or vertical spans can be joined
+// WITHOUT including any unchanged pixels. This matters before enforceBound():
+// crossing 64 separate 64px tiles currently expands a sparse delta to one
+// possibly full-screen bounding box even when actual changes cover <25%.
+inline bool mergeExactlyAdjacentRfbRects(const RfbRect &a, const RfbRect &b,
+                                         RfbRect &merged) noexcept
+{
+    if (a.empty() || b.empty())
+        return false;
+    if ((a.y == b.y && a.height == b.height
+         && (a.right() == b.x || b.right() == a.x))
+        || (a.x == b.x && a.width == b.width
+            && (a.bottom() == b.y || b.bottom() == a.y))) {
+        merged = boundRfbRects(a, b);
+        return true;
+    }
+    return false;
+}
+
 inline std::vector<RfbRect> subtractRfbRect(const RfbRect &source, const RfbRect &cut)
 {
     const RfbRect hit = intersectRfbRect(source, cut);
@@ -94,14 +113,28 @@ public:
     {
         if (rect.empty())
             return;
-        for (auto it = m_rects.begin(); it != m_rects.end();) {
-            if (containsRfbRect(*it, rect))
-                return;
-            if (containsRfbRect(rect, *it)) {
-                it = m_rects.erase(it);
-                continue;
+        // Revisit the bounded list after every exact union, since a newly
+        // enlarged rectangle can connect to an earlier neighbor. Do not merge
+        // merely intersecting/diagonal regions: that could enlarge the wire
+        // payload or mask the source of changed pixels.
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (auto it = m_rects.begin(); it != m_rects.end(); ++it) {
+                if (containsRfbRect(*it, rect))
+                    return;
+                RfbRect joined;
+                if (containsRfbRect(rect, *it)) {
+                    m_rects.erase(it);
+                    changed = true;
+                    break;
+                }
+                if (mergeExactlyAdjacentRfbRects(rect, *it, joined)) {
+                    rect = joined;
+                    m_rects.erase(it);
+                    changed = true;
+                    break;
+                }
             }
-            ++it;
         }
         m_rects.push_back(rect);
         enforceBound();
@@ -123,8 +156,39 @@ public:
 
     void subtract(const RfbDamageRegion &delivered)
     {
+        if (m_rects.empty() || delivered.m_rects.empty())
+            return;
+
+        // Common RFB delivery: a full-viewport incremental FBU consumed
+        // ALL pending rectangles, including the 64-region sparse case.
+        // The old generic subtraction rebuilt a vector for every delivered
+        // rectangle, often thousands of split/intersection operations and
+        // allocations per FBU on the single transport/encoding worker.
+        //
+        // A pending rectangle is fully delivered if ANY ONE delivered
+        // rectangle contains it. This condition is deliberately sufficient,
+        // not necessary: partial, union-covered and overlapping deliveries
+        // still take the exact subtraction path below. Never discard pixels
+        // merely because delivered bounding boxes happen to overlap.
+        const bool allCovered = std::all_of(m_rects.begin(), m_rects.end(),
+                                           [&delivered](const RfbRect &pending) {
+            return std::any_of(delivered.m_rects.begin(), delivered.m_rects.end(),
+                               [&pending](const RfbRect &sent) {
+                                   return containsRfbRect(sent, pending);
+                               });
+        });
+        if (allCovered) {
+            m_rects.clear();
+            return;
+        }
+
+        // Treat partial delivery as one transaction. If the lossy 64-rect
+        // bound is enforced between cuts, the bounding box from an early
+        // subtraction can resurrect already-delivered pixels. Apply it only
+        // after ALL cuts; preserve the exact RFB region difference.
         for (const RfbRect &cut : delivered.m_rects)
             subtractOne(cut);
+        enforceBound();
     }
 
 private:
@@ -138,19 +202,49 @@ private:
             next.insert(next.end(), pieces.begin(), pieces.end());
         }
         m_rects = std::move(next);
-        enforceBound();
     }
 
     void enforceBound()
     {
-        if (m_rects.size() <= kRfbMaxDamageRects)
-            return;
-        RfbRect all;
-        for (const RfbRect &rect : m_rects)
-            all = boundRfbRects(all, rect);
-        m_rects.clear();
-        if (!all.empty())
-            m_rects.push_back(all);
+        // Do not turn the 65th *disjoint* dirty tile into a near-full-screen
+        // update. The exact-adjacency fast path in add() cannot help when
+        // changes are scattered, but bounding ALL regions can inflate a
+        // 1080p sparse update far beyond the 25% large-paint threshold.
+        //
+        // Keep the existing 64-rectangle protocol/metadata bound by merging
+        // only the pair with the smallest additional bounding-box area.
+        // Any merged box is a superset of its two inputs: never omit changed
+        // pixels. A pair search over at most 65 rectangles is bounded, and
+        // exact-edge unions are still handled first by add().
+        const auto area = [](const RfbRect &r) -> std::uint64_t {
+            return static_cast<std::uint64_t>(r.width)
+                   * static_cast<std::uint64_t>(r.height);
+        };
+        while (m_rects.size() > kRfbMaxDamageRects) {
+            std::size_t bestI = 0;
+            std::size_t bestJ = 1;
+            std::uint64_t bestExtra = std::numeric_limits<std::uint64_t>::max();
+            RfbRect bestBound;
+            for (std::size_t i = 0; i < m_rects.size(); ++i) {
+                for (std::size_t j = i + 1; j < m_rects.size(); ++j) {
+                    const RfbRect bound = boundRfbRects(m_rects[i], m_rects[j]);
+                    const RfbRect overlap = intersectRfbRect(m_rects[i], m_rects[j]);
+                    // area(A union B) = area(A) + area(B) - overlap.
+                    // Wider integer arithmetic prevents 1080p products from
+                    // overflowing and makes the nonnegative cost exact.
+                    const std::uint64_t extra = area(bound) + area(overlap)
+                                                - area(m_rects[i]) - area(m_rects[j]);
+                    if (extra < bestExtra) {
+                        bestExtra = extra;
+                        bestI = i;
+                        bestJ = j;
+                        bestBound = bound;
+                    }
+                }
+            }
+            m_rects[bestI] = bestBound;
+            m_rects.erase(m_rects.begin() + static_cast<std::ptrdiff_t>(bestJ));
+        }
     }
 
     std::vector<RfbRect> m_rects;
@@ -254,6 +348,53 @@ inline RfbDamageRegion fullRfbDamage(std::uint32_t width, std::uint32_t height)
 // top-to-bottom scan rather than one screen update. Keep small/local damage
 // precise, but collapse a damage set covering a meaningful fraction of the
 // frame to its bounding rectangle (one paint for a page transition).
+// Pending damage can contain partially overlapping rectangles when a viewer
+// waits across several updates. Their summed area is not the actual area.
+// This bounded x-sweep is used only when such overlaps may falsely trigger the
+// 25%-coverage policy; the normal non-overlapping path stays on its fast sum.
+inline std::uint64_t exactRfbUnionArea(const std::vector<RfbRect> &rects)
+{
+    std::vector<std::int32_t> xs;
+    xs.reserve(rects.size() * 2U);
+    for (const RfbRect &r : rects) {
+        xs.push_back(r.x);
+        xs.push_back(r.right());
+    }
+    std::sort(xs.begin(), xs.end());
+    xs.erase(std::unique(xs.begin(), xs.end()), xs.end());
+
+    std::vector<std::pair<std::int32_t, std::int32_t>> ys;
+    ys.reserve(rects.size());
+    std::uint64_t area = 0;
+    for (std::size_t i = 1; i < xs.size(); ++i) {
+        const auto x0 = xs[i - 1], x1 = xs[i];
+        if (x1 <= x0)
+            continue;
+        ys.clear();
+        for (const RfbRect &r : rects) {
+            if (r.x <= x0 && r.right() >= x1)
+                ys.emplace_back(r.y, r.bottom());
+        }
+        if (ys.empty())
+            continue;
+        std::sort(ys.begin(), ys.end());
+        std::int32_t y0 = ys.front().first, y1 = ys.front().second;
+        std::uint64_t coveredY = 0;
+        for (std::size_t j = 1; j < ys.size(); ++j) {
+            if (ys[j].first > y1) {
+                coveredY += static_cast<std::uint64_t>(y1 - y0);
+                y0 = ys[j].first;
+                y1 = ys[j].second;
+            } else {
+                y1 = std::max(y1, ys[j].second);
+            }
+        }
+        coveredY += static_cast<std::uint64_t>(y1 - y0);
+        area += static_cast<std::uint64_t>(x1 - x0) * coveredY;
+    }
+    return area;
+}
+
 inline RfbDamageRegion coalesceRfbDamageForPaint(RfbDamageRegion damage,
                                                  std::uint32_t width,
                                                  std::uint32_t height)
@@ -270,6 +411,21 @@ inline RfbDamageRegion coalesceRfbDamageForPaint(RfbDamageRegion damage,
     constexpr std::uint64_t kCoalescePercent = 25U;
     const std::uint64_t frameArea = static_cast<std::uint64_t>(width) * height;
     if (covered * 100U < frameArea * kCoalescePercent)
+        return damage;
+
+    // Only a possible overlap pays for the exact bounded sweep. Disjoint
+    // 25%+ page transitions still coalesce to one paint rectangle as before.
+    const auto &rects = damage.rects();
+    bool overlaps = false;
+    for (std::size_t i = 0; i < rects.size() && !overlaps; ++i) {
+        for (std::size_t j = 0; j < i; ++j) {
+            if (!intersectRfbRect(rects[i], rects[j]).empty()) {
+                overlaps = true;
+                break;
+            }
+        }
+    }
+    if (overlaps && exactRfbUnionArea(rects) * 100U < frameArea * kCoalescePercent)
         return damage;
 
     RfbDamageRegion result;
@@ -419,8 +575,28 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
         return result;
     }
 
+    // Scan the *actual* visible changed tiles before applying the lossy
+    // 64-rectangle metadata bound. The old scan fed every changed 64x64 tile
+    // into RfbDamageRegion::add(); after the 65th disjoint tile, each further
+    // tile triggered another O(64^2) best-pair search before the 25% large
+    // paint threshold could be evaluated. Checkerboard/video-like scenes
+    // could repeat that search hundreds of times on the RFB worker.
+    //
+    // Exact horizontal runs are cheaper to represent than individual tiles.
+    // Their area is the exact sum of changed *tile* areas, without overlap
+    // inflation from greedy bounding. A large paint can bypass ALL sparse
+    // bound searches and be emitted as a single conservative bounding rect.
+    const std::uint64_t frameArea = static_cast<std::uint64_t>(width) * height;
+    const std::uint64_t largePaintThreshold
+        = frameArea / 4U + (frameArea % 4U != 0U ? 1U : 0U);
+    std::uint64_t changedTileArea = 0;
+    RfbRect changedBounds;
+    std::vector<RfbRect> horizontalRuns;
+
     for (std::uint32_t y0 = 0; y0 < height; y0 += kRfbDamageTile) {
         const std::uint32_t tileHeight = std::min(kRfbDamageTile, height - y0);
+        bool runOpen = false;
+        std::uint32_t runStartX = 0;
         for (std::uint32_t x0 = 0; x0 < width; x0 += kRfbDamageTile) {
             const std::uint32_t tileWidth = std::min(kRfbDamageTile, width - x0);
             bool changed = false;
@@ -438,14 +614,48 @@ inline RfbDamageRegion changedRfbTiles(const hyremote::RemoteFrame *previous,
                 }
             }
             if (changed) {
-                result.add({static_cast<std::int32_t>(x0),
-                            static_cast<std::int32_t>(y0),
-                            static_cast<std::int32_t>(tileWidth),
-                            static_cast<std::int32_t>(tileHeight)});
+                if (!runOpen) {
+                    runOpen = true;
+                    runStartX = x0;
+                }
+                const RfbRect tile{static_cast<std::int32_t>(x0),
+                                   static_cast<std::int32_t>(y0),
+                                   static_cast<std::int32_t>(tileWidth),
+                                   static_cast<std::int32_t>(tileHeight)};
+                changedBounds = boundRfbRects(changedBounds, tile);
+                changedTileArea += static_cast<std::uint64_t>(tileWidth) * tileHeight;
+            }
+
+            // Close a horizontal run at its first unchanged tile or the
+            // final (possibly clipped) tile in this row. No clean tile enters
+            // a run, including the partial right/bottom edge of the frame.
+            if (runOpen && (!changed || x0 + tileWidth == width)) {
+                const std::uint32_t runEnd = changed ? x0 + tileWidth : x0;
+                horizontalRuns.push_back(
+                    {static_cast<std::int32_t>(runStartX),
+                     static_cast<std::int32_t>(y0),
+                     static_cast<std::int32_t>(runEnd - runStartX),
+                     static_cast<std::int32_t>(tileHeight)});
+                runOpen = false;
             }
         }
     }
-    return coalesceRfbDamageForPaint(std::move(result), width, height);
+
+    if (changedTileArea >= largePaintThreshold) {
+        // One FBU rectangle for a genuinely large transition: unchanged
+        // pixels inside this bound may be resent, but NO changed tile can
+        // be omitted. Unlike the old eager bounding path, sparse scenes
+        // cannot be promoted by invented/overlapping intermediate areas.
+        result.add(changedBounds);
+        return result;
+    }
+
+    // Sparse changes retain their exact tile runs and the established 64
+    // rectangle upper bound. Exact vertical unions still happen in add();
+    // the greedy bound is only paid when genuinely necessary (<25% area).
+    for (const RfbRect &run : horizontalRuns)
+        result.add(run);
+    return result;
 }
 
 }  // namespace HyRemote::detail

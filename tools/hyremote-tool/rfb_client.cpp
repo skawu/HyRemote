@@ -85,6 +85,8 @@ void RfbClient::connectToHost(const QString &host, quint16 port)
 void RfbClient::disconnectFromHost()
 {
     m_statsPoll.stop();
+    // Never inherit a previous local input opt-in into another session.
+    m_remoteControl = false;
     m_socket.abort();
     m_in.clear();
     m_waitingForFrame = false;
@@ -126,9 +128,11 @@ void RfbClient::onDisconnected()
 
 void RfbClient::onSocketError(QAbstractSocket::SocketError error)
 {
-    Q_UNUSED(error)
     if (m_state == State::Disconnected || m_state == State::Failed)
         return;
+    // Local Qt socket error codes are stable factual categories. Preserve
+    // existing errorOccurred(String) for CLI/legacy UI consumers unchanged.
+    emit socketErrorObserved(error);
     fail(m_socket.errorString());
 }
 
@@ -145,6 +149,7 @@ void RfbClient::fail(const QString &message)
     if (m_state == State::Failed)
         return;
     m_error = message;
+    m_remoteControl = false; // failed handshake/reception revokes local input
     m_statsPoll.stop();
     m_socket.abort();
     m_in.clear();
@@ -158,6 +163,7 @@ void RfbClient::resetSession()
     m_frame = QImage();
     m_size = QSize();
     m_serverName.clear();
+    m_remoteControl = false; // every explicit new attempt starts view-only
     emit cursorUpdated(QImage(), QPoint());
     m_waitingForFrame = false;
     m_frames = 0;
@@ -209,11 +215,11 @@ void RfbClient::process()
                 }
                 if (m_in.size() < 5 + static_cast<qsizetype>(reasonLength))
                     return;
-                const QString reason = QString::fromUtf8(
-                    m_in.mid(5, static_cast<qsizetype>(reasonLength)));
+                // This field is remote-controlled. Never route a peer's
+                // arbitrary UTF-8, control sequences or forged log lines into
+                // the local GUI, CLI stderr or diagnostics report.
                 m_in.remove(0, 5 + static_cast<qsizetype>(reasonLength));
-                fail(reason.isEmpty() ? QStringLiteral("the remote endpoint refused the connection")
-                                      : reason);
+                fail(QStringLiteral("the remote endpoint refused the connection"));
                 return;
             }
             if (m_in.size() < 1 + count)
@@ -247,12 +253,16 @@ void RfbClient::process()
                 if (m_in.size() < 8)
                     return;
                 const quint32 reasonLength = readU32(m_in, 4);
-                if (reasonLength > 4096 || m_in.size() < 8 + static_cast<qsizetype>(reasonLength))
+                // An oversized advertised reason is a protocol failure,
+                // not an incomplete packet that can wait indefinitely.
+                if (reasonLength > 4096) {
+                    fail(QStringLiteral("remote endpoint sent an oversized authentication reason"));
                     return;
-                const QString reason = QString::fromUtf8(
-                    m_in.mid(8, static_cast<qsizetype>(reasonLength)));
+                }
+                if (m_in.size() < 8 + static_cast<qsizetype>(reasonLength))
+                    return;
                 m_in.remove(0, 8 + static_cast<qsizetype>(reasonLength));
-                fail(reason.isEmpty() ? QStringLiteral("remote authentication failed") : reason);
+                fail(QStringLiteral("remote authentication failed"));
                 return;
             }
             m_in.remove(0, 4);

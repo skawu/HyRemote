@@ -1,4 +1,4 @@
-﻿// #789: exercise the static idle gate's freshness escapes without a Viewer.
+// #789: exercise the static idle gate's freshness escapes without a Viewer.
 // This intentionally tests private scheduling semantics, not an end-to-end
 // RealVNC latency SLO or the RK3588/Qt graphics driver.
 #include "detail/viewer_capture_demand.hpp"

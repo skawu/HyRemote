@@ -29,6 +29,9 @@ HYR_TEST(late_frame_and_event_callbacks_are_ignored)
     RunningSession running;
     HYR_CHECK(running.start());
 
+    // A source callback must correspond to an issued request; the previous
+    // test raced the scheduler and sometimes delivered unsolicited pixels.
+    HYR_CHECK(waitFor([&] { return running.source->requestCalls() >= 1; }));
     RemoteFrame frame = makeFrame(16, 8);
     HYR_CHECK(running.source->deliver(frame));
     HYR_CHECK(waitFor([&] { return running.session->stats().framesAccepted == 1; }));

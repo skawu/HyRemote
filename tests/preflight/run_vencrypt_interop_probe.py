@@ -144,7 +144,14 @@ def main() -> int:
         print(f"SPIKE_VIEWER_ERR {line}")
 
     thread.join(timeout=20)
-    print(f"SPIKE_ORCH server_exit={result.get('rc', 'still-running')}")
+    server_rc = result.get("rc")
+    print(f"SPIKE_ORCH server_exit={server_rc if server_rc is not None else 'still-running'}")
+    if server_rc != 0:
+        # The server transcript is the verifier; a viewer timeout only means the session stayed open.
+        # Without this check the probe reports success even on negotiation/authentication failure.
+        print(f"SPIKE_ORCH verdict=FAIL server_exit={server_rc}")
+        return 1
+    print("SPIKE_ORCH verdict=PASS")
     return 0
 
 

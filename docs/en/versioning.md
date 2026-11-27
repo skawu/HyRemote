@@ -111,7 +111,7 @@ The V0.3 family carries two separate classes of work:
 
 ### Mandatory pre-GA V0.3 baseline
 
-**Current Owner product roadmap (#594/#605, 2026-10-26):** [the sole complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The **only mandatory first-GA Qt LTS families are Qt 5.15 and Qt 6.8** on actually qualified Windows cells. **Qt 6.5 and Qt 6.12 are postponed until AFTER V1.0 GA**. Released V0.3.3.0 #144/#175 remains historical and frozen; the current development outcome is Qt5.15/Qt6.8 (#603/#604), and HyRemoteTool evolves incrementally across releases. V0.4 is qualification-only; V1 promotes an accepted RC. Known, testable user outcomes receive PLANNED versions in the canonical roadmap; unproven technical themes remain unnumbered. A PLANNED number does not activate a train or authorize a release. Machine activation/mandatory children come only from `.github/release/release-trains.json` and release gates. Historical releases are unchanged.
+**Current product roadmap (November 24, 2026):** [sole complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). V0.3.5.0 is released. Next development target: V0.3.6.0 Tool S1, pending separate machine registration. First GA is limited to qualified Qt 5.15/6.8 cells; Qt 6.5/6.12 follow GA. V0.4 is qualification only.
 
 Only **Windows x86_64 Qt 5.15 and Qt 6.8 applicable supported cells** require physical/real-runtime pre-GA qualification, alongside RFB Raw/TRLE incremental damage, maintained Viewer interoperability, #370 performance, SDK installation and packaging. Linux/ARM64/qxcb/Wayland/EGLFS remain user-validation pending and non-blocking (#563). Qt6.5/6.12 are not pre-RC or first-GA conditions.
 
@@ -132,12 +132,13 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 
 First-GA Qt5.15/Qt6.8 compatibility was the **V0.3.4.0** outcome, released on 2026-10-29 (tag `v0.3.4.0` → `main` `27bf97d`). Tool improves incrementally; Host config/text-watermark and Docker are later independent planned outcomes. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. The canonical [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) assigns planned versions to known user outcomes; this summary does not independently assign versions.
 
-## Assigned next development Feature: V0.3.5.0 (2026-10-29)
+## Next development Feature: V0.3.6.0 (November 24, 2026)
 
-**Local Owner development target: V0.3.5.0, not V0.4.0.0.** The next coherent user outcome is operable host configuration: config/state/secret paths with one shared path policy for the C++ API, QML API, Generic and QPA routes, failing closed on an invalid explicit selection, followed by a server-side static text watermark that a standard RFB viewer can see without polluting the local Qt window. Owner #591 → #589. The machine train is registered by a **separate machine PR** (2026-10-29), so implementation may start; nothing here authorizes a release.
+V0.3.5.0 is released at `b95cf752eb2aa2722c9f5a0af9e3bd5511275ba3`. The next development target is HyRemoteTool S1 (#581–#586/#590). New implementation follows separate reviewed machine registration; no release authorization is implied.
 
 - **V0.3.4.0: released** (2026-10-29). Post-release correction: the D05 record cited by its notes was added to the released tree and the tag was re-pointed to the corrected `main` HEAD before any announcement.
-- **V0.3.5.0: current development target** (2026-10-29), host config/state paths and server-side static text watermark #591/#589; machine train pending separate registration.
+- **V0.3.5.0: released** (November 24, 2026), host configuration/state and static text watermark #591/#589.
+- **V0.3.6.0: next development target**, machine registration pending.
 - **V0.4.0.0: NOT ACTIVE RC**, strictly qualification of already implemented functionality. It cannot absorb missing V0.3 Qt LTS/SDK/Tool feature implementation.
 
 This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before all mandatory acceptance and #95 release gates pass.
@@ -152,8 +153,8 @@ This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5
 | Version | Planned user-deliverable outcome | Status |
 | --- | --- | --- |
 | V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | **Released** (2026-10-29, tag `v0.3.4.0` → main `27bf97d`) |
-| V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | **Current development target** (2026-10-29); machine train registered |
-| V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Planned, not activated |
+| V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | **Released** (November 24, 2026) |
+| V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Next development target; machine registration pending |
 | V0.3.7.0 | Real user Qt app + HyRemote Docker deployment #592 | Conditional plan; actual container required |
 | V0.4.0.0 | Qualification-only RC, **not development of missing features** | Inactive conditional RC |
 | V1.0.0.0 | Windows first GA qualified Qt5.15/Qt6.8 support contract | Not released |
@@ -171,7 +172,7 @@ This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5
 | V1.2.6.0 | Appliance capture-on-demand and bounded idle resource use #151 | Conditional after device measurement |
 | V1.2.7.0 | Operational performance diagnostics beyond baseline #180 | Conditional on real support needs |
 
-**Change control:** any rearrangement needs a #594 Owner decision, a reviewed roadmap PR, old→new version mapping, reason, impact on dependencies/CI/support claims, and an auditable merge SHA. Do not create unapproved `release/*` or tags. The local owner must implement **V0.3.4.0 now**, not V0.4.0.0.
+**Change control:** any rearrangement needs a #594 Owner decision, a reviewed roadmap PR, old→new version mapping, reason, impact on dependencies/CI/support claims, and an auditable merge SHA. Do not create unapproved `release/*` or tags. The local owner follows the current roadmap and registered train; V0.4 remains qualification-only.
 
 ## V0.4: Qualify It
 

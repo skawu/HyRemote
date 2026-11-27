@@ -24,6 +24,12 @@ on:
 permissions:
   contents: read
 
+# #982: nightly/weekly breadth may overlap on a delayed runner. Keep evidence from
+# the current scheduled invocation without canceling a running product-quality lane.
+concurrency:
+  group: scheduled-breadth
+  cancel-in-progress: false
+
 jobs:
   g4-qt6-breadth:
     name: G4 nightly / Windows Qt 6.8.3 / cpp,qml,generic,qpa

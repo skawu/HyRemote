@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace HyRemote::detail {
 
@@ -128,11 +129,14 @@ bool composeWatermark(const WatermarkPolicy &policy, const WatermarkFrameView &f
     if (!policy.enabled)
         return false;
 
-    if (!frame.rgba || frame.width <= 0 || frame.height <= 0 || frame.stride < frame.width * 4) {
+    if (!frame.rgba || frame.width <= 0 || frame.height <= 0
+        || static_cast<qsizetype>(frame.width) > std::numeric_limits<qsizetype>::max() / 4
+        || frame.stride < static_cast<qsizetype>(frame.width) * 4) {
         error = QStringLiteral("the frame view cannot be watermarked (missing or malformed RGBA plane)");
         return false;
     }
-    if (frame.stride > static_cast<qsizetype>(1) << 24 || frame.height > (1 << 16)) {
+    if (frame.stride > static_cast<qsizetype>(1) << 24 || frame.height > (1 << 16)
+        || frame.stride > std::numeric_limits<qsizetype>::max() / frame.height) {
         error = QStringLiteral("the frame view is too large to watermark within the protocol baseline");
         return false;
     }

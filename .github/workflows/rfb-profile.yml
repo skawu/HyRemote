@@ -1,16 +1,10 @@
 name: RFB delivery profile
 
-# #261: produce the W1-W4 profiling evidence without changing the ordinary
-# product matrix. The jobs are manual (or run when this workflow file changes)
-# and upload JSON instead of asserting an SLO.
+# #261/#982: produce W1-W4 profiling evidence on explicit request only. It uploads
+# JSON instead of asserting an SLO; RFB correctness and CPU regression stay with
+# ci.yml / rfb-delivery-preflight.yml, so a profile-file PR no longer needs this lane.
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/rfb-profile.yml
-      # #609: validate corrected CPU accounting on the existing Windows profile lane.
-      # Broader CPU/sustained regression selection stays with #374.
-      - src/runtime/tests/test_rfb_wire_robustness.cpp
 
 permissions:
   contents: read
@@ -60,6 +54,12 @@ jobs:
             --tests --no-examples \
             -j4
 
+      - name: Verify rejected RFB frame notification resets one-shot state (P1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test --rfb-notify-post-failure
+
       - name: Run W1-W4 profile
         shell: bash
         run: |
@@ -68,11 +68,28 @@ jobs:
           HYREMOTE_RFB_PROFILE_FILE="$PWD/build-profile/profile/rfb-delivery-profile.json" \
             xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
 
-      - name: Upload profile JSON
+      - name: Compare unchanged-frame diff costs (advisory, same binary)
+        shell: bash
+        run: |
+          set -euo pipefail
+          HYREMOTE_RFB_COMPARE_PROFILE_FILE="$PWD/build-profile/profile/rfb-compare-profile.txt" \
+            xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
+
+      - name: Compare high-entropy TRLE raw-tile packing, same binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE="$PWD/build-profile/profile/trle-raw-pack-profile.txt" \
+            xvfb-run -a ./build-profile/runtime/tests/hyremote-rfb-wire-robustness-test
+
+      - name: Upload profile JSON and unchanged-frame scan measurements
         uses: actions/upload-artifact@v4
         with:
           name: rfb-delivery-profile-linux
-          path: build-profile/profile/rfb-delivery-profile.json
+          path: |
+            build-profile/profile/rfb-delivery-profile.json
+            build-profile/profile/rfb-compare-profile.txt
+            build-profile/profile/trle-raw-pack-profile.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -104,6 +121,13 @@ jobs:
           call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat"
           call build.cmd build --integrations=cpp --qt-prefix="%QT_PREFIX%" --build-type=Release --build-dir=build-profile --tests --no-examples -j4
 
+      - name: Verify rejected RFB frame notification resets one-shot state (P1)
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
+          & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe --rfb-notify-post-failure
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Run W1-W4 profile
         shell: pwsh
         run: |
@@ -112,10 +136,27 @@ jobs:
           $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
           & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
 
-      - name: Upload profile JSON
+      - name: Compare unchanged-frame diff costs (advisory, same binary)
+        shell: pwsh
+        run: |
+          $env:HYREMOTE_RFB_COMPARE_PROFILE_FILE = "$PWD/build-profile/profile/rfb-compare-profile.txt"
+          $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
+          & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
+
+      - name: Compare high-entropy TRLE raw-tile packing, same binary
+        shell: pwsh
+        run: |
+          $env:HYREMOTE_RFB_TRLE_RAW_PROFILE_FILE = "$PWD/build-profile/profile/trle-raw-pack-profile.txt"
+          $env:PATH = "$env:QT_PREFIX\bin;$PWD\build-profile\runtime;$env:PATH"
+          & .\build-profile\runtime\tests\hyremote-rfb-wire-robustness-test.exe
+
+      - name: Upload profile JSON and unchanged-frame scan measurements
         uses: actions/upload-artifact@v4
         with:
           name: rfb-delivery-profile-windows
-          path: build-profile/profile/rfb-delivery-profile.json
+          path: |
+            build-profile/profile/rfb-delivery-profile.json
+            build-profile/profile/rfb-compare-profile.txt
+            build-profile/profile/trle-raw-pack-profile.txt
           if-no-files-found: error
           retention-days: 14

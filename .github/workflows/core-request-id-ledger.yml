@@ -1,0 +1,147 @@
+name: Core RequestId credit and lifetime regression (Qt-free)
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'src/core/**'
+      - '.github/workflows/core-request-id-ledger.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-credit:
+    name: Linux native Core unit executables / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact source identity
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          echo "CORE_LEDGER_SOURCE_SHA=$actual"
+
+      - name: Build Core ONCE and run all native unit executables
+        shell: bash
+        env:
+          CXX: ${{ matrix.compiler }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/core-credit-${{ matrix.compiler }}"
+          mkdir -p "$out/obj" "$out/tests"
+          includes=(-Isrc/core/include -Isrc/core/src -Isrc/core/tests/support)
+          flags=(-std=c++17 -O2 -g -pthread -Wall -Wextra -Werror)
+          mapfile -t sources < <(find src/core/src -type f -name '*.cpp' | sort)
+          test "${#sources[@]}" -ge 7
+          objects=()
+          for source in "${sources[@]}"; do
+            obj="$out/obj/$(basename "${source%.cpp}").o"
+            "$CXX" "${flags[@]}" "${includes[@]}" -c "$source" -o "$obj"
+            objects+=("$obj")
+          done
+          ar rcs "$out/libhyremote-core.a" "${objects[@]}"
+          shopt -s nullglob
+          tests=(src/core/tests/test_*.cpp)
+          test "${#tests[@]}" -ge 11
+          for source in "${tests[@]}"; do
+            name="$(basename "${source%.cpp}")"
+            "$CXX" "${flags[@]}" "${includes[@]}" "$source"               "$out/libhyremote-core.a" -o "$out/tests/$name"
+            echo "CORE_TEST_EXECUTE=$name"
+            "$out/tests/$name" | tee "$out/tests/$name.log"
+          done
+          # Prevent a renamed/skipped Core test from making a green lane.
+          grep -Fq "[ PASS ] identified_completion_is_exactly_once_and_never_steals_another_credit"             "$out/tests/test_session_lifecycle.log"
+          grep -Fq "[ PASS ] legacy_unidentified_frame_still_retires_oldest_credit"             "$out/tests/test_session_lifecycle.log"
+          grep -Fq "[ PASS ] legacy_unidentified_unsolicited_frame_preserves_prior_acceptance" "$out/tests/test_session_lifecycle.log"
+          echo "CORE_TEST_PROGRAMS_EXECUTED=${#tests[@]}"
+          grep -Fq "[ PASS ] sync_terminal_then_request_rejection_cannot_steal_peer_credit" "$out/tests/test_session_lifecycle.log"
+          echo "CORE_LEDGER_RESULT=PASS"
+
+      - name: Enforce Qt-free Core architecture boundary and guard self-test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -DCORE_DIR="$PWD/src/core" -P src/core/tests/check_dependencies.cmake
+          echo "CORE_DEPENDENCY_BOUNDARY=PASS"
+
+  core-credit-msvc:
+    name: Windows MSVC2022 Qt-free Core unit executables
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile and execute all Core tests without a Qt SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $head = (git rev-parse HEAD).Trim()
+          if ($head -ne '${{ github.event.pull_request.head.sha || github.sha }}') {
+            throw "Core MSVC checkout source SHA mismatch"
+          }
+          Write-Host "CORE_LEDGER_SOURCE_SHA=$head"
+          $root = (Get-Location).Path.Replace([char]92, '/')
+          $wrapper = Join-Path $env:RUNNER_TEMP 'core-credit-msvc-src'
+          $build = Join-Path $env:RUNNER_TEMP 'core-credit-msvc-build'
+          New-Item -ItemType Directory -Force -Path $wrapper | Out-Null
+          @'
+          cmake_minimum_required(VERSION 3.21)
+          project(HyRemoteCoreOnly LANGUAGES CXX)
+          set(HYREMOTE_BUILD_TESTS OFF CACHE BOOL "No nested tests" FORCE)
+          add_subdirectory("${HYREMOTE_SOURCE_ROOT}/src/core" core)
+          file(GLOB source_tests "${HYREMOTE_SOURCE_ROOT}/src/core/tests/test_*.cpp")
+          foreach(source IN LISTS source_tests)
+            get_filename_component(testname "${source}" NAME_WE)
+            add_executable("${testname}" "${source}")
+            target_link_libraries("${testname}" PRIVATE hyremote-core)
+            target_include_directories("${testname}" PRIVATE
+              "${HYREMOTE_SOURCE_ROOT}/src/core/tests/support"
+              "${HYREMOTE_SOURCE_ROOT}/src/core/src")
+          endforeach()
+          '@ | Set-Content -Path (Join-Path $wrapper 'CMakeLists.txt') -Encoding UTF8
+          cmake -S $wrapper -B $build -G 'Visual Studio 17 2022' -A x64 "-DHYREMOTE_SOURCE_ROOT=$root"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build $build --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $tests = @(Get-ChildItem -Path src/core/tests/test_*.cpp)
+          if ($tests.Count -lt 11) { throw "Core tests absent" }
+          foreach ($test in $tests) {
+            $name = $test.BaseName
+            $exe = Join-Path $build "Release/$name.exe"
+            if (!(Test-Path $exe)) { throw "Missing compiled Core test $name" }
+            Write-Host "CORE_TEST_EXECUTE=$name"
+            $result = @(& $exe 2>&1)
+            $exitCode = $LASTEXITCODE
+            $result | ForEach-Object { Write-Host $_ }
+            if ($exitCode -ne 0) { throw "Core test $name failed exit=$exitCode" }
+            if ($name -eq 'test_session_lifecycle') {
+              $output = $result -join "`n"
+              foreach ($case in @(
+                  'identified_completion_is_exactly_once_and_never_steals_another_credit',
+                  'legacy_unidentified_frame_still_retires_oldest_credit',
+                  'legacy_unidentified_unsolicited_frame_preserves_prior_acceptance',
+                  'sync_terminal_then_request_rejection_cannot_steal_peer_credit')) {
+                if (!$output.Contains("[ PASS ] $case")) { throw "Unexecuted Core case $case" }
+              }
+            }
+          }
+          Write-Host "CORE_TEST_PROGRAMS_EXECUTED=$($tests.Count)"
+          Write-Host 'CORE_LEDGER_MSVC_RESULT=PASS'

@@ -69,7 +69,7 @@ Core must not require QWidget, QQuickWindow/QML, QPA/private APIs, concrete RFB 
 - automatic application-level access controller shared by Generic Plugin and QPA;
 - internal runtime configuration and ownership services shared across frontends.
 
-`src/runtime` may depend on Qt public APIs and `HyRemote::Core`. It must not depend on any directory under `src/integrations/`.
+`src/runtime` ordinarily depends on Qt public APIs and `HyRemote::Core`, and must not depend on any directory under `src/integrations/`. Under Human decision `AR-04=A` (2026-11-04), a narrowly scoped internal window-system remote-input/high-DPI implementation unit may use Qt Private APIs; this does not extend to Core, public SDK types, or other Runtime implementation.
 
 ## Integration frontend responsibilities
 
@@ -91,7 +91,7 @@ Owns a Qt Generic Plugin payload loaded with `-plugin hyremote` or `QT_QPA_GENER
 
 Owns the Qt private/QPA compatibility boundary. The long-term design is a **Factory Trampoline**: parse HyRemote platform parameters, resolve or create the qualified native Qt platform integration, bootstrap and arm the same automatic runtime, then return the native `QPlatformIntegration*` to Qt. QPA does not own product capture/input/transport/session semantics.
 
-Only `src/integrations/qpa` may depend on Qt private/QPA ABI.
+Among the four **integration frontends**, only `src/integrations/qpa` owns the Qt private/QPA platform-entry compatibility seam. A distinct, strictly scoped Runtime input implementation exception is authorized by Human `AR-04=A`; it is not a fifth frontend.
 
 ## Why `src/integrations/` is explicit
 
@@ -138,7 +138,7 @@ Vendor BSP and Qt own native display/input/GPU adaptation. Platform-specific HyR
 ## Compatibility model
 
 - `core`: ordinary C++ compatibility boundary; no Qt private ABI;
-- `runtime`: Qt public API and product implementation boundary;
+- `runtime`: Qt-public-first product implementation boundary with a narrowly scoped Qt Private remote-input/high-DPI internal exception qualified per exact Qt Kit and platform;
 - `integrations/cpp`: public C++ integration ABI/API;
 - `integrations/qml`: public Qt/QML integration boundary;
 - `integrations/generic`: public Qt Generic Plugin boundary;
@@ -188,9 +188,15 @@ Any intentional artifact or API change requires a separate compatibility decisio
 - Perform the migration on the dedicated #219 architecture branch/PR.
 - Preserve one Core/session/capture/input/transport architecture throughout.
 - Do not temporarily solve ownership by making Generic or QPA depend on Embedded C++ implementation details.
-- Keep QPA/private headers out of Core, Runtime, C++, QML, and Generic modules.
+- Keep Qt private/QPA headers out of Core and every non-QPA integration frontend. The shared Runtime's dedicated remote-input/high-DPI internal implementation may exceptionally link `Qt6::GuiPrivate`; this does not open other Runtime modules to private ABI.
 - Remove the legacy physical roots `src/cpp`, `src/qml`, `src/generic`, and `src/qpa`; do not leave forwarding directories or compatibility copies.
 - Update repository-layout gates, package/deploy contracts, examples, and cross-mode tests before the migration is complete.
+
+## 2026-11-04 scoped exception amendment (Human AR-04=A)
+
+The original absolute Qt-public-only Runtime / QPA-only private-ABI wording remains historical context; the corresponding normative clauses above are superseded by this limited amendment, without retroactively changing released binaries. The present exception is `src/runtime/src/detail/qt_window_system_input.cpp` (window-system event ingress and high DPI), linked privately to `Qt6::GuiPrivate`. C++/QML/Generic **frontend sources and public SDK types** still avoid Qt Private, while the **shared Runtime binary** they consume has this controlled dependency. Qualify and disclose exact Qt Kit/platform compatibility; public API compatibility alone is insufficient.
+
+This partial decision does **not** freeze the whole HyRemote product architecture. See [ADR-0008](0008-stage02-human-approved-architecture-decisions.md) and the dependency policy.
 
 ## Consequences
 

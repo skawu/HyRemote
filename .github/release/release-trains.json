@@ -33,7 +33,11 @@
     642,
     643,
     644,
-    655
+    655,
+    827,
+    843,
+    922,
+    1024
   ],
   "notes": {
     "purpose": "Single machine-readable release-train authority. A requested release version selects one exact Feature; that Feature names its own authority parent, its closeable mandatory children, the prerequisites that must be resolved before its candidate can be accepted, the evidence it requires, the cross-version references it consumes, its lineage and its declared non-blockers.",

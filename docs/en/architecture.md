@@ -175,7 +175,7 @@ Current reference delegates:
 - Windows: `qwindows`;
 - Linux/X11: `qxcb`.
 
-QPA alone owns the Qt private-ABI dependency. Qualification is exact-Qt-patch specific; the current reference is Qt 6.8.3.
+QPA alone owns the private Qt **platform-entry ABI frontend** seam. The shared Runtime also has the narrowly scoped Qt Private window-system remote-input/high-DPI implementation authorized by Human `AR-04=A`, so the shared binary requires actual Qt Kit/platform qualification too. Public-Qt C++/QML/Generic frontend code does not imply arbitrary Qt-patch binary compatibility for the whole Runtime. The current reference is Qt 6.8.3. See [ADR-0007](adr/0007-four-integration-runtime-architecture.md) and [ADR-0008](adr/0008-stage02-human-approved-architecture-decisions.md).
 
 Current product state: a peer route, on the same shared Runtime.
 

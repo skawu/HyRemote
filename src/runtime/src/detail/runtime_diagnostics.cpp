@@ -131,12 +131,32 @@ QString hyremoteVersion()
 
 QString buildIdentity()
 {
-    const QString sourceSha = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_SHA);
+    // Make the provenance discoverable with read-only ELF/PE string inspection
+    // even when Generic is injected into an application that does not capture
+    // Qt info messages or carry HYREMOTE-MANIFEST.txt alongside its executable.
+    // This string is compiled *into* the shared Runtime, not inferred from the
+    // application directory; the actual ELF still needs an independent hash.
+    // Static storage preserves a complete binary string across optimized
+    // builds; a local automatic constexpr array may be lowered to stack
+    // chunks that ELF/PE string inspection cannot find.
+    static constexpr char marker[] = "HYREMOTE_BUILD_SOURCE_SHA=" HYREMOTE_DIAGNOSTIC_SOURCE_SHA;
+    const QString sourceSha = QString::fromLatin1(marker)
+                                  .mid(sizeof("HYREMOTE_BUILD_SOURCE_SHA=") - 1);
     const QString buildType = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_BUILD_TYPE);
     if (sourceSha.isEmpty() || sourceSha == QStringLiteral("unknown"))
         return QStringLiteral("unknown");
+    // Kept byte-for-byte comparable with DEPLOYMENT_IDENTITY. Installed
+    // consumer checks require this frozen two-field schema; the optional
+    // Git vs archive origin is reported as a *separate* diagnostic field.
     return QStringLiteral("source_sha=%1,build_type=%2")
         .arg(sourceSha, buildType.isEmpty() ? QStringLiteral("unknown") : buildType);
+}
+
+QString buildSourceOrigin()
+{
+    const QString origin = QString::fromLatin1(HYREMOTE_DIAGNOSTIC_SOURCE_ORIGIN);
+    return origin == QStringLiteral("git") || origin == QStringLiteral("supplied")
+        ? origin : QStringLiteral("unknown");
 }
 
 QString buildFact(const char *value)
@@ -214,6 +234,7 @@ QString formatDiagnosticReport(const DiagnosticSnapshot &snapshot)
 
     lines << QStringLiteral("HYREMOTE_VERSION=%1").arg(hyremoteVersion())
           << QStringLiteral("BUILD_IDENTITY=%1").arg(buildIdentity())
+          << QStringLiteral("BUILD_SOURCE_ORIGIN=%1").arg(buildSourceOrigin())
           << QStringLiteral("QT_VERSION=%1").arg(QString::fromLatin1(QT_VERSION_STR))
           << QStringLiteral("OS=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_OS))
           << QStringLiteral("ARCH=%1").arg(buildFact(HYREMOTE_DIAGNOSTIC_ARCH))

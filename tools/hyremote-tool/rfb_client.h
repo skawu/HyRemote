@@ -61,6 +61,7 @@ signals:
     void serverNameChanged(const QString &name);
     void statsUpdated(const RfbClient::Stats &stats);
     void errorOccurred(const QString &message);
+    void socketErrorObserved(QAbstractSocket::SocketError error);
 
 private slots:
     void onConnected();

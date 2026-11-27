@@ -1,0 +1,428 @@
+#pragma once
+
+#include "credit_observer.hpp"
+#include "../qt-natural-frame-lifecycle/gl_fence_worker.hpp"
+#include "../qt-natural-frame-lifecycle/natural_frame_slot.hpp"
+
+#include <QGuiApplication>
+#include <QScreen>
+#include <QSGRendererInterface>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QQuickRenderTarget>
+#endif
+
+// Experimental opaque, unredirected QQuickWindow only. The public Qt
+// fallback owns bootstrap and normal probe requests.
+class NativeQuickSource final : public hyremote::CaptureSource,
+                                public HyRemote::detail::NaturalSnapshotSource
+{
+    class Pixels final : public hyremote::FrameStorage
+    {
+    public:
+        Pixels(std::vector<unsigned char> rgba, std::size_t stride)
+            : m_rgba(std::move(rgba)), m_stride(stride) {}
+        hyremote::StorageKind kind() const noexcept override { return hyremote::StorageKind::Cpu; }
+        std::size_t planeCount() const noexcept override { return 1; }
+        std::optional<hyremote::PlaneView> mapRead(std::size_t plane) const override
+        {
+            if (plane != 0)
+                return {};
+            return hyremote::PlaneView{reinterpret_cast<const std::byte *>(m_rgba.data()),
+                                      m_rgba.size(), m_stride};
+        }
+        std::string_view externalDomain() const noexcept override { return {}; }
+        std::shared_ptr<const hyremote::StorageExtension> extension(std::string_view) const override
+        { return {}; }
+
+    private:
+        const std::vector<unsigned char> m_rgba;
+        const std::size_t m_stride;
+    };
+
+    struct Snapshot {
+        hyremote::RemoteFrame frame;
+        std::uint64_t credit;
+    };
+    using Slot = NaturalFrameSlot<Snapshot>;
+
+    struct State {
+        std::mutex mutex;
+        Slot slot;
+        std::uint64_t surface = 1;
+        std::uint64_t geometry = 1;
+        bool active = false;
+        unsigned fallbackInFlight = 0;
+        std::weak_ptr<HyRemote::detail::ViewerCaptureDemand> demand;
+        hyremote::FrameReadyHandler onFrame;
+        QOffscreenSurface offscreen;
+        QThread worker;
+        QObject *workerActor = nullptr;
+        QObject guiReceiver;
+        ResearchGl::FenceRetirement retirement;
+        QOpenGLContext *shared = nullptr;
+        GLuint pbo = 0;
+        std::size_t pboBytes = 0;
+        bool nativeDisabled = false;
+        bool stopOnFirstSubmit = false;
+        unsigned contextsCreated = 0;
+        unsigned buffersCreated = 0;
+        std::optional<Slot::Ticket> ticket;
+        std::uint64_t credit = 0;
+        double dpr = 1;
+        hyremote::TimePoint rendered;
+        unsigned submitted = 0;
+        unsigned offered = 0;
+        unsigned published = 0;
+    };
+
+public:
+    NativeQuickSource(QQuickWindow &window, std::unique_ptr<hyremote::CaptureSource> fallback)
+        : m_window(window), m_fallback(std::move(fallback)), m_state(std::make_shared<State>())
+    {
+        m_state->offscreen.setFormat(window.requestedFormat());
+        m_state->offscreen.create();
+        m_state->stopOnFirstSubmit = qEnvironmentVariableIntValue("HYREMOTE_RESEARCH_STOP_IN_FLIGHT") == 1;
+    }
+
+    void bindViewerDemand(std::weak_ptr<HyRemote::detail::ViewerCaptureDemand> demand) override
+    { m_state->demand = std::move(demand); }
+
+    hyremote::CaptureCapabilities capabilities() const override { return m_fallback->capabilities(); }
+
+    bool start(hyremote::FrameReadyHandler frame, hyremote::CaptureEventHandler event) override
+    {
+        const auto state = m_state;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->active = true;
+            state->nativeDisabled = false;
+            state->fallbackInFlight = 0;
+            state->workerActor = new QObject;
+            state->workerActor->moveToThread(&state->worker);
+            QObject::connect(&state->worker, &QThread::finished,
+                             state->workerActor, &QObject::deleteLater);
+            state->worker.start();
+            state->onFrame = frame;
+            state->slot.setScope(++state->surface, state->geometry);
+        }
+        if (!m_fallback->start(
+                [state, frame](hyremote::RemoteFrame result) {
+                    {
+                        std::lock_guard<std::mutex> lock(state->mutex);
+                        if (state->fallbackInFlight)
+                            --state->fallbackInFlight;
+                    }
+                    frame(std::move(result));
+                }, [state, event](const hyremote::CaptureEvent &failure) {
+                    {
+                        std::lock_guard<std::mutex> lock(state->mutex);
+                        if (state->fallbackInFlight)
+                            --state->fallbackInFlight;
+                    }
+                    event(failure);
+                }))
+            return false;
+        m_connections.push_back(QObject::connect(
+            &m_window, &QQuickWindow::afterRendering, &m_window,
+            [state, window = &m_window] { submit(state, *window); }, Qt::DirectConnection));
+        m_connections.push_back(QObject::connect(
+            &m_window, &QQuickWindow::sceneGraphInvalidated, &m_window, [state] {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                state->slot.setScope(++state->surface, state->geometry);
+                // A new share group must not reuse old objects. This prototype
+                // falls back until the next Runtime start.
+                if (state->shared)
+                    state->nativeDisabled = true;
+            }, Qt::DirectConnection));
+        const auto geometryChanged = [state] {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->slot.setScope(state->surface, ++state->geometry);
+        };
+        m_connections.push_back(QObject::connect(
+            &m_window, &QWindow::widthChanged, &m_window, geometryChanged));
+        m_connections.push_back(QObject::connect(
+            &m_window, &QWindow::heightChanged, &m_window, geometryChanged));
+        m_connections.push_back(QObject::connect(
+            &m_window, &QWindow::screenChanged, &m_window, geometryChanged));
+        m_connections.push_back(QObject::connect(
+            &m_window, &QWindow::visibilityChanged, &m_window, geometryChanged));
+        return true;
+    }
+
+    void stop() noexcept override
+    {
+        const auto state = m_state;
+        bool pendingAtStop = false;
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->active = false;
+            pendingAtStop = state->ticket.has_value();
+            state->slot.setCredit(false);
+            state->onFrame = {};
+        }
+        for (const auto &connection : m_connections)
+            QObject::disconnect(connection);
+        m_connections.clear();
+        bool cleaned = true;
+        if (state->workerActor) {
+            const bool drained = QMetaObject::invokeMethod(state->workerActor, [&] {
+                if (!state->shared)
+                    return;
+                if (state->shared->makeCurrent(&state->offscreen)) {
+                    auto *gl = state->shared->extraFunctions();
+                    if (state->retirement.job.fence)
+                        gl->glDeleteSync(state->retirement.job.fence);
+                    if (state->pbo)
+                        gl->glDeleteBuffers(1, &state->pbo);
+                    state->shared->doneCurrent();
+                } else {
+                    cleaned = false;
+                }
+                delete state->shared;
+                state->shared = nullptr;
+                state->pbo = 0;
+                state->pboBytes = 0;
+                state->retirement.job = {};
+            }, Qt::BlockingQueuedConnection);
+            cleaned = cleaned && drained;
+            state->worker.quit();
+            state->worker.wait();
+            state->workerActor = nullptr;
+        }
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            if (state->ticket) {
+                state->slot.retire(*state->ticket, {});
+                state->ticket.reset();
+            }
+        }
+        m_fallback->stop();
+        std::fprintf(stdout, "NATIVE %u %u %u\n", state->submitted, state->offered, state->published);
+        std::fprintf(stdout, "NATIVE_STOP %u %u %u %u %u\n", state->contextsCreated,
+                     state->buffersCreated, state->submitted, unsigned(cleaned), unsigned(pendingAtStop));
+        std::fflush(stdout);
+    }
+
+    bool requestFrame(const hyremote::CaptureRequest &request) override
+    {
+        {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            ++m_state->fallbackInFlight;
+        }
+        const bool scheduled = m_fallback->requestFrame(request);
+        if (!scheduled) {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (m_state->fallbackInFlight)
+                --m_state->fallbackInFlight;
+        }
+        return scheduled;
+    }
+
+    bool tryPublishNaturalSnapshot(const hyremote::CaptureRequest &request) override
+    {
+        std::lock_guard<std::mutex> lock(m_state->mutex);
+        auto available = m_state->slot.take();
+        const auto gate = m_state->demand.lock();
+        if (!m_state->active || !available || !gate
+            || !gate->isNaturalFrameCreditCurrent(available->snapshot->credit)
+            || !m_state->slot.isCurrent(available->identity))
+            return false;
+        auto frame = available->snapshot->frame;
+        frame.requestId = request.id;
+        frame.timing.requestTime = request.requestTime;
+        ++m_state->published;
+        std::fprintf(stdout, "NATIVE_FRAME %llu\n", static_cast<unsigned long long>(request.id));
+        const auto plane = frame.storage->mapRead(0);
+        if (plane) {
+            const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                + plane->stride * (frame.geometry.size.height / 2)
+                + 4U * (frame.geometry.size.width / 2);
+            const unsigned color = (unsigned(pixel[0]) << 16) | (unsigned(pixel[1]) << 8) | pixel[2];
+            LARGE_INTEGER now;
+            QueryPerformanceCounter(&now);
+            std::fprintf(stdout, "TRACE native_ready %lld %llu %06x\n", now.QuadPart,
+                         static_cast<unsigned long long>(request.id), color);
+        }
+        std::fflush(stdout);
+        m_state->onFrame(std::move(frame));
+        return true;
+    }
+
+private:
+    static void submit(const std::shared_ptr<State> &owner, QQuickWindow &window)
+    {
+        using namespace ResearchGl;
+        auto &state = *owner;
+        const auto epoch = state.slot.advanceSourceEpoch();
+        std::unique_lock<std::mutex> lock(state.mutex, std::try_to_lock);
+        if (!lock || !state.active || state.nativeDisabled || !state.offscreen.isValid() || state.fallbackInFlight
+            || state.ticket || !window.isVisible() || window.visibility() == QWindow::Minimized)
+            return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        if (!window.renderTarget().isNull())
+            return;
+#endif
+        const auto demand = state.demand.lock();
+        const auto credit = demand ? demand->tryNaturalFrameCredit() : 0;
+        state.slot.setCredit(credit != 0);
+        if (!credit)
+            return;
+        auto *context = QOpenGLContext::currentContext();
+        if (!context || context->isOpenGLES() || context->format().majorVersion() < 3
+            || (context->format().majorVersion() == 3 && context->format().minorVersion() < 2))
+            return;
+        const double dpr = window.devicePixelRatio();
+        const int width = qRound(window.width() * dpr);
+        const int height = qRound(window.height() * dpr);
+        if (width <= 0 || height <= 0 || width > 3840 || height > 2160)
+            return;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        window.beginExternalCommands();
+        struct Commands {
+            QQuickWindow &window;
+            ~Commands() { window.endExternalCommands(); }
+        } commands{window};
+#endif
+        auto *gl = context->extraFunctions();
+        gl->initializeOpenGLFunctions();
+        GLint readFramebuffer = -1;
+        GLint sampleBuffers = -1;
+        gl->glGetIntegerv(kReadFramebufferBinding, &readFramebuffer);
+        gl->glGetIntegerv(GL_SAMPLE_BUFFERS, &sampleBuffers);
+        if (readFramebuffer != 0 || sampleBuffers != 0)
+            return;
+        auto ticket = state.slot.observe(epoch);
+        if (!ticket)
+            return;
+        if (!state.shared) {
+            auto shared = std::make_unique<QOpenGLContext>();
+            shared->setFormat(context->format());
+            shared->setShareContext(context);
+            if (shared->create() && QOpenGLContext::areSharing(context, shared.get()))
+                shared->moveToThread(&state.worker);
+            if (shared->thread() != &state.worker) {
+                state.nativeDisabled = true;
+                state.slot.retire(*ticket, {});
+                return;
+            }
+            state.shared = shared.release();
+            ++state.contextsCreated;
+        } else if (!QOpenGLContext::areSharing(context, state.shared)) {
+            state.nativeDisabled = true;
+            state.slot.retire(*ticket, {});
+            return;
+        }
+
+        const GLenum names[] = {kPackBinding, GL_PACK_ALIGNMENT, kPackRowLength,
+                                kPackSkipRows, kPackSkipPixels};
+        GLint prior[5]{};
+        for (int i = 0; i < 5; ++i)
+            gl->glGetIntegerv(names[i], &prior[i]);
+        if (!state.pbo) {
+            gl->glGenBuffers(1, &state.pbo);
+            if (state.pbo)
+                ++state.buffersCreated;
+        }
+        const auto bytes = std::size_t(width) * height * 4;
+        gl->glBindBuffer(kPackBuffer, state.pbo);
+        if (bytes != state.pboBytes) {
+            gl->glBufferData(kPackBuffer, GLsizeiptr(bytes), nullptr, kStreamRead);
+            state.pboBytes = bytes;
+        }
+        for (int i = 1; i < 5; ++i)
+            gl->glPixelStorei(names[i], i == 1 ? 1 : 0);
+        const auto rendered = hyremote::Clock::now();
+        gl->glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        GLsync fence = gl->glFenceSync(kSyncGpu, 0);
+        gl->glFlush();
+        const auto error = gl->glGetError();
+        gl->glBindBuffer(kPackBuffer, GLuint(prior[0]));
+        for (int i = 1; i < 5; ++i)
+            gl->glPixelStorei(names[i], prior[i]);
+        if (!state.pbo || !fence || error != GL_NO_ERROR) {
+            if (fence)
+                gl->glDeleteSync(fence);
+            state.nativeDisabled = true;
+            state.slot.retire(*ticket, {});
+            return;
+        }
+        state.ticket = ticket;
+        state.credit = credit;
+        state.dpr = dpr;
+        state.rendered = rendered;
+        state.retirement.job = {state.shared, &state.offscreen, state.pbo, fence, width, height};
+        state.retirement.job.holdBeforeCurrentForHide = state.stopOnFirstSubmit;
+        if (QMetaObject::invokeMethod(state.workerActor, [owner] {
+                owner->retirement.retire(true);
+                QMetaObject::invokeMethod(&owner->guiReceiver, [weak = std::weak_ptr<State>(owner)] {
+                    if (const auto state = weak.lock())
+                        retire(*state);
+                }, Qt::QueuedConnection);
+            }, Qt::QueuedConnection)) {
+            ++state.submitted;
+            if (state.stopOnFirstSubmit)
+                QMetaObject::invokeMethod(QCoreApplication::instance(), [] { QCoreApplication::quit(); },
+                                          Qt::QueuedConnection);
+        } else {
+            gl->glDeleteSync(fence);
+            state.retirement.job.fence = nullptr;
+            state.nativeDisabled = true;
+            state.slot.retire(*ticket, {});
+            state.ticket.reset();
+        }
+    }
+
+    static void retire(State &state)
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        if (!state.active || !state.ticket)
+            return;
+        std::shared_ptr<const Snapshot> snapshot;
+        const auto gate = state.demand.lock();
+        if (state.retirement.reason != "OK")
+            state.nativeDisabled = true;
+        if (gate && gate->isNaturalFrameCreditCurrent(state.credit) && state.retirement.reason == "OK") {
+            const int width = state.retirement.job.width;
+            const int height = state.retirement.job.height;
+            hyremote::RemoteFrame frame;
+            frame.geometry.size = {std::uint32_t(width), std::uint32_t(height)};
+            frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+            frame.geometry.alphaMode = hyremote::AlphaMode::Opaque;
+            frame.geometry.planeCount = 1;
+            frame.geometry.devicePixelRatio = float(state.dpr);
+            frame.damage = hyremote::Damage::fullFrame();
+            frame.timing.ptsSource = hyremote::PtsSource::Render;
+            frame.timing.pts = state.rendered;
+            frame.timing.completionTime = hyremote::Clock::now();
+            frame.storage = std::make_shared<Pixels>(std::move(state.retirement.rgba), std::size_t(width) * 4);
+            snapshot = std::make_shared<const Snapshot>(Snapshot{std::move(frame), state.credit});
+        }
+        if (state.slot.retire(*state.ticket, std::move(snapshot)) && gate->offerNaturalSnapshot(state.credit))
+            ++state.offered;
+        state.ticket.reset();
+    }
+
+    QQuickWindow &m_window;
+    std::unique_ptr<hyremote::CaptureSource> m_fallback;
+    std::shared_ptr<State> m_state;
+    std::vector<QMetaObject::Connection> m_connections;
+};
+
+class NativeQuickTarget final : public QObject, public HyRemote::detail::TargetComponentProvider
+{
+public:
+    explicit NativeQuickTarget(QQuickWindow &window) : m_window(window) {}
+
+    HyRemote::detail::TargetComponents createTargetComponents(
+        bool remoteInputEnabled, const HyRemote::detail::BuiltinTargetResolver &resolve) override
+    {
+        auto result = resolve(&m_window, remoteInputEnabled);
+        if (result.capture && qEnvironmentVariableIntValue("HYREMOTE_RESEARCH_NATIVE_GL") == 1)
+            result.capture = std::make_unique<NativeQuickSource>(m_window, std::move(result.capture));
+        return result;
+    }
+
+private:
+    QQuickWindow &m_window;
+};
+

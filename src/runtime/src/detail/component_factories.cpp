@@ -39,7 +39,9 @@ TransportFactory &transportFactory()
 // Composite targets already own the surface set. Resolving one of their child surfaces must reach
 // only the leaf adapter for that QObject; otherwise a QWidget child would manufacture another
 // scoped composite around itself and recurse through the same surface graph.
-TargetComponents createBuiltinLeafTargetComponents(QObject *target, bool remoteInputEnabled)
+TargetComponents createBuiltinLeafTargetComponents(
+    QObject *target, bool remoteInputEnabled,
+    bool logicalPixelsForComposite = false)
 {
 #ifdef HYREMOTE_HAS_WIDGETS_ADAPTER
     TargetComponents widgets = createWidgetsTargetComponents(target, remoteInputEnabled);
@@ -48,7 +50,8 @@ TargetComponents createBuiltinLeafTargetComponents(QObject *target, bool remoteI
 #endif
 
 #ifdef HYREMOTE_HAS_QUICK_ADAPTER
-    TargetComponents quick = createQuickTargetComponents(target, remoteInputEnabled);
+    TargetComponents quick = createQuickTargetComponents(
+        target, remoteInputEnabled, logicalPixelsForComposite);
     if (quick.supported)
         return quick;
 #endif
@@ -96,7 +99,11 @@ TargetComponents createTargetComponents(QObject *target, bool remoteInputEnabled
     if (target) {
         if (auto *provider = dynamic_cast<TargetComponentProvider *>(target)) {
             const BuiltinTargetResolver resolver = [](QObject *child, bool childRemoteInputEnabled) {
-                return createBuiltinLeafTargetComponents(child, childRemoteInputEnabled);
+                // The CompositeTarget uses one remote pixel per logical
+                // canvas unit (#806), even when a child has native DPR > 1.
+                return createBuiltinLeafTargetComponents(
+                    child, childRemoteInputEnabled,
+                    true /* logical composition output */);
             };
             return provider->createTargetComponents(remoteInputEnabled, resolver);
         }

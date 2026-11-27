@@ -1,0 +1,20 @@
+#pragma once
+
+#include <memory>
+
+namespace hyremote { struct CaptureRequest; }
+
+namespace HyRemote::detail {
+class ViewerCaptureDemand;
+
+// Private contract used by the experimental capture source. A false result
+// means nothing was published and the original Core request is still pending.
+class NaturalSnapshotSource
+{
+public:
+    virtual ~NaturalSnapshotSource() = default;
+    virtual void bindViewerDemand(std::weak_ptr<ViewerCaptureDemand> demand) = 0;
+    virtual bool tryPublishNaturalSnapshot(const hyremote::CaptureRequest &request) = 0;
+};
+}
+

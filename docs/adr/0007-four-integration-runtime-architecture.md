@@ -69,7 +69,7 @@ Core 不得要求 QWidget、QQuickWindow/QML、QPA/private API、具体 RFB 实�
 - Generic Plugin 与 QPA 零代码模式共用的应用级自动接入控制器；
 - 前端共享的内部 runtime 配置/所有权服务。
 
-`src/runtime` 可以依赖 Qt public API 和 `HyRemote::Core`，不得依赖 `src/integrations/` 下的任何目录。
+`src/runtime` 原则上依赖 Qt public API 和 `HyRemote::Core`，不得依赖 `src/integrations/` 下的任何目录。依据 2026-11-04 Human `AR-04=A`，仅窗口系统远程输入及高 DPI 坐标处理的专用内部实现单元允许受控 Qt Private 依赖；该依赖不得进入 Core 或公开 SDK 类型，也不得扩展为通用 Runtime 私有 ABI 许可。
 
 ## 接入前端职责
 
@@ -91,7 +91,7 @@ Core 不得要求 QWidget、QQuickWindow/QML、QPA/private API、具体 RFB 实�
 
 拥有 Qt private/QPA 兼容边界。长期设计是 **Factory Trampoline**：解析 HyRemote 平台参数，解析或创建已验证的原生 Qt 平台集成，启动并 arm 同一自动 runtime，然后把原生 `QPlatformIntegration*` 返回 Qt。QPA 不拥有产品 capture/input/transport/session 语义。
 
-四个接入前端中，只有 `src/integrations/qpa` 可以依赖 Qt private/QPA ABI。
+四个**接入前端**中，只有 `src/integrations/qpa` 拥有 Qt private/QPA 平台入口兼容边界；共享 Runtime 的专用远程输入单元另有 Human `AR-04=A` 授权的受控 Qt Private 例外，不属于第五种接入前端。
 
 ## 为什么显式使用 `src/integrations/`
 
@@ -138,7 +138,7 @@ Vendor BSP 与 Qt 负责原生显示/输入/GPU 适配。平台专用 HyRemote �
 ## 兼容模型
 
 - `core`：普通 C++ 兼容边界，不涉及 Qt private ABI；
-- `runtime`：Qt public API/产品实现边界；
+- `runtime`：Qt public API 为主的产品实现边界；远程输入/高 DPI 内部单元的 Qt Private 例外按精确 Qt Kit/平台资格验证；
 - `integrations/cpp`：公共 C++ 接入 ABI/API；
 - `integrations/qml`：公共 Qt/QML 接入边界；
 - `integrations/generic`：公共 Qt Generic Plugin 边界；
@@ -188,9 +188,15 @@ src/
 - 在专门的 #219 架构分支/PR 上执行迁移；
 - 全程保持一套 Core/session/capture/input/transport 架构；
 - 不得通过让 Generic 或 QPA 依赖 Embedded C++ 实现细节来临时解决所有权问题；
-- QPA/private 头文件不得进入 Core、Runtime、C++、QML 和 Generic 模块；
+- Qt private/QPA 头文件不得进入 Core 或任一非 QPA 接入前端；仅共享 Runtime 的远程输入/高 DPI 专用内部单元例外可依赖 `Qt6::GuiPrivate`，不得把该依赖扩展到普通 Runtime 实现；
 - 删除旧的物理根目录 `src/cpp`、`src/qml`、`src/generic`、`src/qpa`，不保留转发目录或兼容副本；
 - 完成迁移前更新仓库布局门禁、package/deploy 契约、示例和跨模式测试。
+
+## 2026-11-04 受控例外修订（Human AR-04=A）
+
+本 ADR 原有“Runtime 完全使用公共 Qt API / Private 仅在 QPA 前端”是历史设计基线；上述对应规范条款现由本修订限定替代，不追溯改变已发布产品版本。当前专用单元为 `src/runtime/src/detail/qt_window_system_input.cpp`（窗口事件投递与高 DPI），构建时通过共享 Runtime 私有链接 `Qt6::GuiPrivate`。因此 C++/QML/Generic **前端源码及公开 API** 仍不使用 Qt Private，但它们依赖的同一个 Runtime 二进制确实受到该受控私有 Qt 依赖影响。须公开精确 Qt Kit/平台兼容边界，不能仅凭 Qt public API 兼容推断整包二进制兼容。
+
+该局部决定不表示 HyRemote 整体产品架构已冻结；参考 [阶段02决策汇总 ADR-0008](0008-stage02-human-approved-architecture-decisions.md) 与 [依赖政策](../dependency-policy.md)。
 
 ## 结果
 

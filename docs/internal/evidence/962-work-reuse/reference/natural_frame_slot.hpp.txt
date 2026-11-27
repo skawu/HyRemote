@@ -1,0 +1,123 @@
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
+
+// A single window's capture slot. Except for advanceSourceEpoch(), its
+// caller serializes access with the provider's state lock.
+template <typename Snapshot>
+class NaturalFrameSlot
+{
+public:
+    struct Identity {
+        std::uint64_t surface;
+        std::uint64_t geometry;
+        std::uint64_t frame;
+        std::uint64_t creditEpoch;
+    };
+    struct Ticket {
+        Identity identity;
+        std::uint64_t serial;
+    };
+    struct Completed {
+        Identity identity;
+        std::shared_ptr<const Snapshot> snapshot;
+    };
+
+    void setScope(std::uint64_t surface, std::uint64_t geometry)
+    {
+        if (m_scopeSet && surface == m_surface && geometry == m_geometry)
+            return;
+        m_scopeSet = true;
+        m_surface = surface;
+        m_geometry = geometry;
+        invalidate();
+    }
+
+    void setCredit(bool available)
+    {
+        if (m_credit == available)
+            return;
+        m_credit = available;
+        if (!available) {
+            ++m_creditEpoch;
+            invalidate();
+        }
+    }
+
+    // Call only at a qualified natural-frame boundary and before attempting
+    // to acquire the provider's state lock. A contended lock must not make
+    // an older frame look fresh.
+    std::uint64_t advanceSourceEpoch()
+    {
+        return m_sourceEpoch.fetch_add(1, std::memory_order_acq_rel) + 1;
+    }
+
+    std::optional<Ticket> observe(std::uint64_t frame)
+    {
+        if (frame <= m_lastObserved || frame != m_sourceEpoch.load(std::memory_order_acquire))
+            return {};
+        m_lastObserved = frame;
+        m_ready.reset();
+        if (!m_scopeSet || !m_credit || m_inFlight)
+            return {};
+        m_inFlight = Ticket{{m_surface, m_geometry, frame, m_creditEpoch}, ++m_serial};
+        m_publishable = true;
+        return m_inFlight;
+    }
+
+    // A canceled readback still consumes the slot until its owning worker
+    // retires GPU resources. Late or duplicate completion must never free
+    // the slot belonging to a newer ticket.
+    bool retire(Ticket ticket, std::shared_ptr<const Snapshot> snapshot)
+    {
+        if (!m_inFlight || ticket.serial != m_inFlight->serial)
+            return false;
+        const Identity actual = m_inFlight->identity;
+        m_inFlight.reset();
+        const bool accept = m_publishable && snapshot && isCurrent(actual);
+        m_publishable = false;
+        if (accept)
+            m_ready = Completed{actual, std::move(snapshot)};
+        return accept;
+    }
+
+    // A completion may admit one scheduler request. The consumer must
+    // keep the original identity and revalidate it at the publication seam.
+    std::optional<Completed> take()
+    {
+        auto ready = std::exchange(m_ready, std::nullopt);
+        return ready && isCurrent(ready->identity) ? std::move(ready) : std::nullopt;
+    }
+
+    bool isCurrent(Identity identity) const
+    {
+        return m_credit && identity.surface == m_surface
+            && identity.geometry == m_geometry
+            && identity.frame == m_sourceEpoch.load(std::memory_order_acquire)
+            && identity.creditEpoch == m_creditEpoch;
+    }
+
+private:
+    void invalidate()
+    {
+        m_publishable = false;
+        m_ready.reset();
+    }
+
+    std::uint64_t m_surface = 0;
+    std::uint64_t m_geometry = 0;
+    std::atomic<std::uint64_t> m_sourceEpoch{0};
+    std::uint64_t m_lastObserved = 0;
+    std::uint64_t m_serial = 0;
+    std::uint64_t m_creditEpoch = 0;
+    bool m_scopeSet = false;
+    bool m_credit = false;
+    bool m_publishable = false;
+    std::optional<Ticket> m_inFlight;
+    std::optional<Completed> m_ready;
+};
+

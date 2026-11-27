@@ -1,6 +1,13 @@
+#include "staged_quick_probe_item.hpp"
+
+#include <QColor>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QEventLoop>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QGuiApplication>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
@@ -10,14 +17,46 @@
 #include <QQuickWindow>
 #include <QTimer>
 #include <QWheelEvent>
+#include <QSysInfo>
 
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <new>
+#include <thread>
+#include <utility>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX 1
+#endif
+#include <windows.h>
+#elif defined(__linux__)
+#include <time.h>
+#endif
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <vector>
 
 #include "detail/component_factories.hpp"
+#include "detail/readback_frame_storage.hpp"
 #include "detail/cursor_mapping.hpp"
+#include "quick/quick_capture_backend.hpp"
+#include "quick/quick_d3d11_target_admission.hpp"
+#include "quick/quick_gl_pbo_capture_source.hpp"
+#include "quick/quick_readback_batch.hpp"
+#include "quick/quick_readback_timing.hpp"
+#include "quick/quick_adaptive_capture_source.hpp"
+#include "quick/quick_image_frame_storage.hpp"
+#include "quick/quick_capture_single_flight.hpp"
+#include "quick/quick_grab_geometry.hpp"
+#include "quick/quick_idle_release.hpp"
 #include "hyremote/core/frame.hpp"
 #include "hyremote/core/input.hpp"
 
@@ -32,6 +71,807 @@ int failures = 0;
             ++failures;                                                                            \
         }                                                                                          \
     } while (false)
+
+// The C++ std::function implementation is allowed to copy a target while
+// installing the callback at start() (notably MSVC). Arm the negative only
+// *after* start returned: callback publication must not copy its function
+// even when such a copy would now throw std::bad_alloc.
+template <typename Fn>
+struct ThrowOnCopyCallback {
+    ThrowOnCopyCallback(Fn fn, const bool *armed) : fn(std::move(fn)), armed(armed) {}
+    ThrowOnCopyCallback(const ThrowOnCopyCallback &other)
+        : fn(other.fn), armed(other.armed)
+    {
+        if (*armed)
+            throw std::bad_alloc{};
+    }
+    ThrowOnCopyCallback(ThrowOnCopyCallback &&) noexcept = default;
+
+    template <typename... Args>
+    void operator()(Args &&...args) const
+    {
+        fn(std::forward<Args>(args)...);
+    }
+
+    Fn fn;
+    const bool *armed;
+};
+
+template <typename Fn>
+ThrowOnCopyCallback<Fn> throwOnCopy(Fn fn, const bool *armed)
+{
+    return ThrowOnCopyCallback<Fn>(std::move(fn), armed);
+}
+
+// A single Qt-free CPU normalization contract is used by the GL provider and
+// can also handle pitched D3D staging and Qt5 source rows without QtPrivate.
+// These fixtures deliberately avoid any GPU or platform dependency.
+// Fake providers have no Qt render workload; they check the common
+// CaptureSource identity/fallback/Surface-freshness contract deterministically.
+class ControlledQuickSource final : public hyremote::CaptureSource
+{
+public:
+    bool running = false;
+    bool startsSuccessfully = true;
+    bool acceptsRequests = true;
+    int releaseCalls = 0; // #790 zero-viewer idle-resource releases
+    std::vector<hyremote::CaptureRequestId> accepted;
+    std::mutex callbackMutex;
+    hyremote::FrameReadyHandler onFrame;
+    hyremote::CaptureEventHandler onEvent;
+
+    hyremote::CaptureCapabilities capabilities() const override
+    {
+        hyremote::CaptureCapabilities result;
+        result.asynchronous = true;
+        result.cpuReadable = true;
+        result.cpuFormats = {hyremote::PixelFormat::Rgba8888};
+        return result;
+    }
+    bool start(hyremote::FrameReadyHandler frame,
+               hyremote::CaptureEventHandler event) override
+    {
+        if (!startsSuccessfully)
+            return false;
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        running = true;
+        accepted.clear();
+        onFrame = std::move(frame);
+        onEvent = std::move(event);
+        return true;
+    }
+    void stop() noexcept override
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        running = false;
+        onFrame = {};
+        onEvent = {};
+    }
+    // #790: the adaptive wrapper owns no pixels, so its only legal behaviour is
+    // to forward the one zero-viewer edge to both providers.
+    void releaseIdleResources() noexcept override { ++releaseCalls; }
+    bool requestFrame(const hyremote::CaptureRequest &req) override
+    {
+        if (!running || !acceptsRequests)
+            return false;
+        accepted.push_back(req.id);
+        return true;
+    }
+    void complete(hyremote::CaptureRequestId id, bool valid,
+                  std::chrono::milliseconds contentAge = std::chrono::milliseconds{0},
+                  hyremote::PtsSource timestampSource = hyremote::PtsSource::Render)
+    {
+        hyremote::RemoteFrame frame;
+        frame.requestId = id;
+        frame.timing.ptsSource = timestampSource;
+        frame.timing.completionTime = hyremote::Clock::now();
+        frame.timing.pts = *frame.timing.completionTime - contentAge;
+        if (valid) {
+            frame.storage = hyremote::CpuFrameStorage::createSinglePlane(4, 1);
+            frame.geometry.size = {1, 1};
+            frame.geometry.planeCount = 1;
+            frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+            frame.damage = hyremote::Damage::fullFrame();
+        }
+        hyremote::FrameReadyHandler callback;
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            callback = onFrame; // immutable local copy survives concurrent stop
+        }
+        if (callback)
+            callback(std::move(frame));
+    }
+    void emitEvent(const hyremote::CaptureEvent &event)
+    {
+        hyremote::CaptureEventHandler callback;
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            callback = onEvent; // only copies the provider's unarmed lambda
+        }
+        if (callback)
+            callback(event);
+    }
+};
+
+void testUpstreamQtGrabTargetDprVersionContract()
+{
+    // Confirm exact Qt5.15/Qt6.8 upstream implementation difference:
+    // Qt5 textureSize == grabToImage(targetSize), while Qt6 multiplies
+    // textureSize by QQuickWindow::effectiveDevicePixelRatio().
+    const QSize logicalWindow{1920, 1080};
+    const QSize nativePixels{2880, 1620};
+    const QSize compositePixels{1920, 1080};
+    const auto direct = HyRemote::detail::quickGrabTargetForOutput(
+        nativePixels, logicalWindow, 1.5, false);
+    const auto composite = HyRemote::detail::quickGrabTargetForOutput(
+        compositePixels, logicalWindow, 1.5, true);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    CHECK(direct == logicalWindow);
+    CHECK(composite == QSize(1280, 720));
+    CHECK(QSize(qRound(direct.width() * 1.5),
+                qRound(direct.height() * 1.5)) == nativePixels);
+    CHECK(QSize(qRound(composite.width() * 1.5),
+                qRound(composite.height() * 1.5)) == compositePixels);
+    // 125% screens may introduce one rounding pixel: composite must handle
+    // that as an output resize, never request the full physical grid twice.
+    const auto fractional = HyRemote::detail::quickGrabTargetForOutput(
+        QSize(641, 361), QSize(641, 361), 1.25, true);
+    CHECK(std::abs(qRound(fractional.width() * 1.25) - 641) <= 1);
+    CHECK(std::abs(qRound(fractional.height() * 1.25) - 361) <= 1);
+#else
+    CHECK(direct == nativePixels);
+    CHECK(composite == compositePixels);
+#endif
+    CHECK(HyRemote::detail::quickGrabTargetForOutput(
+        compositePixels, logicalWindow, 0.0, true).isEmpty());
+    CHECK(HyRemote::detail::quickGrabTargetForOutput(
+        {}, logicalWindow, 1.5, true).isEmpty());
+}
+
+void testAdaptiveQuickSceneGraphInvalidationFailClosed()
+{
+    QQuickWindow window;
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        &window, std::move(native), std::move(publicQt));
+    std::vector<hyremote::RemoteFrame> frames;
+    CHECK(source.start([&](hyremote::RemoteFrame f) {
+        frames.push_back(std::move(f));
+    }, [](const hyremote::CaptureEvent &) {}));
+    CHECK(source.requestFrame({81, hyremote::Clock::now()}));
+    CHECK(primary->accepted.size() == 1 && primary->accepted[0] == 81);
+    // Qt issues this public signal on scenegraph/device teardown. Delivering
+    // it directly tests the shared runtime policy without a real GPU reset.
+    const bool invalidated = QMetaObject::invokeMethod(
+        &window, "sceneGraphInvalidated", Qt::DirectConnection);
+    CHECK(invalidated);
+    primary->complete(81, true);
+    CHECK(frames.size() == 1 && !frames[0].storage);
+    CHECK(source.requestFrame({82, hyremote::Clock::now()}));
+    CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 82);
+    backup->complete(82, true);
+    CHECK(frames.size() == 2 && frames[1].storage);
+    source.stop();
+}
+
+void testNativeReadbackBatchTimeoutIsOneFailure()
+{
+    using hyremote::CaptureRequest;
+    const auto now = hyremote::Clock::now();
+    std::vector<CaptureRequest> submitted{{101, now}, {102, now}};
+    std::vector<CaptureRequest> queued{{103, now}};
+    std::vector<CaptureRequest> expired;
+    CHECK(HyRemote::detail::retireTimedOutReadbackBatch(
+        submitted, 102, expired));
+    CHECK(submitted.empty() && expired.size() == 2);
+    CHECK(expired[0].id == 101 && expired[1].id == 102);
+    CHECK(!HyRemote::detail::retireTimedOutReadbackBatch(
+        submitted, 101, expired)); // its later timer cannot publish again
+    CHECK(expired.size() == 2 && queued.size() == 1);
+    CHECK(!HyRemote::detail::retireTimedOutReadbackBatch(
+        queued, 102, expired)); // unrelated batch is not revoked
+    CHECK(queued.size() == 1);
+    CHECK(HyRemote::detail::retireTimedOutReadbackBatch(
+        queued, 103, expired));
+    CHECK(expired.size() == 3 && queued.empty());
+}
+
+void testAdaptiveNativeFailureEventCountsOncePerGpuBatch()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    std::vector<hyremote::RemoteFrame> frames;
+    int observedUnavailableEvents = 0;
+    CHECK(source.start([&](hyremote::RemoteFrame frame) {
+        frames.push_back(std::move(frame));
+    }, [&](const hyremote::CaptureEvent &event) {
+        if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable)
+            ++observedUnavailableEvents;
+    }));
+    CHECK(source.requestFrame({101, hyremote::Clock::now()}));
+    CHECK(source.requestFrame({102, hyremote::Clock::now()}));
+
+    // The same unsignaled GPU staging/PBO copy serves BOTH accepted IDs.
+    // Its one provider event arrives before the two empty completions.
+    hyremote::CaptureEvent unavailable;
+    unavailable.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+    unavailable.recoverable = true;
+    unavailable.message = "D3D11 staging Map not ready after bounded renders";
+    CHECK(static_cast<bool>(primary->onEvent));
+    primary->onEvent(unavailable);
+    primary->complete(101, false);
+    primary->complete(102, false);
+    CHECK(observedUnavailableEvents == 1);
+    CHECK(frames.size() == 2);
+    CHECK(!frames[0].storage && !frames[1].storage);
+    CHECK(frames[0].requestId && *frames[0].requestId == 101);
+    CHECK(frames[1].requestId && *frames[1].requestId == 102);
+
+    // One failed GPU readback does NOT permanently disable native.
+    CHECK(source.requestFrame({103, hyremote::Clock::now()}));
+    CHECK(primary->accepted.size() == 3 && primary->accepted.back() == 103);
+    CHECK(backup->accepted.empty());
+
+    // A SECOND independent provider event triggers one-way fallback.
+    unavailable.message = "D3D11 capture exceeded bounded deadline";
+    primary->onEvent(unavailable);
+    primary->complete(103, false);
+    CHECK(observedUnavailableEvents == 2);
+    CHECK(source.requestFrame({104, hyremote::Clock::now()}));
+    CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 104);
+    backup->complete(104, true);
+    CHECK(frames.size() == 4 && frames.back().storage);
+    primary->complete(101, true); // retired IDs must never re-enter Core
+    CHECK(frames.size() == 4);
+    source.stop();
+}
+
+void testAdaptiveQuickMalformedNativeFramesTriggerFallback()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    std::vector<hyremote::RemoteFrame> frames;
+    CHECK(source.start([&](hyremote::RemoteFrame f) {
+        frames.push_back(std::move(f));
+    }, [](const hyremote::CaptureEvent &) {}));
+
+    auto nativeFrame = [](hyremote::CaptureRequestId id) {
+        hyremote::RemoteFrame frame;
+        frame.requestId = id;
+        frame.storage = hyremote::CpuFrameStorage::createSinglePlane(4, 1);
+        frame.geometry.size = {1, 1};
+        frame.geometry.planeCount = 1;
+        frame.geometry.pixelFormat = hyremote::PixelFormat::Rgba8888;
+        frame.timing.ptsSource = hyremote::PtsSource::Render;
+        frame.timing.completionTime = hyremote::Clock::now();
+        frame.timing.pts = *frame.timing.completionTime;
+        return frame;
+    };
+
+    CHECK(source.requestFrame({71, hyremote::Clock::now()}));
+    auto malformed = nativeFrame(71);
+    malformed.geometry.pixelFormat = hyremote::PixelFormat::Unknown;
+    primary->onFrame(std::move(malformed));
+    CHECK(frames.size() == 1 && !frames.back().storage);
+
+    CHECK(source.requestFrame({72, hyremote::Clock::now()}));
+    malformed = nativeFrame(72);
+    malformed.timing.pts += std::chrono::seconds(1);
+    primary->onFrame(std::move(malformed));
+    CHECK(frames.size() == 2 && !frames.back().storage);
+
+    CHECK(source.requestFrame({73, hyremote::Clock::now()}));
+    CHECK(backup->accepted.size() == 1 && backup->accepted[0] == 73);
+    backup->complete(73, true);
+    CHECK(frames.size() == 3 && frames.back().storage);
+    source.stop();
+}
+
+// #790: one shared deferred-release decision for every pixel-retaining backend.
+// The zero-viewer edge must survive an accepted in-flight readback and must be
+// consumed exactly once, so a backend cannot free a buffer that is still mapped
+// nor free twice for one transition.
+void testQuickIdleReleaseLatchIsDeferredAndOneShot()
+{
+    HyRemote::detail::QuickIdleRelease release;
+    CHECK(!release.pending());
+    CHECK(!release.take()); // nothing latched: keep the allocation
+
+    CHECK(release.latch());
+    CHECK(!release.latch()); // repeated edge never queues a second free
+    CHECK(release.pending());
+    CHECK(release.take()); // the first genuinely-idle point consumes it
+    CHECK(!release.pending());
+
+    // Freeing again must not happen for the same edge.
+    CHECK(!release.take());
+
+    // A later zero-viewer transition is a genuinely new edge.
+    CHECK(release.latch());
+    CHECK(release.take());
+    CHECK(!release.take());
+
+    // start()/stop() is a hard boundary; an unclaimed edge must not leak.
+    CHECK(release.latch());
+    release.clear();
+    CHECK(!release.pending());
+    CHECK(!release.take());
+}
+
+void testAdaptiveQuickForwardsZeroViewerRelease()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    auto *backup = publicQt.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(nullptr, std::move(native),
+                                                        std::move(publicQt));
+
+    // A source that was never started must not touch either provider.
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 0);
+    CHECK(backup->releaseCalls == 0);
+
+    CHECK(source.start([](hyremote::RemoteFrame) {},
+                       [](const hyremote::CaptureEvent &) {}));
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 1);
+    CHECK(backup->releaseCalls == 1);
+
+    // After stop the providers are retired; a late edge is inert.
+    source.stop();
+    source.releaseIdleResources();
+    CHECK(primary->releaseCalls == 1);
+    CHECK(backup->releaseCalls == 1);
+}
+
+void testAdaptiveQuickStopDrainsForwardedCoreCallback()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    std::mutex gateMutex;
+    std::condition_variable gateCv;
+    bool callbackEntered = false;
+    bool callbackReleased = false;
+    std::atomic<bool> stopped{false};
+    CHECK(source.start([&](hyremote::RemoteFrame) {
+        std::unique_lock<std::mutex> lock(gateMutex);
+        callbackEntered = true;
+        gateCv.notify_all();
+        gateCv.wait(lock, [&] { return callbackReleased; });
+    }, [](const hyremote::CaptureEvent &) {}));
+    CHECK(source.requestFrame({9101, hyremote::Clock::now()}));
+    std::thread producer([&] {
+        primary->complete(9101, true);
+    });
+    {
+        std::unique_lock<std::mutex> lock(gateMutex);
+        const bool entered = gateCv.wait_for(
+            lock, std::chrono::seconds(3), [&] { return callbackEntered; });
+        CHECK(entered);
+    }
+    std::thread stopper([&] {
+        source.stop();
+        stopped.store(true, std::memory_order_release);
+    });
+    // This test must not rely on an unbounded sleep: the callback is already
+    // admitted, and release happens only after stop has had a chance to run.
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    CHECK(!stopped.load(std::memory_order_acquire));
+    {
+        std::lock_guard<std::mutex> lock(gateMutex);
+        callbackReleased = true;
+    }
+    gateCv.notify_all();
+    producer.join();
+    stopper.join();
+    CHECK(stopped.load(std::memory_order_acquire));
+}
+
+// A callback installed by start() may become non-copyable under memory
+// pressure. No terminal or event forwarding may copy that std::function.
+void testAdaptiveQuickPublishedHandlersDoNotCopyAfterStart()
+{
+    auto native = std::make_unique<ControlledQuickSource>();
+    auto publicQt = std::make_unique<ControlledQuickSource>();
+    auto *primary = native.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        nullptr, std::move(native), std::move(publicQt));
+    bool copyThrows = false;
+    int frameCount = 0;
+    int eventCount = 0;
+    int completedId = 0;
+    CHECK(source.start(
+        throwOnCopy([&](hyremote::RemoteFrame frame) {
+            ++frameCount;
+            completedId = frame.requestId ? static_cast<int>(*frame.requestId) : 0;
+        }, &copyThrows),
+        throwOnCopy([&](const hyremote::CaptureEvent &) {
+            ++eventCount;
+        }, &copyThrows)));
+    copyThrows = true; // ARM AFTER installation; copying now throws bad_alloc
+    CHECK(source.requestFrame({9102, hyremote::Clock::now()}));
+    primary->complete(9102, true);
+    CHECK(frameCount == 1);
+    CHECK(completedId == 9102);
+    hyremote::CaptureEvent event;
+    event.code = hyremote::CaptureEventCode::TemporarilyUnavailable;
+    event.recoverable = true;
+    event.message = "controlled provider failure";
+    primary->emitEvent(event);
+    CHECK(eventCount == 1);
+    // A late duplicate after pending.erase must never debit Core twice.
+    primary->complete(9102, true);
+    CHECK(frameCount == 1);
+    source.stop();
+}
+
+void testAdaptiveQuickFallbackSurfaceEpochAndFreshness()
+{
+    QQuickWindow window;
+    window.resize(120, 80);
+    auto primary = std::make_unique<ControlledQuickSource>();
+    auto backup = std::make_unique<ControlledQuickSource>();
+    auto *native = primary.get();
+    auto *publicQt = backup.get();
+    HyRemote::detail::AdaptiveQuickCaptureSource source(
+        &window, std::move(primary), std::move(backup));
+    std::vector<hyremote::RemoteFrame> frames;
+    int events = 0;
+    const auto start = [&] {
+        return source.start([&](hyremote::RemoteFrame frame) {
+            frames.push_back(std::move(frame));
+        }, [&](const hyremote::CaptureEvent &) { ++events; });
+    };
+    auto request = [&](hyremote::CaptureRequestId id) {
+        return source.requestFrame({id, hyremote::Clock::now()});
+    };
+
+    CHECK(start());
+    CHECK(request(1));
+    CHECK(native->accepted.size() == 1);
+    native->complete(1, false);
+    CHECK(frames.size() == 1 && !frames.back().storage);
+    CHECK(request(2));
+    native->complete(2, false); // two failures arm one-way public fallback
+    CHECK(request(3));
+    CHECK(publicQt->accepted.size() == 1 && publicQt->accepted[0] == 3);
+    publicQt->complete(3, true);
+    CHECK(frames.size() == 3 && frames.back().storage);
+    native->complete(2, true); // duplicate, already retired: must be ignored
+    CHECK(frames.size() == 3);
+
+    CHECK(request(4));
+    window.resize(122, 80); // Surface generation changes before GPU completion
+    publicQt->complete(4, true);
+    CHECK(frames.size() == 4 && !frames.back().storage);
+    CHECK(frames.back().requestId && *frames.back().requestId == 4);
+    CHECK(request(5));
+    publicQt->complete(5, true);
+    CHECK(frames.size() == 5 && frames.back().storage);
+
+    source.stop();
+    CHECK(!native->running && !publicQt->running);
+    CHECK(start()); // a new controlled Session may try native again
+    CHECK(request(6));
+    CHECK(native->accepted.size() == 1 && native->accepted[0] == 6);
+    native->complete(6, true, std::chrono::milliseconds{800});
+    CHECK(frames.size() == 6 && !frames.back().storage); // stale render PTS
+    CHECK(request(7));
+    native->complete(7, true);
+    CHECK(frames.size() == 7 && frames.back().storage);
+    source.stop();
+    CHECK(events == 0);
+
+    // A native GPU request can finish AFTER a newer public fallback frame.
+    // Do not replay that older content, even if it is under the 500ms age
+    // budget; preserve the Core request's exact terminal identity.
+    CHECK(start());
+    CHECK(request(10)); // native, deliberately left in flight
+    CHECK(request(11));
+    CHECK(request(12));
+    native->complete(11, false);
+    native->complete(12, false);
+    CHECK(request(13)); // fallback now active
+    CHECK(!publicQt->accepted.empty() && publicQt->accepted.back() == 13);
+    publicQt->complete(13, true, std::chrono::milliseconds{0},
+                       hyremote::PtsSource::Completion);
+    CHECK(frames.back().requestId && *frames.back().requestId == 13
+          && frames.back().storage);
+    const std::size_t beforeLateNative = frames.size();
+    native->complete(10, true, std::chrono::milliseconds{150});
+    CHECK(frames.size() == beforeLateNative + 1);
+    CHECK(frames.back().requestId && *frames.back().requestId == 10
+          && !frames.back().storage);
+    source.stop();
+}
+
+void testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission()
+{
+    {
+        auto native = std::make_unique<ControlledQuickSource>();
+        auto publicQt = std::make_unique<ControlledQuickSource>();
+        auto *backup = publicQt.get();
+        native->startsSuccessfully = false; // unsupported native capability
+        HyRemote::detail::AdaptiveQuickCaptureSource source(
+            nullptr, std::move(native), std::move(publicQt));
+        std::vector<hyremote::RemoteFrame> received;
+        CHECK(source.start([&](hyremote::RemoteFrame f) {
+            received.push_back(std::move(f));
+        }, [](const hyremote::CaptureEvent &) {}));
+        CHECK(source.requestFrame({41, hyremote::Clock::now()}));
+        CHECK(backup->accepted.size() == 1 && backup->accepted.back() == 41);
+        backup->complete(41, true);
+        CHECK(received.size() == 1 && received.back().storage);
+        source.stop();
+    }
+    {
+        auto native = std::make_unique<ControlledQuickSource>();
+        auto publicQt = std::make_unique<ControlledQuickSource>();
+        auto *primary = native.get();
+        auto *backup = publicQt.get();
+        HyRemote::detail::AdaptiveQuickCaptureSource source(
+            nullptr, std::move(native), std::move(publicQt));
+        std::vector<hyremote::RemoteFrame> received;
+        CHECK(source.start([&](hyremote::RemoteFrame f) {
+            received.push_back(std::move(f));
+        }, [](const hyremote::CaptureEvent &) {}));
+        primary->acceptsRequests = false;
+        CHECK(!source.requestFrame({42, hyremote::Clock::now()}));
+        CHECK(!source.requestFrame({43, hyremote::Clock::now()}));
+        CHECK(source.requestFrame({44, hyremote::Clock::now()}));
+        CHECK(backup->accepted.size() == 1 && backup->accepted.back() == 44);
+        backup->complete(44, true);
+        CHECK(received.size() == 1 && received.back().storage);
+        // Neither source is permitted to accumulate an unbounded backlog.
+        for (hyremote::CaptureRequestId id = 50; id < 58; ++id)
+            CHECK(source.requestFrame({id, hyremote::Clock::now()}));
+        CHECK(!source.requestFrame({58, hyremote::Clock::now()}));
+        for (hyremote::CaptureRequestId id = 50; id < 58; ++id)
+            backup->complete(id, true);
+        CHECK(received.size() == 9);
+        source.stop();
+    }
+}
+
+void testQuickOpaqueRgbxCpuStorageIsZeroCopy()
+{
+    QImage opaque(3, 2, QImage::Format_RGBX8888);
+    opaque.fill(QColor(19, 58, 113));
+    const auto *ownerBytes = opaque.constBits();
+    CHECK(ownerBytes != nullptr);
+    auto storage = HyRemote::detail::QuickImageFrameStorage::create(opaque);
+    CHECK(storage != nullptr);
+    if (!storage)
+        return;
+    opaque = QImage(); // FrameStorage must retain the sole lifetime anchor
+    auto mapped = storage->mapRead(0);
+    CHECK(mapped && mapped->data && mapped->stride >= 12 && mapped->bytes >= 24);
+    if (mapped && mapped->data && mapped->bytes >= 4) {
+        CHECK(reinterpret_cast<const uchar *>(mapped->data) == ownerBytes);
+        CHECK(mapped->data[0] == std::byte{19});
+        CHECK(mapped->data[1] == std::byte{58});
+        CHECK(mapped->data[2] == std::byte{113});
+        CHECK(mapped->data[3] == std::byte{255});
+    }
+}
+
+// Both native providers hand their already-owned CPU readback buffer to
+// FrameStorage. This prevents a second full-frame allocation/copy and proves
+// D3D RowPitch/GL row-order normalization retains the same buffer lifetime.
+void testAdoptReadbackStorageNoSecondFullFrame()
+{
+    using HyRemote::detail::ReadbackRowOrder;
+    using HyRemote::detail::ReadbackPixelOrder;
+    using HyRemote::detail::adoptReadbackFrameStorage;
+
+    std::shared_ptr<std::byte> pixels(
+        new std::byte[24], std::default_delete<std::byte[]>());
+    for (std::size_t i = 0; i < 24; ++i)
+        pixels.get()[i] = std::byte{0};
+    // 2x2 BGRA pixels with 4-byte per-row padding. Row 0 is green, row 1 red.
+    pixels.get()[0] = std::byte{0}; pixels.get()[1] = std::byte{200};
+    pixels.get()[2] = std::byte{0}; pixels.get()[3] = std::byte{255};
+    pixels.get()[12] = std::byte{0}; pixels.get()[13] = std::byte{0};
+    pixels.get()[14] = std::byte{222}; pixels.get()[15] = std::byte{255};
+    const auto *original = pixels.get();
+    auto storage = adoptReadbackFrameStorage(
+        pixels, 24, 12, 8, 2, ReadbackRowOrder::BottomUp,
+        ReadbackPixelOrder::Bgra8888);
+    CHECK(storage != nullptr);
+    pixels.reset(); // storage must keep original allocation alive alone
+    if (!storage)
+        return;
+    const auto view = storage->mapRead(0);
+    CHECK(view && view->data == original && view->stride == 12
+          && view->bytes == 24);
+    if (view && view->data) {
+        CHECK(view->data[0] == std::byte{222}); // red, from bottom row
+        CHECK(view->data[1] == std::byte{0});
+        CHECK(view->data[2] == std::byte{0});
+        CHECK(view->data[3] == std::byte{255});
+        CHECK(view->data[12] == std::byte{0}); // green, from top row
+        CHECK(view->data[13] == std::byte{200});
+        CHECK(view->data[14] == std::byte{0});
+    }
+    auto invalid = adoptReadbackFrameStorage(
+        std::shared_ptr<std::byte>{}, 24, 12, 8, 2, ReadbackRowOrder::TopDown);
+    CHECK(!invalid);
+}
+
+void testReadbackFrameStorageRowOrderAndPitch()
+{
+    using HyRemote::detail::ReadbackRowOrder;
+    using HyRemote::detail::copyReadbackFrameStorage;
+    std::array<std::byte, 24> raw{};
+    for (std::size_t x = 0; x < 8; ++x) {
+        raw[x] = std::byte{static_cast<unsigned char>(x + 1)};
+        raw[12 + x] = std::byte{static_cast<unsigned char>(x + 11)};
+    }
+    for (std::size_t x = 8; x < 12; ++x)
+        raw[x] = std::byte{0xff}; // deliberate padding that must not leak
+
+    const auto check = [&](ReadbackRowOrder order, bool flipped) {
+        auto storage = copyReadbackFrameStorage(
+            raw.data(), raw.size(), 12, 8, 2, order);
+        CHECK(storage != nullptr);
+        if (!storage)
+            return;
+        const auto mapped = storage->mapRead(0);
+        CHECK(mapped && mapped->data && mapped->stride == 8
+              && mapped->bytes >= 16);
+        if (!mapped || !mapped->data || mapped->bytes < 16)
+            return;
+        for (std::size_t x = 0; x < 8; ++x) {
+            const auto first = flipped ? x + 11 : x + 1;
+            const auto second = flipped ? x + 1 : x + 11;
+            CHECK(mapped->data[x] == std::byte{static_cast<unsigned char>(first)});
+            CHECK(mapped->data[8 + x] == std::byte{static_cast<unsigned char>(second)});
+        }
+    };
+    check(ReadbackRowOrder::TopDown, false);
+    check(ReadbackRowOrder::BottomUp, true);
+
+    // Simulate D3D11 BGRA staging with RowPitch padding and verify that
+    // the shared CPU contract produces real RGBA bytes, not swapped colors.
+    std::array<std::byte, 24> bgra{};
+    bgra[0] = std::byte{0x41}; // B
+    bgra[1] = std::byte{0x32}; // G
+    bgra[2] = std::byte{0x23}; // R
+    bgra[3] = std::byte{0xff}; // A
+    bgra[12] = std::byte{0x54};
+    bgra[13] = std::byte{0x45};
+    bgra[14] = std::byte{0x36};
+    bgra[15] = std::byte{0xee};
+    auto normalized = copyReadbackFrameStorage(
+        bgra.data(), bgra.size(), 12, 8, 2, ReadbackRowOrder::TopDown,
+        HyRemote::detail::ReadbackPixelOrder::Bgra8888);
+    CHECK(normalized != nullptr);
+    if (normalized) {
+        const auto pixels = normalized->mapRead(0);
+        CHECK(pixels && pixels->data && pixels->stride == 8 && pixels->bytes >= 16);
+        if (pixels && pixels->data && pixels->bytes >= 16) {
+            CHECK(pixels->data[0] == std::byte{0x23});
+            CHECK(pixels->data[1] == std::byte{0x32});
+            CHECK(pixels->data[2] == std::byte{0x41});
+            CHECK(pixels->data[3] == std::byte{0xff});
+            CHECK(pixels->data[8] == std::byte{0x36});
+            CHECK(pixels->data[9] == std::byte{0x45});
+            CHECK(pixels->data[10] == std::byte{0x54});
+            CHECK(pixels->data[11] == std::byte{0xee});
+        }
+    }
+    CHECK(!copyReadbackFrameStorage(
+        bgra.data(), bgra.size(), 12, 7, 2, ReadbackRowOrder::TopDown,
+        HyRemote::detail::ReadbackPixelOrder::Bgra8888));
+    CHECK(!copyReadbackFrameStorage(
+        raw.data(), 19, 12, 8, 2, ReadbackRowOrder::BottomUp));
+    CHECK(!copyReadbackFrameStorage(
+        raw.data(), raw.size(), 7, 8, 2, ReadbackRowOrder::TopDown));
+    CHECK(!copyReadbackFrameStorage(
+        nullptr, raw.size(), 12, 8, 2, ReadbackRowOrder::TopDown));
+}
+
+// The backend is data, not permission to try QtPrivate QRhi readback.
+// This holds for a software-only Qt Quick plugin, RHI graphics APIs and
+// uninitialized/unknown renderers. The route remains the documented Qt
+// public grab with its normal bounded retry/failure semantics.
+void testQuickRendererCapabilityRouting()
+{
+    using Api = QSGRendererInterface::GraphicsApi;
+    using HyRemote::detail::QuickCaptureBackend;
+    using HyRemote::detail::QuickCaptureRoute;
+    using HyRemote::detail::QuickRenderingPath;
+    using HyRemote::detail::selectQuickCaptureRoute;
+    const struct {
+        Api api;
+        QuickCaptureBackend backend;
+    } cases[] = {
+        {Api::Unknown, QuickCaptureBackend::Unknown},
+        {Api::Software, QuickCaptureBackend::Software},
+        {Api::OpenGL, QuickCaptureBackend::OpenGL},
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        {Api::OpenGLRhi, QuickCaptureBackend::OpenGL},
+        {Api::Direct3D11Rhi, QuickCaptureBackend::Direct3D11},
+        {Api::VulkanRhi, QuickCaptureBackend::Vulkan},
+        {Api::MetalRhi, QuickCaptureBackend::Metal},
+        {Api::NullRhi, QuickCaptureBackend::Other},
+#else
+        {Api::Direct3D11, QuickCaptureBackend::Direct3D11},
+        {Api::Vulkan, QuickCaptureBackend::Vulkan},
+        {Api::Metal, QuickCaptureBackend::Metal},
+        {Api::Null, QuickCaptureBackend::Other},
+#endif
+        {Api::Direct3D12, QuickCaptureBackend::Direct3D12},
+        {Api::OpenVG, QuickCaptureBackend::Other},
+    };
+    for (const auto &scenario : cases) {
+        const auto selection = selectQuickCaptureRoute(scenario.api);
+        CHECK(selection.backend == scenario.backend);
+        CHECK(selection.route == QuickCaptureRoute::PublicQtGrabToImage);
+        // An opt-in backend must never turn other render APIs into a PBO
+        // route. Qualifying the provider is a Kit/build concern, not an
+        // implicit promise that every Qt version or GL driver supports it.
+        const auto armed = selectQuickCaptureRoute(scenario.api, true, true);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        const auto expectedArmedRoute = QuickCaptureRoute::PublicQtGrabToImage;
+#else
+        const auto expectedArmedRoute =
+            (scenario.backend == QuickCaptureBackend::OpenGL
+             ? QuickCaptureRoute::ExperimentalOpenGlPbo
+             : scenario.backend == QuickCaptureBackend::Direct3D11
+               ? QuickCaptureRoute::ExperimentalD3d11Staging
+               : QuickCaptureRoute::PublicQtGrabToImage);
+#endif
+        CHECK(armed.route == expectedArmedRoute);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+        if (scenario.api == Api::OpenGL)
+            CHECK(armed.renderingPath == QuickRenderingPath::Qt5Direct);
+        if (scenario.api == Api::OpenGLRhi)
+            CHECK(armed.renderingPath == QuickRenderingPath::Qt5EarlyRhi);
+        // Qt5 direct-GL is opt-in and may use the shared PBO implementation,
+        // but never confuse its render phase with Qt5's early RHI path.
+        const auto qt5Gl = selectQuickCaptureRoute(scenario.api,
+                                                  true, true, true);
+        CHECK(qt5Gl.route ==
+              (scenario.api == Api::OpenGL
+                  ? QuickCaptureRoute::ExperimentalOpenGlPbo
+                  : QuickCaptureRoute::PublicQtGrabToImage));
+#else
+        if (scenario.api == Api::OpenGL)
+            CHECK(armed.renderingPath == QuickRenderingPath::Qt6Rhi);
+#endif
+    }
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_QUICK_OPENGL")) {
+        // The dedicated Linux Xvfb/Mesa lane must exercise a REAL OpenGL
+        // scenegraph, rather than report success through software fallback.
+        QQuickWindow window;
+        window.resize(160, 90);
+        window.show();
+        QCoreApplication::processEvents();
+        const auto *renderer = window.rendererInterface();
+        CHECK(renderer != nullptr);
+        if (renderer) {
+            CHECK(renderer->graphicsApi() == Api::OpenGL);
+            CHECK(selectQuickCaptureRoute(renderer->graphicsApi()).route
+                  == QuickCaptureRoute::PublicQtGrabToImage);
+        }
+    }
+}
 
 bool pumpUntil(const std::function<bool()> &predicate, int attempts = 400)
 {
@@ -64,6 +904,8 @@ public:
     }
 };
 
+// #567/H4: a real QQuickPaintedItem can render an intentional intermediate
+// A/S/B scene. Track which scene was actually painted, not a timer guess.
 class EventProbe final : public QObject
 {
 public:
@@ -268,6 +1110,283 @@ void testQuickFactoryAndOwnedFrame()
     components.capture->stop();
 }
 
+// Public Qt 5/6 API only: two Core requests queued before the same GUI event
+// turn must share ONE actual offscreen grab and its immutable CPU storage,
+// while each accepted request receives its own terminal identity and timing.
+// A later page transition must cause a NEW image, never replay the old batch.
+void testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> received;
+    int events = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &) { ++events; }));
+    content.setStage(0);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 0; }));
+
+    const auto firstTime = hyremote::Clock::now();
+    const auto secondTime = hyremote::Clock::now();
+    // Deliberately no processEvents between the two calls.
+    CHECK(components.capture->requestFrame({701U, firstTime}));
+    CHECK(components.capture->requestFrame({702U, secondTime}));
+    CHECK(received.empty());
+    CHECK(pumpUntil([&] { return received.size() == 2U; }));
+    CHECK(events == 0);
+    if (received.size() == 2U) {
+        CHECK(received[0].requestId && *received[0].requestId == 701U);
+        CHECK(received[1].requestId && *received[1].requestId == 702U);
+        CHECK(received[0].timing.requestTime
+              && *received[0].timing.requestTime == firstTime);
+        CHECK(received[1].timing.requestTime
+              && *received[1].timing.requestTime == secondTime);
+        CHECK(received[0].storage && received[1].storage);
+        CHECK(received[0].storage == received[1].storage);
+        CHECK(received[0].timing.completionTime == received[1].timing.completionTime);
+        CHECK(received[0].geometry.size.width == received[1].geometry.size.width);
+        CHECK(received[0].geometry.size.height == received[1].geometry.size.height);
+
+        if (received[0].storage) {
+            const auto plane = received[0].storage->mapRead(0);
+            CHECK(plane && plane->data);
+            if (plane && plane->data) {
+                const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                                   + (received[0].geometry.size.height / 2U) * plane->stride
+                                   + (received[0].geometry.size.width / 4U) * 4U;
+                CHECK(pixel[0] == 20U && pixel[1] == 60U && pixel[2] == 160U);
+            }
+        }
+    }
+
+    // A new, actually rendered scene after the prior batch has completed
+    // must NOT borrow its source image or report stale page A as page B.
+    content.setStage(2);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 2; }));
+    CHECK(components.capture->requestFrame({703U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return received.size() == 3U; }));
+    if (received.size() == 3U) {
+        CHECK(received[2].requestId && *received[2].requestId == 703U);
+        CHECK(received[2].storage != received[0].storage);
+        const auto plane = received[2].storage ? received[2].storage->mapRead(0)
+                                               : std::nullopt;
+        CHECK(plane && plane->data);
+        if (plane && plane->data) {
+            const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                               + (received[2].geometry.size.height / 2U) * plane->stride
+                               + (received[2].geometry.size.width / 4U) * 4U;
+            CHECK(pixel[0] == 225U && pixel[1] == 30U && pixel[2] == 40U);
+        }
+    }
+    CHECK(events == 0);
+    components.capture->stop();
+}
+
+// The single-flight admission contract is independent of operating system,
+// Qt Quick's rendering backend or a particular QQuickItemGrabResult timing.
+// This model test fails if an in-flight batch accidentally becomes eligible
+// for another grab when a later Core request is admitted.
+void testQuickSingleFlightDispatchPolicy()
+{
+    HyRemote::detail::QuickCaptureSingleFlight gate;
+    CHECK(gate.needsDispatch());
+    gate.dispatchPosted();
+    CHECK(!gate.needsDispatch());
+    CHECK(gate.beginDispatchedGrab());
+    CHECK(gate.grabInProgress());
+    // The newer request may be queued but must NOT submit a second grab.
+    CHECK(!gate.needsDispatch());
+    gate.grabCompleted();
+    CHECK(!gate.grabInProgress());
+    CHECK(gate.needsDispatch());
+    gate.dispatchPosted();
+    CHECK(gate.beginDispatchedGrab());
+    CHECK(!gate.needsDispatch());
+    // Stop / restart invalidates both the old dispatch and active grab.
+    gate.reset();
+    CHECK(gate.needsDispatch());
+    CHECK(!gate.grabInProgress());
+}
+
+// A later request in a different GUI turn must get a NEW Qt scene capture,
+// but may not overtake the earlier asynchronous result. The old adapter
+// began multiple offscreen grabs concurrently; scene/driver readiness could
+// reorder completions and publish an older page after a newer page.
+void testQuickDeferredRequestsKeepOrderAndFreshPixels()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+    content.setStage(0);
+    CHECK(pumpUntil([&] { return painted.load(std::memory_order_acquire) == 0; }));
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> frames;
+    int events = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &) { ++events; }));
+
+    const auto firstTime = hyremote::Clock::now();
+    CHECK(components.capture->requestFrame({811U, firstTime}));
+    bool queuedSecondAccepted = false;
+    const auto secondTime = hyremote::Clock::now();
+    // The first GUI-dispatch event was queued BEFORE this callback. Thus the
+    // second request is admitted in a distinct GUI turn while the first
+    // grab may still be waiting for its asynchronous ready signal.
+    CHECK(QMetaObject::invokeMethod(
+        QCoreApplication::instance(), [&] {
+            content.setStage(2);
+            queuedSecondAccepted = components.capture->requestFrame(
+                {812U, secondTime});
+        }, Qt::QueuedConnection));
+    CHECK(pumpUntil([&] { return frames.size() == 2U; }, 600));
+    CHECK(queuedSecondAccepted);
+    CHECK(events == 0);
+    if (frames.size() == 2U) {
+        CHECK(frames[0].requestId && *frames[0].requestId == 811U);
+        CHECK(frames[1].requestId && *frames[1].requestId == 812U);
+        CHECK(frames[0].timing.requestTime
+              && *frames[0].timing.requestTime == firstTime);
+        CHECK(frames[1].timing.requestTime
+              && *frames[1].timing.requestTime == secondTime);
+        CHECK(frames[0].storage && frames[1].storage);
+        CHECK(frames[0].storage != frames[1].storage);
+        const auto leftRgb = [](const hyremote::RemoteFrame &frame) {
+            if (!frame.storage)
+                return std::uint32_t(0);
+            const auto plane = frame.storage->mapRead(0);
+            if (!plane || !plane->data)
+                return std::uint32_t(0);
+            const auto *pixel = reinterpret_cast<const std::uint8_t *>(plane->data)
+                                + (frame.geometry.size.height / 2U) * plane->stride
+                                + (frame.geometry.size.width / 4U) * 4U;
+            return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+                   | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+                   | static_cast<std::uint32_t>(pixel[2]);
+        };
+        // Qt grabToImage is asynchronous: submission at stage A does
+        // not promise an A pixel snapshot. By the time its offscreen render
+        // takes place the application may already have painted stage B.
+        // Either is valid for request 811; request 812, whose NEW grab starts
+        // strictly after 811 completes, must observe the updated B page.
+        const auto firstRgb = leftRgb(frames[0]);
+        CHECK(firstRgb == 0x143ca0U || firstRgb == 0xe11e28U);
+        CHECK(leftRgb(frames[1]) == 0xe11e28U);
+    }
+    components.capture->stop();
+}
+
+// A hidden target exercises the same single-flight gate across bounded
+// retry timers. Requests arriving during the previous retry cannot launch
+// an independent Qt grab or hold a Core slot forever; every accepted request
+// must have a terminal callback, then a visible target must recover.
+void testQuickSingleFlightHiddenRetryQueuesAndDrains()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(96, 64);
+    PaintedProbeItem content(window.contentItem());
+    content.setWidth(96);
+    content.setHeight(64);
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::vector<hyremote::RemoteFrame> frames;
+    int unavailableEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { frames.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &event) {
+            if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable)
+                ++unavailableEvents;
+        }));
+    CHECK(components.capture->requestFrame({820U, hyremote::Clock::now()}));
+    QCoreApplication::processEvents(); // first GUI batch enters bounded retry
+    CHECK(components.capture->requestFrame({821U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return frames.size() == 2U; }, 600));
+    CHECK(unavailableEvents == 2); // each independently retried batch
+    if (frames.size() == 2U) {
+        CHECK(frames[0].requestId && *frames[0].requestId == 820U);
+        CHECK(frames[1].requestId && *frames[1].requestId == 821U);
+        CHECK(!frames[0].storage && !frames[1].storage);
+    }
+    window.show();
+    CHECK(components.capture->requestFrame({822U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return frames.size() == 3U; }, 500));
+    if (frames.size() == 3U) {
+        CHECK(frames[2].requestId && *frames[2].requestId == 822U);
+        CHECK(frames[2].storage != nullptr);
+    }
+    components.capture->stop();
+}
+
+// A queued grab from a stopped capture lifetime must not complete using the
+// handlers or framebuffer identity of a newly started lifetime.
+void testQuickQueuedRequestsDoNotCrossStopRestart()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(120, 80);
+    PaintedProbeItem content(window.contentItem());
+    content.setWidth(120);
+    content.setHeight(80);
+    window.show();
+    QCoreApplication::processEvents();
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    int oldCallbacks = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame) { ++oldCallbacks; },
+        [&](const hyremote::CaptureEvent &) { ++oldCallbacks; }));
+    CHECK(components.capture->requestFrame({710U, hyremote::Clock::now()}));
+    CHECK(components.capture->requestFrame({711U, hyremote::Clock::now()}));
+    components.capture->stop(); // no GUI pump: both belong to old generation
+
+    std::vector<hyremote::CaptureRequestId> newCallbacks;
+    int newEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (frame.requestId)
+                newCallbacks.push_back(*frame.requestId);
+        },
+        [&](const hyremote::CaptureEvent &) { ++newEvents; }));
+    CHECK(components.capture->requestFrame({712U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return newCallbacks.size() == 1U; }));
+    CHECK(oldCallbacks == 0);
+    CHECK(newCallbacks.size() == 1U && newCallbacks[0] == 712U);
+    CHECK(newEvents == 0);
+    components.capture->stop();
+}
+
 // #609/#790: each successful asynchronous Qt Quick grab used to leave a
 // two-second singleShot callback alive after the image was delivered. Verify
 // the replacement cancels its owned timeout promptly instead of maintaining
@@ -332,6 +1451,90 @@ void testCompletedQuickGrabsCancelTimeouts()
 // adapter which invents mixed pixels. A and B are complete pages, while S is
 // deliberately half of each, representing an application-staged transition.
 // The Qt rendering signal is a stage barrier; no sleep is used for ordering.
+void testStagedQuickSourceCaptureFollowsPaintedScene()
+{
+    HyRemote::detail::resetFactories();
+
+    QQuickWindow window;
+    window.resize(160, 90);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(160);
+    content.setHeight(90);
+
+    std::atomic<int> completedPaintStage{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        completedPaintStage.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+
+    HyRemote::detail::TargetComponents components =
+        HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.supported && components.capture != nullptr);
+    if (!components.capture)
+        return;
+
+    std::optional<hyremote::RemoteFrame> received;
+    int captureEvents = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        [&](const hyremote::CaptureEvent &) { ++captureEvents; }));
+
+    for (int stage = 0; stage <= 2; ++stage) {
+        // afterRendering is emitted only after the Quick scene graph has drawn
+        // the stage; requestFrame is issued strictly after that confirmation.
+        content.setStage(stage);
+        const bool rendered = pumpUntil([&] {
+            return completedPaintStage.load(std::memory_order_acquire) == stage;
+        });
+        CHECK(rendered);
+        if (!rendered)
+            break;
+
+        received.reset();
+        hyremote::CaptureRequest request;
+        request.id = static_cast<hyremote::CaptureRequestId>(500U + stage);
+        request.requestTime = hyremote::Clock::now();
+        CHECK(components.capture->requestFrame(request));
+        const bool captured = pumpUntil([&] { return received.has_value(); });
+        CHECK(captured);
+        if (!captured)
+            break;
+
+        CHECK(received->requestId.has_value() && *received->requestId == request.id);
+        CHECK(received->storage != nullptr);
+        if (!received->storage)
+            break;
+        CHECK(received->geometry.pixelFormat == hyremote::PixelFormat::Rgba8888);
+        CHECK(received->geometry.alphaMode == hyremote::AlphaMode::Premultiplied);
+        const auto plane = received->storage->mapRead(0);
+        CHECK(plane.has_value() && plane->data != nullptr);
+        if (!plane || !plane->data)
+            break;
+
+        const auto width = static_cast<std::size_t>(received->geometry.size.width);
+        const auto height = static_cast<std::size_t>(received->geometry.size.height);
+        CHECK(width >= 4U && height >= 4U);
+        CHECK(plane->stride >= width * 4U && height <= plane->bytes / plane->stride);
+        if (width < 4U || height < 4U || plane->stride < width * 4U
+            || height > plane->bytes / plane->stride)
+            break;
+
+        const auto sample = [&](std::size_t x) {
+            const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                                + (height / 2U) * plane->stride + x * 4U;
+            return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+                   | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+                   | static_cast<std::uint32_t>(pixel[2]);
+        };
+        constexpr auto aRgb = StagedQuickProbeItem::A;
+        constexpr auto bRgb = StagedQuickProbeItem::B;
+        CHECK(sample(width / 4U) == (stage >= 1 ? bRgb : aRgb));
+        CHECK(sample(3U * width / 4U) == (stage >= 2 ? bRgb : aRgb));
+    }
+    CHECK(captureEvents == 0);
+    components.capture->stop();
+}
+
 void testDestroyedQuickTargetReportsTargetLost()
 {
     HyRemote::detail::resetFactories();
@@ -381,12 +1584,15 @@ void testUnavailableQuickCaptureHasBoundedRetryAndRecovers()
     std::optional<hyremote::RemoteFrame> received;
     std::optional<hyremote::CaptureEvent> lastEvent;
     int eventCount = 0;
+    bool rejectPostStartCopy = false;
     CHECK(components.capture->start(
-        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
-        [&](const hyremote::CaptureEvent &event) {
+        throwOnCopy([&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+                    &rejectPostStartCopy),
+        throwOnCopy([&](const hyremote::CaptureEvent &event) {
             lastEvent = event;
             ++eventCount;
-        }));
+        }, &rejectPostStartCopy)));
+    rejectPostStartCopy = true;
 
     hyremote::CaptureRequest hiddenRequest{31, hyremote::Clock::now()};
     CHECK(components.capture->requestFrame(hiddenRequest));
@@ -427,6 +1633,55 @@ void testUnavailableQuickCaptureHasBoundedRetryAndRecovers()
         CHECK(received->geometry.size.height > 0);
     }
 
+    components.capture->stop();
+}
+
+// If a same-turn Qt grab cannot complete after the finite retry budget,
+// every accepted Core slot must receive exactly one terminal frame, not just
+// the first request in the batch. A later visible grab remains recoverable.
+void testQuickHiddenBatchCompletesEveryAcceptedRequest()
+{
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.resize(96, 64);
+    PaintedProbeItem item(window.contentItem());
+    item.setWidth(96);
+    item.setHeight(64);
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+
+    std::vector<hyremote::RemoteFrame> received;
+    int unavailable = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received.push_back(std::move(frame)); },
+        [&](const hyremote::CaptureEvent &event) {
+            if (event.code == hyremote::CaptureEventCode::TemporarilyUnavailable)
+                ++unavailable;
+        }));
+    // No GUI event processing: the hidden requests necessarily share a batch.
+    CHECK(components.capture->requestFrame({720U, hyremote::Clock::now()}));
+    CHECK(components.capture->requestFrame({721U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return received.size() == 2U; }));
+    CHECK(unavailable == 1);
+    if (received.size() == 2U) {
+        CHECK(received[0].requestId && *received[0].requestId == 720U);
+        CHECK(received[1].requestId && *received[1].requestId == 721U);
+        CHECK(!received[0].storage && !received[1].storage);
+        CHECK(received[0].timing.requestTime && received[1].timing.requestTime);
+        CHECK(received[0].timing.completionTime && received[1].timing.completionTime);
+    }
+
+    window.show();
+    QCoreApplication::processEvents();
+    CHECK(components.capture->requestFrame({722U, hyremote::Clock::now()}));
+    CHECK(pumpUntil([&] { return received.size() == 3U; }));
+    if (received.size() == 3U) {
+        CHECK(received[2].requestId && *received[2].requestId == 722U);
+        CHECK(received[2].storage != nullptr);
+    }
+    CHECK(unavailable == 1);
     components.capture->stop();
 }
 
@@ -522,16 +1777,776 @@ void testQueuedQuickInputIsDroppedWhenSinkIsDestroyed()
     CHECK(probe.mouseMoves == 0);
 }
 
+// This is a process CPU clock, not a stopwatch. MSVC std::clock() returns
+// elapsed wall time and would mislabel GUI event-loop waits as "CPU". Match
+// the rootless CPU probe's OS clocks; unsupported OS builds can run ordinary
+// Quick CTest but must not emit synthetic CPU qualification data.
+bool quickProfileProcessCpuNs(std::uint64_t &out) noexcept
+{
+#if defined(_WIN32)
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user))
+        return false;
+    ULARGE_INTEGER kernelTicks{}, userTicks{};
+    kernelTicks.LowPart = kernel.dwLowDateTime;
+    kernelTicks.HighPart = kernel.dwHighDateTime;
+    userTicks.LowPart = user.dwLowDateTime;
+    userTicks.HighPart = user.dwHighDateTime;
+    out = (kernelTicks.QuadPart + userTicks.QuadPart) * 100ULL;
+    return true;
+#elif defined(__linux__)
+    timespec sample{};
+    if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &sample) != 0
+        || sample.tv_sec < 0 || sample.tv_nsec < 0
+        || sample.tv_nsec >= 1000000000L)
+        return false;
+    out = static_cast<std::uint64_t>(sample.tv_sec) * 1000000000ULL
+          + static_cast<std::uint64_t>(sample.tv_nsec);
+    return true;
+#else
+    (void)out;
+    return false; // no guessed CPU-time semantics for other OS toolchains
+#endif
+}
+
+// Test the semantic distinction responsible for review P2 on a real
+// Windows/Linux runner, not only that the OS function compiles. A 120ms
+// sleep must advance wall time but not consume roughly 120ms of process CPU.
+// Do this before creating any scenegraph rendering threads.
+void testQuickProfileClockDoesNotMeasureSleepAsCpu()
+{
+#if defined(_WIN32) || defined(__linux__)
+    std::uint64_t before = 0, after = 0;
+    const bool okBefore = quickProfileProcessCpuNs(before);
+    CHECK(okBefore);
+    if (!okBefore)
+        return;
+    const auto start = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    const auto elapsedWallMs = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    const bool okAfter = quickProfileProcessCpuNs(after);
+    CHECK(okAfter && after >= before);
+    if (!okAfter || after < before)
+        return;
+    const double processCpuMs = static_cast<double>(after - before) / 1000000.0;
+    CHECK(elapsedWallMs >= 100.0);
+    CHECK(processCpuMs < elapsedWallMs * 0.70);
+#endif
+}
+
+// Advisory, opt-in production PUBLIC Qt Quick capture baseline. Never runs
+// as part of ordinary CTest: a hosted Xvfb/Mesa graphics environment cannot
+// establish release CPU benefit, especially not for RK3588 EGLFS or D3D11
+// private QRhi. Bracket one animated case with equivalent static A1/A2
+// workloads so large host drift is visible, rather than averaging it away.
+struct PublicQuickProfileCase
+{
+    QString name;
+    int validFrames = 0;
+    double processCpuMs = 0.0;
+    double wallMs = 0.0;
+    double p50Ms = 0.0;
+    double p95Ms = 0.0;
+    int observedWidth = 0;
+    int observedHeight = 0;
+};
+
+double profilePercentile(std::vector<double> times, double fraction)
+{
+    if (times.empty())
+        return 0.0;
+    std::sort(times.begin(), times.end());
+    const auto position = static_cast<std::size_t>(
+        std::ceil(fraction * static_cast<double>(times.size())));
+    return times[std::min(times.size() - 1U,
+                          position > 0U ? position - 1U : 0U)];
+}
+
+bool profileHasStagePixels(const hyremote::RemoteFrame &frame, int stage)
+{
+    if (!frame.storage || frame.geometry.pixelFormat != hyremote::PixelFormat::Rgba8888
+        || frame.geometry.size.width < 8U || frame.geometry.size.height < 8U)
+        return false;
+    const auto plane = frame.storage->mapRead(0);
+    if (!plane || !plane->data)
+        return false;
+    const std::size_t width = frame.geometry.size.width;
+    const std::size_t height = frame.geometry.size.height;
+    if (plane->stride < width * 4U || height > plane->bytes / plane->stride)
+        return false;
+
+    const auto sample = [&](std::size_t x) {
+        const auto *pixel = reinterpret_cast<const unsigned char *>(plane->data)
+                            + (height / 2U) * plane->stride + x * 4U;
+        return (static_cast<std::uint32_t>(pixel[0]) << 16U)
+               | (static_cast<std::uint32_t>(pixel[1]) << 8U)
+               | static_cast<std::uint32_t>(pixel[2]);
+    };
+    constexpr std::uint32_t a = 0x143ca0U;
+    constexpr std::uint32_t b = 0xe11e28U;
+    return sample(width / 4U) == (stage >= 1 ? b : a)
+           && sample(3U * width / 4U) == (stage >= 2 ? b : a);
+}
+
+PublicQuickProfileCase runPublicQuickProfileCase(
+    hyremote::CaptureSource &source, StagedQuickProbeItem &content,
+    const std::atomic<int> &renderedStage, std::optional<hyremote::RemoteFrame> &received,
+    QString name, bool animate, int &lastStage, std::uint64_t &nextRequestId)
+{
+    constexpr int warmup = 8;
+    constexpr int measured = 24;
+    using Clock = std::chrono::steady_clock;
+    PublicQuickProfileCase result;
+    result.name = std::move(name);
+    std::vector<double> latencies;
+    latencies.reserve(measured);
+    std::uint64_t startCpuNs = 0;
+    bool cpuClockValid = false;
+    Clock::time_point startWall{};
+    bool started = false;
+
+    for (int index = -warmup; index < measured; ++index) {
+        if (index == 0) {
+            cpuClockValid = quickProfileProcessCpuNs(startCpuNs);
+            CHECK(cpuClockValid);
+            startWall = Clock::now();
+            started = true;
+        }
+        // Public A1 and A2 are truly static after the first paint. Dynamic
+        // switches A -> split -> B -> A and waits for the actual scene paint.
+        const int stage = animate ? ((index + warmup) % 3) : 0;
+        if (stage != lastStage) {
+            content.setStage(stage);
+            lastStage = stage;
+            const bool painted = pumpUntil([&] {
+                return renderedStage.load(std::memory_order_acquire) == stage;
+            });
+            CHECK(painted);
+            if (!painted)
+                break;
+        }
+
+        received.reset();
+        const auto issuedAt = Clock::now();
+        const auto id = ++nextRequestId;
+        const bool accepted = source.requestFrame({id, hyremote::Clock::now()});
+        CHECK(accepted);
+        if (!accepted)
+            break;
+        const bool completed = pumpUntil([&] { return received.has_value(); }, 500);
+        CHECK(completed);
+        if (!completed)
+            break;
+        const auto completedAt = Clock::now();
+        CHECK(received->requestId && *received->requestId == id);
+        CHECK(profileHasStagePixels(*received, stage));
+        if (!received->requestId || *received->requestId != id
+            || !profileHasStagePixels(*received, stage))
+            break;
+
+        if (index >= 0) {
+            ++result.validFrames;
+            result.observedWidth = static_cast<int>(received->geometry.size.width);
+            result.observedHeight = static_cast<int>(received->geometry.size.height);
+            latencies.push_back(std::chrono::duration<double, std::milli>(
+                                    completedAt - issuedAt).count());
+        }
+    }
+
+    if (started) {
+        std::uint64_t endCpuNs = 0;
+        const bool cpuValid = cpuClockValid && quickProfileProcessCpuNs(endCpuNs)
+                              && endCpuNs >= startCpuNs;
+        CHECK(cpuValid);
+        result.processCpuMs = cpuValid
+                                  ? static_cast<double>(endCpuNs - startCpuNs) / 1000000.0
+                                  : 0.0;
+        result.wallMs = std::chrono::duration<double, std::milli>(
+                            Clock::now() - startWall).count();
+    }
+    result.p50Ms = profilePercentile(latencies, 0.50);
+    result.p95Ms = profilePercentile(latencies, 0.95);
+    CHECK(result.validFrames == measured);
+    return result;
+}
+
+QJsonObject publicProfileToJson(const PublicQuickProfileCase &sample)
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("name"), sample.name);
+    result.insert(QStringLiteral("valid_frames"), sample.validFrames);
+    result.insert(QStringLiteral("observed_width"), sample.observedWidth);
+    result.insert(QStringLiteral("observed_height"), sample.observedHeight);
+    result.insert(QStringLiteral("process_cpu_ms"), sample.processCpuMs);
+    result.insert(QStringLiteral("wall_ms"), sample.wallMs);
+    result.insert(QStringLiteral("request_p50_ms"), sample.p50Ms);
+    result.insert(QStringLiteral("request_p95_ms"), sample.p95Ms);
+    return result;
+}
+
+void runPublicQuickProfile()
+{
+    constexpr int requestedWidth = 1920;
+    constexpr int requestedHeight = 1080;
+    constexpr int measuredFrames = 24;
+    constexpr double maxStableSpreadPercent = 15.0;
+    HyRemote::detail::resetFactories();
+    QQuickWindow window;
+    window.setFlags(Qt::FramelessWindowHint);
+    window.resize(requestedWidth, requestedHeight);
+    StagedQuickProbeItem content(window.contentItem());
+    content.setWidth(requestedWidth);
+    content.setHeight(requestedHeight);
+    std::atomic<int> painted{-1};
+    QObject::connect(&window, &QQuickWindow::afterRendering, &window, [&] {
+        painted.store(content.paintedStage(), std::memory_order_release);
+    }, Qt::DirectConnection);
+    window.show();
+    const auto visible = pumpUntil([&] {
+        return window.isVisible() && painted.load(std::memory_order_acquire) >= 0;
+    });
+    CHECK(visible);
+    if (!visible)
+        return;
+
+    const auto *renderer = window.rendererInterface();
+    const auto selected = HyRemote::detail::selectQuickCaptureRoute(
+        renderer ? renderer->graphicsApi() : QSGRendererInterface::Unknown);
+    CHECK(selected.route == HyRemote::detail::QuickCaptureRoute::PublicQtGrabToImage);
+    const QString backend = [&] {
+        using B = HyRemote::detail::QuickCaptureBackend;
+        switch (selected.backend) {
+        case B::Software: return QStringLiteral("software");
+        case B::OpenGL: return QStringLiteral("opengl");
+        case B::Direct3D11: return QStringLiteral("d3d11");
+        case B::Direct3D12: return QStringLiteral("d3d12");
+        case B::Vulkan: return QStringLiteral("vulkan");
+        case B::Metal: return QStringLiteral("metal");
+        case B::Other: return QStringLiteral("other");
+        default: return QStringLiteral("unknown");
+        }
+    }();
+    const QString expectedBackend =
+        qEnvironmentVariable("HYREMOTE_PUBLIC_PROFILE_EXPECT_BACKEND");
+    if (!expectedBackend.isEmpty())
+        CHECK(backend == expectedBackend);
+
+    auto components = HyRemote::detail::createTargetComponents(&window, false);
+    CHECK(components.capture != nullptr);
+    if (!components.capture)
+        return;
+    std::optional<hyremote::RemoteFrame> received;
+    int events = 0;
+    CHECK(components.capture->start(
+        [&](hyremote::RemoteFrame frame) { received = std::move(frame); },
+        [&](const hyremote::CaptureEvent &) { ++events; }));
+
+    int lastStage = content.paintedStage();
+    std::uint64_t nextRequestId = 50000U;
+    const auto a1 = runPublicQuickProfileCase(
+        *components.capture, content, painted, received,
+        QStringLiteral("public_static_a1"), false, lastStage, nextRequestId);
+    const auto dynamic = runPublicQuickProfileCase(
+        *components.capture, content, painted, received,
+        QStringLiteral("public_a_split_b_a"), true, lastStage, nextRequestId);
+    const auto a2 = runPublicQuickProfileCase(
+        *components.capture, content, painted, received,
+        QStringLiteral("public_static_a2"), false, lastStage, nextRequestId);
+    CHECK(events == 0);
+    components.capture->stop();
+
+    const double meanCpu = (a1.processCpuMs + a2.processCpuMs) / 2.0;
+    const double cpuSpread = meanCpu > 0.0
+        ? 100.0 * std::abs(a1.processCpuMs - a2.processCpuMs) / meanCpu
+        : -1.0;
+    const bool fullResolution = a1.observedWidth == requestedWidth
+        && a1.observedHeight == requestedHeight
+        && dynamic.observedWidth == requestedWidth
+        && dynamic.observedHeight == requestedHeight
+        && a2.observedWidth == requestedWidth
+        && a2.observedHeight == requestedHeight;
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_PHYSICAL_1080P"))
+        CHECK(fullResolution);
+    CHECK(a1.validFrames == measuredFrames
+          && dynamic.validFrames == measuredFrames
+          && a2.validFrames == measuredFrames);
+    CHECK(a1.processCpuMs > 0.0 && a2.processCpuMs > 0.0);
+    const bool stable = cpuSpread >= 0.0 && cpuSpread <= maxStableSpreadPercent;
+
+    // A failed pixel, stage, backend, source or clock assertion must never
+    // leave an apparently qualified JSON artifact behind.
+    if (failures != 0) {
+        std::cerr << "QUICK_PUBLIC_PROFILE_INVALID=YES (no JSON evidence)\n";
+        return;
+    }
+
+    QJsonObject document;
+    document.insert(QStringLiteral("schema"),
+                    QStringLiteral("hyremote-quick-public-profile/1"));
+    document.insert(QStringLiteral("context"),
+                    QStringLiteral("HOSTED_SYNTHETIC_NOT_DEVICE_OR_NATIVE_GAIN"));
+    document.insert(QStringLiteral("route"), QStringLiteral("public_grabToImage"));
+    document.insert(QStringLiteral("qt"), QString::fromLatin1(qVersion()));
+    document.insert(QStringLiteral("platform"), QSysInfo::prettyProductName());
+    document.insert(QStringLiteral("renderer"), backend);
+    document.insert(QStringLiteral("probe_mode"),
+                    qEnvironmentVariable("HYREMOTE_PUBLIC_PROFILE_PROBE_MODE",
+                                         QStringLiteral("unspecified")));
+    document.insert(QStringLiteral("requested_width"), requestedWidth);
+    document.insert(QStringLiteral("requested_height"), requestedHeight);
+    document.insert(QStringLiteral("actual_1080p"), fullResolution);
+    document.insert(QStringLiteral("warmup_per_case"), 8);
+    document.insert(QStringLiteral("measured_per_case"), measuredFrames);
+    document.insert(QStringLiteral("whole_process_cpu_not_gpu_time"), true);
+    document.insert(QStringLiteral("source_sha"),
+                    qEnvironmentVariable("GITHUB_SHA", QStringLiteral("unstamped")));
+    document.insert(QStringLiteral("public_a1_a2_cpu_spread_percent"), cpuSpread);
+    document.insert(QStringLiteral("stable_reference_max_spread_percent"),
+                    maxStableSpreadPercent);
+    document.insert(QStringLiteral("public_reference_stability"),
+                    stable ? QStringLiteral("STABLE")
+                           : QStringLiteral("UNSTABLE_BASELINE"));
+    document.insert(QStringLiteral("native_performance_qualification"),
+                    QStringLiteral("NOT_MEASURED_DO_NOT_PROMOTE"));
+    QJsonArray cases;
+    cases.append(publicProfileToJson(a1));
+    cases.append(publicProfileToJson(dynamic));
+    cases.append(publicProfileToJson(a2));
+    document.insert(QStringLiteral("cases"), cases);
+    const QByteArray bytes = QJsonDocument(document).toJson(QJsonDocument::Compact);
+    std::cout << "QUICK_PUBLIC_PROFILE_JSON=" << bytes.constData() << '\n';
+    const QString destination =
+        qEnvironmentVariable("HYREMOTE_QUICK_PUBLIC_PROFILE_FILE");
+    if (!destination.isEmpty()) {
+        QFile file(destination);
+        const bool opened = file.open(QIODevice::WriteOnly | QIODevice::Truncate);
+        CHECK(opened);
+        if (opened) {
+            CHECK(file.write(bytes) == bytes.size());
+            file.write("\n", 1);
+        }
+    }
+    // An unstable hosted baseline is useful evidence, not a failing
+    // correctness test and NEVER permission to cherry-pick a better run.
+}
+
+// #967 A2: the Qt6 D3D11 staging provider collapsed "not capturable this
+// frame" and "never capturable" into one silent return, so a multisampled or
+// non-RGBA/BGRA render target retired its accepted requests only through the
+// 750 ms deadline and never named a reason. This pins the three-way verdict and
+// the "terminate each accepted identity exactly once" contract. No D3D11
+// device, no window and no experimental cmake option are required.
+void testD3d11TargetAdmission()
+{
+    const auto result = HyRemote::detail::runQuickD3d11AdmissionRegression();
+    CHECK(result.ran);
+    CHECK(result.exactSurfaceAdmitted);
+    CHECK(result.multisampleIsUnsupported);
+    CHECK(result.unsupportedFormatIsUnsupported);
+    CHECK(result.non2dTargetIsUnsupported);
+    CHECK(result.nonD3d11ApiIsUnsupported);
+    CHECK(result.resizeIsTransient);
+    CHECK(result.missingResourcesAreTransient);
+    CHECK(result.reasonsAreDistinct);
+    CHECK(result.revokesEachAcceptedIdOnce);
+    CHECK(result.revokeIsIdempotent);
+    CHECK(result.throwingCopyDoesNotTerminate);
+    CHECK(result.throwingCopyKeepsAcceptedIds);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_D3D11_ADMISSION=FAIL detail=" << result.detail
+                  << " msaa=" << result.multisampleIsUnsupported
+                  << " format=" << result.unsupportedFormatIsUnsupported
+                  << " non2d=" << result.non2dTargetIsUnsupported
+                  << " api=" << result.nonD3d11ApiIsUnsupported
+                  << " resizeTransient=" << result.resizeIsTransient
+                  << " once=" << result.revokesEachAcceptedIdOnce
+                  << " throwingCopySafe=" << result.throwingCopyDoesNotTerminate
+                  << std::endl;
+    else
+        std::cerr << "WIN967_D3D11_ADMISSION=PASS verdicts=3 transient=2 once=1"
+                     " throwingCopySafe=1"
+                  << std::endl;
+}
+
+// #967 D0/D1: the capture capability table is shared by every Qt backend, so
+// it is asserted once, GPU-free, on every Kit. A new backend must appear here
+// as a row, not as a third hand-written state machine.
+void testCaptureCapabilityContract()
+{
+    const auto result = HyRemote::detail::runQuickCaptureCapabilityRegression();
+    CHECK(result.ran);
+    CHECK(result.publicAlwaysAdmitted);
+    CHECK(result.missingApiIsTransient);
+    CHECK(result.apiMismatchIsUnsupported);
+    CHECK(result.missingContextIsTransient);
+    CHECK(result.unsupportedContextIsUnsupported);
+    CHECK(result.missingTargetIsTransient);
+    CHECK(result.redirectedTargetIsUnsupported);
+    CHECK(result.multisampleIsUnsupported);
+    CHECK(result.non2dIsUnsupported);
+    CHECK(result.formatIsUnsupported);
+    CHECK(result.geometryMismatchIsTransient);
+    CHECK(result.reasonsAreDistinct);
+    CHECK(result.admittedRowIsClean);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_CAPABILITY=FAIL detail=" << result.detail
+                  << " public=" << result.publicAlwaysAdmitted
+                  << " api=" << result.apiMismatchIsUnsupported
+                  << " ctx=" << result.unsupportedContextIsUnsupported
+                  << " redirected=" << result.redirectedTargetIsUnsupported
+                  << " msaa=" << result.multisampleIsUnsupported << std::endl;
+    else
+        std::cerr << "WIN967_CAPABILITY=PASS rows=10 backends=3" << std::endl;
+}
+
 }  // namespace
+
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
+// #962 review B1/B2: real offscreen GL session. One PBO allocation is reused
+// by a second request, then a simulated scene-graph invalidation retires the
+// worker and a second generation must produce fresh pixels. This is the
+// regression that CI PASS alone could not prove.
+void testQuickGlPboSessionReuseAndInvalidationRecovery(bool requireGl)
+{
+    CHECK(HyRemote::detail::runQuickGlPboBatchOwnershipRegression());
+    const auto result = HyRemote::detail::runQuickGlPboSessionSelfTest();
+    if (!result.ran) {
+        std::cerr << "WIN962_SESSION_SELFTEST=SKIP detail=" << result.detail << std::endl;
+        if (requireGl)
+            CHECK(result.ran); // the dedicated xcb/Xvfb lane must have GL.
+        return;
+    }
+    CHECK(result.pixelsOk);
+    CHECK(result.zeroViewerNoReadback);
+    CHECK(result.buffersCreated == 2);
+    CHECK(result.bufferDataCalls == 2);
+    CHECK(result.reuses == 1);
+    CHECK(result.workersCreated == 2);
+    CHECK(result.workersRetired == 2);
+    CHECK(result.invalidations == 1);
+    CHECK(result.ok);
+    std::cerr << "WIN962_SESSION_SELFTEST=" << result.detail
+              << " genBuffers=" << result.buffersCreated
+              << " bufferData=" << result.bufferDataCalls
+              << " reuse=" << result.reuses
+              << " workers=" << result.workersCreated
+              << "/" << result.workersRetired
+              << " invalidations=" << result.invalidations << std::endl;
+
+    // #790: the zero-viewer release is real GL work, not just a state flag.
+    const auto idle = HyRemote::detail::runQuickGlPboIdleReleaseProbe();
+    if (idle.ran) {
+        CHECK(idle.ok);
+        std::cerr << "WIN790_IDLE_RELEASE=" << idle.detail
+                  << " hook=" << idle.hookInvoked
+                  << " released=" << idle.bufferReleased
+                  << " deleted=" << idle.bufferDeleted
+                  << " recreated=" << idle.bufferRecreated << std::endl;
+    } else {
+        std::cerr << "WIN790_IDLE_RELEASE=SKIP detail=" << idle.detail << std::endl;
+        if (requireGl)
+            CHECK(idle.ran); // the dedicated GL lane must prove the release.
+    }
+}
+
+// #967: static-surface traces proved the GL route spent ~42ms waiting for a
+// forced Qt frame. This state-machine regression fails if the 17ms wait is
+// restored or the one-update-per-render arm is released by the timer again.
+// It needs no GPU window.
+void testQuickGlPboFallbackPolicy()
+{
+    const auto result = HyRemote::detail::runQuickGlPboFallbackPolicyRegression();
+    CHECK(result.ran);
+    CHECK(result.oneArmPerRender);
+    CHECK(result.armReleasedByRender);
+    CHECK(result.glFallbackDelayMs == 0);
+    CHECK(result.d3dFallbackDelayMs == 17);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_FALLBACK=FAIL detail=" << result.detail << std::endl;
+    else
+        std::cerr << "WIN967_FALLBACK=PASS glDelayMs=" << result.glFallbackDelayMs
+                  << " d3dDelayMs=" << result.d3dFallbackDelayMs
+                  << " oneArmPerRender=1 armReleasedByRender=1" << std::endl;
+}
+
+// #967 review: the GL/PBO readback must accept every geometry a real window
+// can have. The 40 MiB ceiling that submit never checked made a 3440x1440
+// window at 150% DPR (44_582_400 bytes) and any 4K-at-200% surface fail every
+// frame with a readback error. Needs no GPU window.
+void testQuickGlPboMapPolicy()
+{
+    const auto result = HyRemote::detail::runQuickGlPboMapPolicyRegression();
+    CHECK(result.ran);
+    CHECK(result.baselineFits);
+    CHECK(result.highDpiWindowMaps);
+    CHECK(result.denseHighDpiMaps);
+    CHECK(result.emptyGeometryRejected);
+    CHECK(result.ok);
+    if (!result.ok)
+        std::cerr << "WIN967_MAP_POLICY=FAIL detail=" << result.detail
+                  << " baseline=" << result.baselineBytes
+                  << " highDpi=" << result.highDpiBytes
+                  << " dense=" << result.denseHighDpiBytes << std::endl;
+    else
+        std::cerr << "WIN967_MAP_POLICY=PASS baseline=" << result.baselineBytes
+                  << " highDpi=" << result.highDpiBytes
+                  << " dense=" << result.denseHighDpiBytes << std::endl;
+}
+
+// #962 review B2: the real public Qt signal (not a manually flipped flag)
+// must revoke an admitted GlPbo request exactly once and leave the source
+// stoppable without a render frame.
+void testQuickGlPboRealSceneGraphInvalidationSignal(bool requireGl)
+{
+    QQuickWindow window;
+    auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
+    CHECK(source != nullptr);
+    std::atomic<int> terminal{0};
+    const bool started = source->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (!frame.storage)
+                ++terminal;
+        },
+        [](const hyremote::CaptureEvent &) {});
+    if (!started) {
+        std::cerr << "WIN962_INVALIDATION_SIGNAL=SKIP detail=start-unavailable"
+                  << std::endl;
+        if (requireGl)
+            CHECK(started);
+        return;
+    }
+    CHECK(started);
+    CHECK(source->requestFrame({501, hyremote::Clock::now()}));
+    QCoreApplication::processEvents(); // installs the DirectConnection
+    const unsigned before = HyRemote::detail::quickGlPboInvalidationCount();
+    const bool invalidated = QMetaObject::invokeMethod(
+        &window, "sceneGraphInvalidated", Qt::DirectConnection);
+    CHECK(invalidated);
+    CHECK(HyRemote::detail::quickGlPboInvalidationCount() == before + 1);
+    QCoreApplication::processEvents(); // delivers the one terminal outcome
+    CHECK(terminal.load() == 1);
+    source->stop();
+}
+
+// P1 (#962 review): a 5s slow retirement must still abort and join well under
+// the 500ms bound, proving stop() does not inherit the 750ms fence ceiling.
+void testQuickGlPboStopIsBounded(bool requireGl)
+{
+    const auto probe = HyRemote::detail::runQuickGlPboStopAbortProbe(5000);
+    if (!probe.ran) {
+        std::cerr << "WIN962_STOP_PROBE=SKIP detail=" << probe.detail << std::endl;
+        if (requireGl)
+            CHECK(probe.ran);
+        return;
+    }
+    CHECK(!probe.timedOut);
+    CHECK(probe.bufferDeleted);
+    CHECK(probe.ok);
+    std::cerr << "WIN962_STOP_PROBE=" << probe.detail
+              << " join_ms=" << probe.joinMs << std::endl;
+}
+
+// P1 (#962 review): stop() may arrive from a worker/transport thread. The
+// QOffscreenSurface must still be destroyed on the GUI thread without
+// deadlocking the caller or the event loop.
+void testQuickGlPboStopFromNonGuiThread(bool requireGl)
+{
+    QQuickWindow window;
+    auto source = HyRemote::detail::createExperimentalQuickGlPboCaptureSource(&window);
+    CHECK(source != nullptr);
+    std::atomic<int> terminal{0};
+    const bool started = source->start(
+        [&](hyremote::RemoteFrame frame) {
+            if (!frame.storage)
+                ++terminal;
+        },
+        [](const hyremote::CaptureEvent &) {});
+    if (!started) {
+        std::cerr << "WIN962_NONGUI_STOP=SKIP detail=start-unavailable" << std::endl;
+        if (requireGl)
+            CHECK(started);
+        return;
+    }
+    CHECK(source->requestFrame({601, hyremote::Clock::now()}));
+    QCoreApplication::processEvents();
+
+    std::atomic<bool> done{false};
+    std::thread caller([&] {
+        source->stop();
+        done.store(true);
+    });
+    const auto startedAt = std::chrono::steady_clock::now();
+    while (!done.load()) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - startedAt).count() > 2000)
+            break;
+    }
+    caller.join();
+    CHECK(done.load());
+    std::cerr << "WIN962_NONGUI_STOP=" << (done.load() ? "PASS" : "TIMEOUT")
+              << std::endl;
+}
+
+// #790 review P1: the idle-release submission is reachable from a noexcept
+// virtual, so a rejected enqueue must keep the latched edge (retry at the next
+// idle point) and an accepted one must consume it exactly once. GPU-free.
+void testQuickGlPboIdleSubmissionRejectionKeepsEdge()
+{
+    const auto probe = HyRemote::detail::runQuickGlPboIdleSubmissionProbe();
+    CHECK(probe.ran);
+    CHECK(probe.ok);
+    CHECK(probe.rejectedKeepsEdge);
+    CHECK(probe.acceptedConsumesEdge);
+    std::cerr << "WIN790_IDLE_SUBMISSION=" << probe.detail << std::endl;
+}
+#endif // HYREMOTE_TEST_QUICK_GL_PBO
+
+// #1016 R2: the real D3D11 Map-wait render callback can run dozens of
+// times while one staging texture is outstanding. One GPU batch must arm
+// one 4ms/16ms retirement timer at a time; no extra paint on a stale epoch.
+// GPU-free policy test complements the real Qt6 D3D11 R4 pixel/lifecycle
+// lane, it is NOT proof of a Viewer-visible CPU/P95 improvement.
+void testD3d11RetirementGateSingleFlightAcrossEpochs()
+{
+    using HyRemote::detail::QuickReadbackTiming;
+    using HyRemote::detail::QuickRetirementRenderGate;
+    QuickRetirementRenderGate gate;
+    CHECK(!gate.arm(false).has_value()); // idle/0 demand is inert
+    const auto first = gate.arm(true);
+    CHECK(first.has_value());
+    if (!first)
+        return;
+    CHECK(first->delayMs == QuickReadbackTiming::firstRetirementRenderMs);
+    for (int frame = 0; frame < 120; ++frame)
+        CHECK(!gate.arm(true).has_value()); // at most ONE pending Qt timer
+    CHECK(gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.fire(*first, true));
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 1);
+
+    const auto second = gate.arm(true);
+    CHECK(second.has_value());
+    if (!second)
+        return;
+    CHECK(second->delayMs == QuickReadbackTiming::secondRetirementRenderMs);
+    CHECK(!gate.fire(*first, true)); // old ticket can't consume new arm
+    CHECK(gate.timerArmed());
+    CHECK(!gate.arm(true).has_value());
+    CHECK(gate.fire(*second, true));
+    CHECK(gate.forcedRenders() == QuickReadbackTiming::maxExtraRenders);
+    CHECK(!gate.arm(true).has_value()); // bounded render budget
+
+    gate.reset(); // staging was replaced/released
+    const auto oldBatch = gate.arm(true);
+    CHECK(oldBatch.has_value());
+    if (!oldBatch)
+        return;
+    gate.reset(); // stop/restart/resize before timeout
+    const auto newBatch = gate.arm(true);
+    CHECK(newBatch.has_value());
+    if (!newBatch)
+        return;
+    CHECK(!gate.fire(*oldBatch, true));
+    gate.abandon(*oldBatch); // stale failure can't disarm a new ticket
+    CHECK(gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.fire(*newBatch, true));
+
+    gate.reset();
+    const auto failedPost = gate.arm(true);
+    CHECK(failedPost.has_value());
+    if (!failedPost)
+        return;
+    gate.abandon(*failedPost); // Qt timer allocation/dispatch failed
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    const auto retry = gate.arm(true);
+    CHECK(retry.has_value());
+    if (!retry)
+        return;
+    CHECK(!gate.fire(*failedPost, true)); // same epoch, different sequence
+    CHECK(gate.fire(*retry, false) == false); // GPU work already retired
+    CHECK(!gate.timerArmed());
+    CHECK(gate.forcedRenders() == 0);
+    CHECK(gate.arm(true).has_value()); // fallback remains possible
+}
 
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
+    // Dedicated Linux xcb/Xvfb lane: the offscreen QPA used by the normal
+    // Quick suite cannot create a desktop GL context, so reuse/recovery must
+    // have its own native-platform registration.
+    if (qEnvironmentVariableIsSet("HYREMOTE_EXPECT_GL_PBO_SESSION")) {
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
+        testQuickGlPboSessionReuseAndInvalidationRecovery(true);
+        testQuickGlPboFallbackPolicy();
+        testQuickGlPboMapPolicy();
+        testQuickGlPboRealSceneGraphInvalidationSignal(true);
+        testQuickGlPboStopIsBounded(true);
+        testQuickGlPboStopFromNonGuiThread(true);
+        testQuickGlPboIdleSubmissionRejectionKeepsEdge();
+        HyRemote::detail::resetFactories();
+        if (failures != 0)
+            std::cerr << failures << " GL PBO session checks failed\n";
+        return failures == 0 ? 0 : 1;
+#else
+        std::cerr << "GL PBO session coverage requested but the provider is disabled\n";
+        return 1;
+#endif
+    }
+    testQuickProfileClockDoesNotMeasureSleepAsCpu();
+#if defined(HYREMOTE_TEST_QUICK_GL_PBO)
+    testQuickGlPboSessionReuseAndInvalidationRecovery(false);
+    testQuickGlPboFallbackPolicy();
+    testQuickGlPboMapPolicy();
+    testQuickGlPboRealSceneGraphInvalidationSignal(false);
+    testQuickGlPboStopIsBounded(false);
+    testQuickGlPboStopFromNonGuiThread(false);
+    testQuickGlPboIdleSubmissionRejectionKeepsEdge();
+#endif
+    if (qEnvironmentVariableIsSet("HYREMOTE_QUICK_PUBLIC_PROFILE")) {
+        runPublicQuickProfile();
+        HyRemote::detail::resetFactories();
+        return failures == 0 ? 0 : 1;
+    }
 
+    testD3d11RetirementGateSingleFlightAcrossEpochs();
+    testUpstreamQtGrabTargetDprVersionContract();
+    testAdaptiveQuickSceneGraphInvalidationFailClosed();
+    testNativeReadbackBatchTimeoutIsOneFailure();
+    testAdaptiveNativeFailureEventCountsOncePerGpuBatch();
+    testAdaptiveQuickMalformedNativeFramesTriggerFallback();
+    testQuickIdleReleaseLatchIsDeferredAndOneShot();
+    testAdaptiveQuickForwardsZeroViewerRelease();
+    testAdaptiveQuickStopDrainsForwardedCoreCallback();
+    testAdaptiveQuickPublishedHandlersDoNotCopyAfterStart();
+    testAdaptiveQuickFallbackSurfaceEpochAndFreshness();
+    testAdaptiveQuickCapabilityStartRejectionAndBoundedAdmission();
+    testQuickOpaqueRgbxCpuStorageIsZeroCopy();
+    testAdoptReadbackStorageNoSecondFullFrame();
+    testReadbackFrameStorageRowOrderAndPitch();
+    testQuickRendererCapabilityRouting();
+    testCaptureCapabilityContract();
+    testD3d11TargetAdmission();
     testQuickFactoryAndOwnedFrame();
+    testQuickQueuedRequestsCoalesceWithoutReplayingStalePixels();
+    testQuickSingleFlightDispatchPolicy();
+    testQuickDeferredRequestsKeepOrderAndFreshPixels();
+    testQuickSingleFlightHiddenRetryQueuesAndDrains();
+    testQuickQueuedRequestsDoNotCrossStopRestart();
     testCompletedQuickGrabsCancelTimeouts();
+    testStagedQuickSourceCaptureFollowsPaintedScene();
     testDestroyedQuickTargetReportsTargetLost();
     testUnavailableQuickCaptureHasBoundedRetryAndRecovers();
+    testQuickHiddenBatchCompletesEveryAcceptedRequest();
     testQuickInputIsQueuedToWindow();
     testQueuedQuickInputIsDroppedWhenSinkIsDestroyed();
 

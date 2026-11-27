@@ -175,7 +175,7 @@ qhyremote plugin
 - Windows：`qwindows`；
 - Linux/X11：`qxcb`。
 
-Qt private ABI 依赖只属于 QPA。资格认证按精确 Qt 补丁版本进行，当前参考是 Qt 6.8.3。
+Qt private **平台入口 ABI** 仅由 QPA 前端拥有。共享 Runtime 的窗口系统远程输入/高 DPI 专用内部单元还具有 Human `AR-04=A` 批准的受控 Qt Private 依赖，故共享二进制也须按实际 Qt Kit/平台兼容性进行资格验证；不能将 C++、QML、Generic 前端使用公共 Qt API 等同于整体 Runtime 可跨补丁无条件复用。当前参考为 Qt 6.8.3，详见 [ADR-0007](adr/0007-four-integration-runtime-architecture.md) 与 [ADR-0008](adr/0008-stage02-human-approved-architecture-decisions.md)。
 
 当前产品状态：并列路线，使用同一共享 Runtime。
 

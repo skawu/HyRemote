@@ -453,7 +453,10 @@ jobs:
         run: |
           set -uo pipefail
           LOG=build-ci/test.log
+          SUMMARY_FILE="$(mktemp)"
           status=0
+          # Build the whole summary in this shell. A `{ ...; status=1; } | tee` subshell
+          # loses the status assignment, so it can report a failing log as green.
           {
             echo "## Test evidence — ${{ matrix.name }}"
             echo
@@ -463,27 +466,39 @@ jobs:
             echo "SECURITY_EVIDENCE=${SECURITY_EVIDENCE:-<false>}"
             if [[ ! -f "$LOG" ]]; then
               echo "No \`$LOG\` was produced, so the test phase never ran (build/configuration failure)."
-              exit 0
-            fi
-            echo "### CTest summary"
-            echo '```text'
-            grep -E "[0-9]+% tests passed|Total Test time" "$LOG" || true
-            echo '```'
-            echo
-            echo "### Failed tests"
-            echo '```text'
-            sed -n '/The following tests FAILED/,$p' "$LOG" || true
-            echo '```'
-            echo
-            # A lane that claims to be integration has to show real tests. This reads the run's own result line
-            # rather than trusting the job status: "No tests were found!!!" with a zero count is exactly the false
-            # green that let the release-readiness gates stay unexecuted, and it exits zero.
-            executed="$(grep -oE 'out of [0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+' || true)"
-            executed="${executed:-0}"
-            echo "EXECUTED_TEST_COUNT=$executed"
-            if [[ "$executed" -eq 0 ]] || grep -q "No tests were found" "$LOG"; then
-              echo "::error::${{ matrix.name }} executed $executed test(s); the log shows no real test execution"
+              echo "TEST_EVIDENCE_RESULT=MISSING_LOG"
               status=1
+            else
+              echo "### CTest summary"
+              echo '```text'
+              grep -E "[0-9]+% tests passed|Total Test time" "$LOG" || true
+              echo '```'
+              echo
+              echo "### Failed tests"
+              echo '```text'
+              sed -n '/The following tests FAILED/,$p' "$LOG" || true
+              echo '```'
+              echo
+              # A lane that claims to be integration has to show real tests. This reads the run's own result line
+              # rather than trusting the job status: "No tests were found!!!" with a zero count is exactly the false
+              # green that let the release-readiness gates stay unexecuted.
+              executed="$(grep -oE 'out of [0-9]+' "$LOG" | head -1 | grep -oE '[0-9]+' || true)"
+              executed="${executed:-0}"
+              failed="$(grep -oE '[0-9]+ tests failed out of [0-9]+' "$LOG" | head -1 | grep -oE '^[0-9]+' || true)"
+              failed="${failed:-0}"
+              echo "EXECUTED_TEST_COUNT=$executed"
+              echo "FAILED_TEST_COUNT=$failed"
+              if [[ "$executed" -eq 0 ]] || grep -q "No tests were found" "$LOG"; then
+                echo "::error::${{ matrix.name }} executed $executed test(s); the log shows no real test execution"
+                echo "TEST_EVIDENCE_RESULT=ZERO_TESTS"
+                status=1
+              elif [[ "$failed" -ne 0 ]] || grep -q "The following tests FAILED" "$LOG"; then
+                echo "::error::${{ matrix.name }} has $failed failed test(s) in its own CTest log"
+                echo "TEST_EVIDENCE_RESULT=FAILED_TESTS"
+                status=1
+              else
+                echo "TEST_EVIDENCE_RESULT=PASSED"
+              fi
             fi
             # An exclusion that matches every test name would empty the suite silently, so it is refused here as
             # well as in the classifier, where the same shape is proved impossible by an executable self test.
@@ -491,7 +506,10 @@ jobs:
               echo "::error::test_exclude is '$TEST_EXCLUDE', which excludes every test"
               status=1
             fi
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          } > "$SUMMARY_FILE"
+          cat "$SUMMARY_FILE"
+          cat "$SUMMARY_FILE" >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$SUMMARY_FILE"
           exit "$status"
 
       # Artifacts exist to support a decision: a failure, the clean SDK/deploy acceptance contracts this run was
@@ -578,23 +596,6 @@ jobs:
           set -euo pipefail
           cmake -DHYREMOTE_SOURCE_DIR="$PWD" -DHYREMOTE_READINESS_GROUP=facts-layout \
             -P tests/release-readiness/run_grouped_checks.cmake
-
-      # A01/E01: the exact-cell matrix is a product statement made in tracked text, so the same cheap lane
-      # executes its guard whenever any document it reads changes. No Qt SDK, no product build.
-      - name: Compatibility cell matrix guard
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
-            -P tests/release-readiness/check_compatibility_cells.cmake
-
-      # E02/#602: every inherited V1 mandatory child stays accounted for while the machine list is reconciled.
-      - name: GA scope reconciliation guard
-        shell: bash
-        run: |
-          set -euo pipefail
-          cmake -DHYREMOTE_SOURCE_DIR="$PWD" \
-            -P tests/release-readiness/check_ga_scope_reconciliation.cmake
 
   no-product-change:
     # #380: this is a decision report, not an acceptance run. Its name has to say that no hosted product validation

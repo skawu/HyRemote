@@ -6,6 +6,7 @@
 #include "test_support.hpp"
 
 #include <chrono>
+#include <limits>
 
 using namespace hyremote;
 
@@ -24,6 +25,10 @@ HYR_TEST(a_fresh_session_config_uses_the_documented_defaults)
     throttled.frameQueue.policy = BackpressurePolicy::ProducerThrottle;
     HYR_CHECK(throttled.frameQueue.policy != BackpressurePolicy::DropOldest);
     HYR_CHECK(validateSessionConfig(throttled).empty());
+
+    SessionConfig infiniteFps;
+    infiniteFps.capture.targetFramesPerSecond = std::numeric_limits<double>::infinity();
+    HYR_CHECK(!validateSessionConfig(infiniteFps).empty());
 }
 
 HYR_TEST_MAIN()

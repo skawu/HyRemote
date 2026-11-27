@@ -47,8 +47,19 @@ void checkDefaultReport()
         QStringLiteral("^HYREMOTE_VERSION=(?:unknown|[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)$"),
         QRegularExpression::MultilineOption);
     CHECK(versionLine.match(report).hasMatch());
-    CHECK(report.contains(QStringLiteral("BUILD_IDENTITY=source_sha="))
-          || report.contains(QStringLiteral("BUILD_IDENTITY=unknown\n")));
+    const QString buildLine = report.section(QLatin1Char('\n'), 1, 1);
+    CHECK(buildLine.startsWith(QStringLiteral("BUILD_IDENTITY=")));
+    if (buildLine != QStringLiteral("BUILD_IDENTITY=unknown")) {
+        // Keep the original two-field identity contract comparable with the
+        // deployed HYREMOTE-MANIFEST; provenance is a separate report field.
+        const QRegularExpression identityLine(
+            QStringLiteral("^BUILD_IDENTITY=source_sha=[0-9a-f]{40},build_type=[^,]+$"));
+        CHECK(identityLine.match(buildLine).hasMatch());
+    }
+    const QString originLine = report.section(QLatin1Char('\n'), 2, 2);
+    CHECK(QRegularExpression(QStringLiteral("^BUILD_SOURCE_ORIGIN=(?:git|supplied|unknown)$"))
+              .match(originLine).hasMatch());
+    CHECK(buildLine.indexOf(QStringLiteral("source_origin=")) == -1);
     CHECK(report.contains(QStringLiteral("QT_VERSION=%1\n").arg(QString::fromLatin1(QT_VERSION_STR))));
     CHECK(report.contains(QStringLiteral("OS=")));
     CHECK(!report.contains(QStringLiteral("OS=\n")));
@@ -217,11 +228,48 @@ void checkErrorIsBoundedAndSingleLine()
     }
 }
 
+void checkEmbeddedSourceMarker(const QString &runtimeLibraryPath)
+{
+    // The customer Generic plugin can be injected into an application that
+    // discards qInfo diagnostics and does not install HYREMOTE-MANIFEST.txt.
+    // Its *loaded Runtime binary* must still carry a stable read-only marker.
+    QFile library(runtimeLibraryPath);
+    CHECK(library.open(QIODevice::ReadOnly));
+    if (!library.isOpen())
+        return;
+    const QByteArray bytes = library.readAll();
+    const QByteArray prefix("HYREMOTE_BUILD_SOURCE_SHA=");
+    const int start = bytes.indexOf(prefix);
+    CHECK(start >= 0);
+    if (start < 0)
+        return;
+    const int valueStart = start + prefix.size();
+    const int valueEnd = bytes.indexOf('\0', valueStart);
+    CHECK(valueEnd > valueStart);
+    if (valueEnd <= valueStart)
+        return;
+    const QByteArray value = bytes.mid(valueStart, valueEnd - valueStart);
+    const QString identity = formatDiagnosticReport(DiagnosticSnapshot{})
+                                 .section(QLatin1Char('\n'), 1, 1);
+    if (value == QByteArray("unknown")) {
+        CHECK(identity == QStringLiteral("BUILD_IDENTITY=unknown"));
+    } else {
+        CHECK(QRegularExpression(QStringLiteral("^[0-9a-f]{40}$"))
+                  .match(QString::fromLatin1(value)).hasMatch());
+        CHECK(identity.contains(QStringLiteral("source_sha=%1")
+                                    .arg(QString::fromLatin1(value))));
+    }
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
+
+    CHECK(argc == 2);
+    if (argc == 2)
+        checkEmbeddedSourceMarker(QString::fromLocal8Bit(argv[1]));
 
     checkDefaultReport();
     checkRunningReport();

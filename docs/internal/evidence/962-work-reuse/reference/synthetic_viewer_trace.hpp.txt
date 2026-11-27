@@ -1,0 +1,30 @@
+#pragma once
+
+// Temporary, Windows-only tracing for the isolated synthetic fixture build.
+#include <QtGlobal>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <cstdio>
+#include <cstdint>
+
+namespace SyntheticViewerTrace {
+inline bool enabled()
+{
+    static const bool value = qEnvironmentVariableIntValue("HYREMOTE_SYNTHETIC_VIEWER_TRACE") == 1;
+    return value;
+}
+
+inline void event(const char *stage, std::uint64_t request, unsigned color = 0)
+{
+    if (!enabled())
+        return;
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    std::fprintf(stdout, "TRACE %s %lld %llu %06x\n", stage, counter.QuadPart,
+                 static_cast<unsigned long long>(request), color);
+    std::fflush(stdout);
+}
+}
+

@@ -40,6 +40,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "hyremote/core/capture_source.hpp"
 #include "hyremote/core/input.hpp"
@@ -155,7 +156,7 @@ struct SessionStats
 
     // Frame acceptance.
     std::uint64_t framesAccepted = 0;            // cumulative; assigned a FrameId and stored in the mailbox
-    std::uint64_t framesRejectedInvalid = 0;     // cumulative; missing storage anchor / unusable geometry
+    std::uint64_t framesRejectedInvalid = 0;     // cumulative; invalid geometry/storage or unexpected/duplicate RequestId
     std::uint64_t framesRejectedTiming = 0;      // cumulative; no content PTS and none can be derived
     std::uint64_t framesArrivedAfterStop = 0;    // cumulative; completion delivered outside a running Session
     std::uint64_t lastFrameId = 0;               // cumulative: the run's last assigned id, kept after stop

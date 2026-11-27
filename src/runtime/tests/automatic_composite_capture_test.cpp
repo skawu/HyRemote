@@ -5,6 +5,8 @@
 #include <QEventLoop>
 #include <QImage>
 
+#include <atomic>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <new>
@@ -21,9 +23,10 @@ class SolidCapture final : public hyremote::CaptureSource
 {
 public:
     explicit SolidCapture(QRgb color, int pixelWidth = 2, int pixelHeight = 2, float dpr = 1.0F,
-                          std::shared_ptr<const hyremote::FrameStorage> *storageObserver = nullptr)
-        : m_color(color), m_pixelWidth(pixelWidth), m_pixelHeight(pixelHeight), m_dpr(dpr)
-        , m_storageObserver(storageObserver)
+                          std::shared_ptr<const hyremote::FrameStorage> *observedStorage = nullptr,
+                          std::shared_ptr<std::atomic<int>> releaseCounter = nullptr)
+        : m_color(color), m_pixelWidth(pixelWidth), m_pixelHeight(pixelHeight), m_dpr(dpr),
+          m_observedStorage(observedStorage), m_releaseCounter(std::move(releaseCounter))
     {
     }
 
@@ -44,6 +47,14 @@ public:
 
     void stop() noexcept override { m_onFrame = {}; }
 
+    // #790: a child source is the real owner of grab pixels; the composite must
+    // forward the zero-viewer release to it.
+    void releaseIdleResources() noexcept override
+    {
+        if (m_releaseCounter)
+            ++*m_releaseCounter;
+    }
+
     bool requestFrame(const hyremote::CaptureRequest &request) override
     {
         if (!m_onFrame)
@@ -60,10 +71,11 @@ public:
             for (int x = 0; x < width; ++x) {
                 const std::size_t offset = static_cast<std::size_t>(y) * stride
                                            + static_cast<std::size_t>(x) * 4U;
-                bytes[offset + 0] = static_cast<unsigned char>(qRed(m_color));
-                bytes[offset + 1] = static_cast<unsigned char>(qGreen(m_color));
-                bytes[offset + 2] = static_cast<unsigned char>(qBlue(m_color));
-                bytes[offset + 3] = static_cast<unsigned char>(qAlpha(m_color));
+                const int alpha = qAlpha(m_color);
+                bytes[offset + 0] = static_cast<unsigned char>((qRed(m_color) * alpha + 127) / 255);
+                bytes[offset + 1] = static_cast<unsigned char>((qGreen(m_color) * alpha + 127) / 255);
+                bytes[offset + 2] = static_cast<unsigned char>((qBlue(m_color) * alpha + 127) / 255);
+                bytes[offset + 3] = static_cast<unsigned char>(alpha);
             }
         }
 
@@ -75,13 +87,13 @@ public:
         frame.geometry.planeCount = 1;
         frame.geometry.devicePixelRatio = m_dpr;
         frame.storage = std::move(storage);
-        if (m_storageObserver)
-            *m_storageObserver = frame.storage;
         frame.timing.ptsSource = hyremote::PtsSource::Completion;
         frame.timing.requestTime = request.requestTime;
         frame.timing.completionTime = hyremote::Clock::now();
         frame.damage = hyremote::Damage::fullFrame();
         frame.requestId = request.id;
+        if (m_observedStorage)
+            *m_observedStorage = frame.storage;
         m_onFrame(std::move(frame));
         return true;
     }
@@ -91,7 +103,8 @@ private:
     int m_pixelWidth;
     int m_pixelHeight;
     float m_dpr;
-    std::shared_ptr<const hyremote::FrameStorage> *m_storageObserver;
+    std::shared_ptr<const hyremote::FrameStorage> *m_observedStorage = nullptr;
+    std::shared_ptr<std::atomic<int>> m_releaseCounter;
     hyremote::FrameReadyHandler m_onFrame;
 };
 
@@ -289,10 +302,13 @@ int main(int argc, char **argv)
                 result.supported = true;
                 // High-DPI child: four physical pixels per logical two-unit surface.
                 result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255),
-                                                                 4, 4, 2.0F);
+                                                                 4, 4, 2.0F, nullptr,
+                                                                 childReleases);
             } else if (target == &rightTarget) {
                 result.supported = true;
-                result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255));
+                result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255),
+                                                                 2, 2, 1.0F, nullptr,
+                                                                 childReleases);
             }
             return result;
         };
@@ -326,52 +342,57 @@ int main(int argc, char **argv)
         return 4;
     }
 
-    // #1086: hiding every surface must clear pixels without collapsing the
-    // framebuffer to 1x1; restoring visibility must publish genuinely new pixels.
-    composite.setSurfaceVisible(1, false);
-    composite.setSurfaceVisible(2, false);
-    frames.clear();
+    // #790: publishing must not pin the pixels. The composite keeps only the
+    // canvas SIZE, so the delivered copy is the last owner of the storage.
+    const std::weak_ptr<const hyremote::FrameStorage> publishedPixels =
+        frames.front().storage;
+    frames.front().storage.reset();
+    if (!check(publishedPixels.expired(),
+               "composite kept the last published frame pixels alive after delivery"))
+        return 10;
+
+    // The zero-viewer release is forwarded to every child source: a child is
+    // the real owner of a grab QImage or a GPU readback buffer.
+    components.capture->releaseIdleResources();
+    if (!check(childReleases->load() == 2,
+               "composite did not forward the idle release to all child sources"))
+        return 11;
+
+    // #567: once all child surfaces disappear, do not re-label the last
+    // colorful frame as new pixels. Keep the old geometry to avoid forcing
+    // a DesktopSize extension on legacy Viewers, but clear every pixel.
+    composite.removeSurface(1);
+    composite.removeSurface(2);
     if (!check(components.capture->requestFrame({2, hyremote::Clock::now()}),
-               "hidden composite accepts refresh")
-        || !check(waitForFrame(frames, 1), "hidden composite publishes clear frame")) {
-        components.capture->stop();
-        return 5;
-    }
-    const QImage cleared = imageView(frames.front());
-    bool fullyCleared = cleared.size() == QSize(4, 2);
-    for (int y = 0; fullyCleared && y < cleared.height(); ++y) {
-        for (int x = 0; x < cleared.width(); ++x)
-            fullyCleared = cleared.pixelColor(x, y) == QColor(0, 0, 0, 0);
-    }
-    if (!check(fullyCleared, "hidden composite clears every pixel at the last valid size")
-        || !check(frames.front().requestId == hyremote::CaptureRequestId{2}
-                      && frames.front().damage.kind == hyremote::DamageKind::FullFrame,
-                  "hidden clear frame carries fresh request identity and full damage")) {
-        components.capture->stop();
-        return 6;
-    }
+               "empty composite request accepted")
+        || !check(waitForFrame(frames, 2), "empty composite frame arrives"))
+        return 9;
+    const QImage emptyImage = imageView(frames.at(1));
+    if (!check(emptyImage.size() == QSize(4, 2), "empty scene retains geometry")
+        || !check(emptyImage.pixelColor(0, 0) == QColor(0, 0, 0, 0),
+                  "empty scene does not replay left stale pixels")
+        || !check(emptyImage.pixelColor(3, 0) == QColor(0, 0, 0, 0),
+                  "empty scene does not replay right stale pixels")
+        || !check(frames.at(1).requestId == hyremote::CaptureRequestId{2},
+                  "empty scene completes current request without old-frame metadata"))
+        return 10;
 
-    composite.setSurfaceVisible(1, true);
-    composite.setSurfaceVisible(2, true);
-    frames.clear();
+    // A visible but unsupported child must also clear, rather than return a
+    // stale frame stamped as a new successful capture.
+    QObject missingTarget;
+    composite.upsertSurface(5, &missingTarget, QRect(-2, 0, 4, 2), true);
     if (!check(components.capture->requestFrame({3, hyremote::Clock::now()}),
-               "restored composite accepts refresh")
-        || !check(waitForFrame(frames, 1), "restored composite publishes new frame")) {
-        components.capture->stop();
-        return 7;
-    }
-    const QImage restored = imageView(frames.front());
-    if (!check(restored.size() == QSize(4, 2)
-                   && restored.pixelColor(0, 0) == QColor(255, 0, 0, 255)
-                   && restored.pixelColor(3, 0) == QColor(0, 255, 0, 255)
-                   && frames.front().requestId == hyremote::CaptureRequestId{3},
-               "restored composite publishes fresh visible pixels")) {
-        components.capture->stop();
-        return 8;
-    }
-
+               "unavailable-child composite request accepted")
+        || !check(waitForFrame(frames, 3), "unavailable-child clear frame arrives"))
+        return 11;
+    const QImage unavailableImage = imageView(frames.at(2));
+    if (!check(unavailableImage.size() == QSize(4, 2), "unavailable child retains canvas bounds")
+        || !check(unavailableImage.pixelColor(0, 0) == QColor(0, 0, 0, 0),
+                  "unavailable child does not replay prior source")
+        || !check(frames.at(2).requestId == hyremote::CaptureRequestId{3},
+                  "unavailable child completes its own request"))
+        return 12;
     components.capture->stop();
-    std::cout << "PASS: automatic runtime composes multiple application surfaces into one capture target\n";
 
     // #609: one full-canvas, DPR1 premultiplied child is already the exact
     // composite output: reuse its immutable FrameStorage without allocating,
@@ -386,9 +407,8 @@ int main(int argc, char **argv)
             HyRemote::detail::TargetComponents result;
             if (!input && target == &singleTarget) {
                 result.supported = true;
-                // RGB is already premultiplied for alpha=128 (64/32/16 at full opacity).
                 result.capture = std::make_unique<SolidCapture>(
-                    qRgba(32, 16, 8, 128), 3, 2, 1.0F, &childStorage);
+                    qRgba(64, 32, 16, 128), 3, 2, 1.0F, &childStorage);
             }
             return result;
         };
@@ -479,6 +499,202 @@ int main(int argc, char **argv)
     }
     scaledComponents.capture->stop();
 
+    // #958 final-output ownership: two distinct presentable surfaces overlap.
+    // Capture each whole surface exactly once, then blend in application
+    // stacking order. This is deliberately NOT an item-by-item Qt Quick grab,
+    // nor proof that one GPU framebuffer covers both independent windows.
+    QObject baseWindow;
+    QObject translucentPopup;
+    CompositeTarget layered;
+    layered.upsertSurface(10, &baseWindow, QRect(0, 0, 4, 4), true);
+    layered.upsertSurface(11, &translucentPopup, QRect(1, 1, 2, 2), true);
+    const HyRemote::detail::BuiltinTargetResolver layeredResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &baseWindow) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255), 4, 4);
+            } else if (target == &translucentPopup) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(0, 0, 255, 128), 2, 2);
+            }
+            return result;
+        };
+    auto layeredComponents = layered.createTargetComponents(false, layeredResolver);
+    std::vector<hyremote::RemoteFrame> layeredFrames;
+    if (!check(layeredComponents.supported && layeredComponents.capture,
+               "layered top-level surface capture is available")
+        || !check(layeredComponents.capture->start(
+                      [&](hyremote::RemoteFrame frame) {
+                          layeredFrames.push_back(std::move(frame));
+                      },
+                      [](const hyremote::CaptureEvent &) {}),
+                  "layered capture starts")
+        || !check(layeredComponents.capture->requestFrame({51, hyremote::Clock::now()}),
+                  "layered first frame admitted")
+        || !check(waitForFrame(layeredFrames, 1), "layered first frame ready"))
+        return 13;
+    const QImage blend = imageView(layeredFrames.at(0));
+    const QColor blended = blend.pixelColor(1, 1);
+    if (!check(blend.size() == QSize(4, 4), "popup must not change base canvas size")
+        || !check(blend.pixelColor(0, 0) == QColor(255, 0, 0, 255),
+                  "uncovered base pixels preserved")
+        || !check(blended.alpha() == 255 && qAbs(blended.red() - 127) <= 1
+                      && blended.green() == 0 && qAbs(blended.blue() - 128) <= 1,
+                  "translucent popup is composed over its base exactly once"))
+        return 14;
+
+    // A real native-window raise changes the final ordering without creating
+    // or resurrecting any old source snapshot; the next accepted request must
+    // represent the NEW layering relationship.
+    layered.raiseSurface(10);
+    if (!check(layeredComponents.capture->requestFrame({52, hyremote::Clock::now()}),
+               "raised surface frame admitted")
+        || !check(waitForFrame(layeredFrames, 2), "raised surface frame ready"))
+        return 15;
+    const QImage raised = imageView(layeredFrames.at(1));
+    if (!check(raised.pixelColor(1, 1) == QColor(255, 0, 0, 255),
+               "raised opaque window obscures translucent popup")
+        || !check(layeredFrames.at(1).requestId == hyremote::CaptureRequestId{52},
+                  "raised composition has current request identity"))
+        return 16;
+
+    // Hide the base after the raise: a previously composed red pixel may not
+    // survive as stale data behind the remaining translucent popup.
+    layered.setSurfaceVisible(10, false);
+    if (!check(layeredComponents.capture->requestFrame({53, hyremote::Clock::now()}),
+               "hidden base frame admitted")
+        || !check(waitForFrame(layeredFrames, 3), "hidden base frame ready"))
+        return 17;
+    const QImage popupOnly = imageView(layeredFrames.at(2));
+    const QColor popupPixel = popupOnly.pixelColor(0, 0);
+    if (!check(popupOnly.size() == QSize(2, 2),
+               "hidden base is excluded from visible canvas")
+        || !check(popupPixel.alpha() == 128 && popupPixel.red() == 0
+                      && popupPixel.green() == 0 && popupPixel.blue() == 255,
+                  "popup output retains its own alpha with no stale base pixels")
+        || !check(layeredFrames.at(2).requestId == hyremote::CaptureRequestId{53},
+                  "new composition has new request identity"))
+        return 18;
+    layeredComponents.capture->stop();
+
+    // #958: base surface already returned pixels, popup still pending.
+    // Hiding base must invalidate the RECEIVED base frame before the popup
+    // completes; otherwise the compositor would render a stale red rectangle
+    // under a new request ID after the owner surface became invisible.
+    QObject asyncBase;
+    QObject asyncPopup;
+    CompositeTarget interrupted;
+    interrupted.upsertSurface(20, &asyncBase, QRect(0, 0, 4, 4), true);
+    interrupted.upsertSurface(21, &asyncPopup, QRect(1, 1, 2, 2), true);
+    // Automatic AccessController refreshes unchanged windows frequently.
+    // An identical QObject+SurfaceId upsert must not invalidate a pending
+    // request or manufacture a new source epoch.
+    int baseInvalidations = 0;
+    const quint64 baseInvalidationToken = interrupted.addSurfaceUnavailableHandler(
+        [&](HyRemote::Runtime::Automatic::SurfaceId id, CompositeTarget::SurfaceLoss) {
+            if (id == 20)
+                ++baseInvalidations;
+        });
+    interrupted.upsertSurface(20, &asyncBase, QRect(0, 0, 4, 4), true);
+    if (!check(baseInvalidations == 0,
+               "unchanged visible QObject upsert must not invalidate its frame"))
+        return 27;
+    std::function<void()> releasePopup;
+    const HyRemote::detail::BuiltinTargetResolver interruptedResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &asyncBase) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(255, 0, 0, 255), 4, 4);
+            } else if (target == &asyncPopup) {
+                result.supported = true;
+                result.capture = std::make_unique<DeferredSolidCapture>(&releasePopup);
+            }
+            return result;
+        };
+    auto interruptedComponents = interrupted.createTargetComponents(false, interruptedResolver);
+    std::vector<hyremote::RemoteFrame> interruptedFrames;
+    if (!check(interruptedComponents.supported && interruptedComponents.capture,
+               "interrupted composite capture available")
+        || !check(interruptedComponents.capture->start(
+                      [&](hyremote::RemoteFrame frame) {
+                          interruptedFrames.push_back(std::move(frame));
+                      },
+                      [](const hyremote::CaptureEvent &) {}),
+                  "interrupted capture starts")
+        || !check(interruptedComponents.capture->requestFrame({54, hyremote::Clock::now()}),
+                  "interrupted frame admitted"))
+        return 19;
+
+    // Pump until the deferred popup has accepted the request while the base
+    // child has already completed. No timing assumption is needed.
+    QElapsedTimer deferredTimer;
+    deferredTimer.start();
+    while (!releasePopup && deferredTimer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (!check(static_cast<bool>(releasePopup) && interruptedFrames.empty(),
+               "popup is deferred; base alone cannot publish a partial frame"))
+        return 20;
+    interrupted.setSurfaceVisible(20, false);
+    releasePopup();
+    if (!check(waitForFrame(interruptedFrames, 1),
+               "pending popup completion drains after base hide"))
+        return 21;
+    const QImage interruptedImage = imageView(interruptedFrames.front());
+    const QColor oldBaseCorner = interruptedImage.pixelColor(0, 0);
+    const QColor pendingPopupPixel = interruptedImage.pixelColor(1, 1);
+    if (!check(interruptedImage.size() == QSize(4, 4),
+               "in-flight request preserves admitted canvas dimensions")
+        || !check(oldBaseCorner.alpha() == 0,
+                  "hidden base's previously completed pixels must be discarded")
+        || !check(pendingPopupPixel.alpha() == 128
+                      && pendingPopupPixel.red() == 0
+                      && pendingPopupPixel.blue() == 255,
+                  "deferred popup remains valid after base is removed")
+        || !check(interruptedFrames.front().requestId == hyremote::CaptureRequestId{54},
+                  "interrupted composite completes exactly its admitted ID"))
+        return 22;
+    // Reusing a SurfaceId for a NEW Qt/native window is also an identity
+    // change. Even when both targets are visible, its predecessor's already
+    // captured pixels must not be relabeled as the replacement's pixels.
+    interrupted.setSurfaceVisible(20, true);
+    releasePopup = {};
+    if (!check(interruptedComponents.capture->requestFrame({55, hyremote::Clock::now()}),
+               "same-id target replacement request admitted"))
+        return 23;
+    QElapsedTimer replacementTimer;
+    replacementTimer.start();
+    while (!releasePopup && replacementTimer.elapsed() < 2000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    if (!check(static_cast<bool>(releasePopup) && interruptedFrames.size() == 1,
+               "base completed while popup is pending replacement"))
+        return 24;
+    QObject replacementBase;
+    interrupted.upsertSurface(20, &replacementBase, QRect(0, 0, 4, 4), true);
+    if (!check(baseInvalidations == 2,
+               "hide and real QObject replacement each invalidate exactly once"))
+        return 28;
+    releasePopup();
+    if (!check(waitForFrame(interruptedFrames, 2),
+               "old base invalidated on same-id replacement"))
+        return 25;
+    const QImage replaced = imageView(interruptedFrames.at(1));
+    if (!check(replaced.size() == QSize(4, 4),
+               "in-flight replacement retains admitted canvas")
+        || !check(replaced.pixelColor(0, 0).alpha() == 0,
+                  "same-id replacement must discard old source pixels")
+        || !check(replaced.pixelColor(1, 1).alpha() == 128,
+                  "unaffected popup remains in final composition")
+        || !check(interruptedFrames.at(1).requestId == hyremote::CaptureRequestId{55},
+                  "replacement request has unique current identity"))
+        return 26;
+    interruptedComponents.capture->stop();
+    interrupted.removeSurfaceUnavailableHandler(baseInvalidationToken);
 
     // #790: on the final Viewer disconnect an already received Quick child
     // image must not remain owned by a pending multi-surface composite while
@@ -558,6 +774,68 @@ int main(int argc, char **argv)
         return 36;
     idleComponents.capture->stop();
 
+    QObject oldQtWindow;
+    QObject newQtWindow;
+    std::function<void()> emitLateError;
+    CompositeTarget retired;
+    retired.upsertSurface(30, &oldQtWindow, QRect(0, 0, 4, 4), true);
+    const HyRemote::detail::BuiltinTargetResolver retirementResolver =
+        [&](QObject *target, bool input) {
+            HyRemote::detail::TargetComponents result;
+            if (input)
+                return result;
+            if (target == &oldQtWindow) {
+                result.supported = true;
+                result.capture = std::make_unique<StopEventCapture>(
+                    qRgba(255, 0, 0, 255), emitLateError);
+            } else if (target == &newQtWindow) {
+                result.supported = true;
+                result.capture = std::make_unique<SolidCapture>(qRgba(0, 255, 0, 255), 4, 4);
+            }
+            return result;
+        };
+    auto retirementComponents = retired.createTargetComponents(false, retirementResolver);
+    std::vector<hyremote::RemoteFrame> retirementFrames;
+    int retirementEvents = 0;
+    if (!check(retirementComponents.supported && retirementComponents.capture,
+               "retired child test available")
+        || !check(retirementComponents.capture->start(
+                      [&](hyremote::RemoteFrame frame) {
+                          retirementFrames.push_back(std::move(frame));
+                      },
+                      [&](const hyremote::CaptureEvent &) { ++retirementEvents; }),
+                  "retired child test starts")
+        || !check(retirementComponents.capture->requestFrame({60, hyremote::Clock::now()}),
+                  "retired child initial request")
+        || !check(waitForFrame(retirementFrames, 1),
+                  "retired child initial frame"))
+        return 29;
+    if (!check(static_cast<bool>(emitLateError), "initial adapter exposes its event callback"))
+        return 32;
+    emitLateError();
+    if (!check(retirementEvents == 1, "current child diagnostics reach the parent"))
+        return 33;
+    retired.upsertSurface(30, &newQtWindow, QRect(0, 0, 4, 4), true);
+    if (!check(static_cast<bool>(emitLateError), "old adapter still present before next request"))
+        return 34;
+    emitLateError();
+    if (!check(retirementEvents == 1,
+               "old adapter cannot fail a replaced surface before next request"))
+        return 35;
+    if (!check(retirementComponents.capture->requestFrame({61, hyremote::Clock::now()}),
+               "new same-id child request")
+        || !check(waitForFrame(retirementFrames, 2),
+                  "new same-id child completes"))
+        return 30;
+    const QImage freshOwner = imageView(retirementFrames.at(1));
+    if (!check(retirementEvents == 1,
+               "retiring old Qt adapter must not report failure for new owner")
+        || !check(freshOwner.pixelColor(0, 0) == QColor(0, 255, 0, 255),
+                  "new child must own the delivered pixels after old stop")
+        || !check(retirementFrames.at(1).requestId == hyremote::CaptureRequestId{61},
+                  "new child frame request identity is fresh"))
+        return 31;
+    retirementComponents.capture->stop();
     std::cout << "PASS: composite multi-surface, no stale-frame fallback, single-canvas immutable fast path, DPR fallback, and #958 overlapped alpha/Z/hide/output-identity truth\n";
     return 0;
 }

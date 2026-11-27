@@ -126,7 +126,7 @@ endif()
 # train must stay conditional: a version number existing never authorizes a release scope by itself. #333: the
 # pre-reserved technical slots (0.2.1.0/0.3.1.0/0.3.2.0), the qualification-only 0.4.0.0 and the post-GA fixed slot
 # 1.1.0.0 are no longer selectable trains and are asserted as refused/fail-closed further down.
-foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 0.3.5.0 1.0.0.0)
+foreach(required_train IN ITEMS 0.1.0.0 0.2.0.0 0.2.0.1 0.3.0.0 0.3.3.0 0.3.4.0 0.3.5.0 0.3.6.0 1.0.0.0)
     string(JSON required_train_type ERROR_VARIABLE required_train_error TYPE
            "${authority_json}" trains "${required_train}")
     if(required_train_error OR NOT required_train_type STREQUAL "OBJECT")
@@ -557,7 +557,33 @@ foreach(document IN LISTS declared_authority_documents)
         message(FATAL_ERROR "release-authority-policy: declared authority document is missing: ${document}")
     endif()
     file(READ "${document_path}" document_text)
-    string(REGEX MATCHALL "#[0-9]+" mentioned "${document_text}")
+    # Issue ownership follows the link target: skip other repositories' #N, keep local text and links checked.
+    set(scan_text "${document_text}")
+    string(REGEX MATCHALL "\\[[^]]*\\]\\([^)]*\\)" markdown_links "${document_text}")
+    set(local_links)
+    foreach(markdown_link IN LISTS markdown_links)
+        string(TOLOWER "${markdown_link}" lower_link)
+        if(lower_link MATCHES "github\\.com/" AND
+           NOT lower_link MATCHES "github\\.com/skawu/hyremote/")
+            string(REPLACE "${markdown_link}" "" scan_text "${scan_text}")
+        elseif(lower_link MATCHES "github\\.com/skawu/hyremote/")
+            list(LENGTH local_links local_index)
+            list(APPEND local_links "${markdown_link}")
+            string(REPLACE "${markdown_link}" "__HYREMOTE_LOCAL_LINK_${local_index}__"
+                   scan_text "${scan_text}")
+        endif()
+    endforeach()
+    string(REGEX REPLACE "(HyRemote)?View[ \t]*#[0-9]+(/[ \t]*#[0-9]+)*" "" scan_text "${scan_text}")
+    if(local_links)
+        list(LENGTH local_links local_count)
+        math(EXPR local_last "${local_count} - 1")
+        foreach(local_index RANGE 0 ${local_last})
+            list(GET local_links ${local_index} markdown_link)
+            string(REPLACE "__HYREMOTE_LOCAL_LINK_${local_index}__" "${markdown_link}"
+                   scan_text "${scan_text}")
+        endforeach()
+    endif()
+    string(REGEX MATCHALL "#[0-9]+" mentioned "${scan_text}")
     foreach(token IN LISTS mentioned)
         string(REGEX REPLACE "#" "" number "${token}")
         if(NOT number IN_LIST known_issue_numbers)

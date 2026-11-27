@@ -32,6 +32,7 @@ jobs:
             aqt_arch: gcc_64
             qt_dir: gcc_64
             subset_archives: true
+            product_runtime: enabled
           - name: Windows x86_64 / Qt 5.15.2
             os: windows-2022
             qt_version: 5.15.2
@@ -39,6 +40,7 @@ jobs:
             aqt_arch: win64_msvc2019_64
             qt_dir: msvc2019_64
             subset_archives: false
+            product_runtime: enabled
           - name: Linux x86_64 / Qt 6.5.3 (advisory, nonblocking)
             os: ubuntu-24.04
             qt_version: 6.5.3
@@ -46,6 +48,7 @@ jobs:
             aqt_arch: gcc_64
             qt_dir: gcc_64
             subset_archives: true
+            product_runtime: skipped_post_ga
           - name: Windows x86_64 / Qt 6.5.3
             os: windows-2022
             qt_version: 6.5.3
@@ -53,6 +56,7 @@ jobs:
             aqt_arch: win64_msvc2019_64
             qt_dir: msvc2019_64
             subset_archives: false
+            product_runtime: skipped_post_ga
           - name: Linux x86_64 / Qt 6.8.3 (advisory, nonblocking)
             os: ubuntu-24.04
             qt_version: 6.8.3
@@ -60,6 +64,7 @@ jobs:
             aqt_arch: linux_gcc_64
             qt_dir: gcc_64
             subset_archives: false
+            product_runtime: enabled
           - name: Windows x86_64 / Qt 6.8.3
             os: windows-2022
             qt_version: 6.8.3
@@ -67,6 +72,7 @@ jobs:
             aqt_arch: win64_msvc2022_64
             qt_dir: msvc2022_64
             subset_archives: false
+            product_runtime: enabled
 
     steps:
       - uses: actions/checkout@v4
@@ -167,7 +173,30 @@ jobs:
           cat product-configure-result.txt | tee -a "$GITHUB_STEP_SUMMARY"
           grep -E 'Qt [0-9]|Common Runtime skipped|requires Qt|only qualified line|Configuring HyRemote' product-configure.log \
             | tail -20 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo "PRODUCT_RUNTIME_EXPECTATION=${{ matrix.product_runtime }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "PRODUCT_SUPPORT_CLAIM=NONE_FROM_THIS_JOB" | tee -a "$GITHUB_STEP_SUMMARY"
           echo '~~~' >> "$GITHUB_STEP_SUMMARY"
 
+          # Three distinct facts: the standalone public-surface probe, the actual product configure rc,
+          # and the expected boundary for this Qt family. Qt 6.5 is a post-GA public probe only: the
+          # product configure is expected to skip the Qt 6.8+ Common Runtime, never to claim support.
           grep -q '^PUBLIC_SURFACE_COMPILES=YES$' build-qt-lts/qt-lts-evidence.txt
           grep -q '^PUBLIC_LINK_PROBE=PASS$' qt-lts-runtime.log
+          configure_rc="$(sed -n 's/^PRODUCT_CONFIGURE_RC=//p' product-configure-result.txt | head -1)"
+          if [[ "$configure_rc" != "0" ]]; then
+            echo "::error::product configure returned ${configure_rc:-<missing>}; expected 0 for this probe"
+            exit 1
+          fi
+          if [[ "${{ matrix.product_runtime }}" == "skipped_post_ga" ]]; then
+            if ! grep -q 'Common Runtime skipped: Qt 6.8+ Core/Network not found' product-configure.log; then
+              echo "::error::Qt 6.5 product configure did not show the expected post-GA Common Runtime skip"
+              exit 1
+            fi
+            echo "PRODUCT_CONFIGURE_RESULT=EXPECTED_POST_GA_SKIP" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            if grep -q 'Common Runtime skipped' product-configure.log; then
+              echo "::error::product configure skipped the Common Runtime for an enabled-runtime Qt cell"
+              exit 1
+            fi
+            echo "PRODUCT_CONFIGURE_RESULT=EXPECTED_ENABLED" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,0 +1,246 @@
+diff --git a/src/runtime/src/access_instance.cpp b/src/runtime/src/access_instance.cpp
+index 5f8ede96..4cc77cbe 100644
+--- a/src/runtime/src/access_instance.cpp
++++ b/src/runtime/src/access_instance.cpp
+@@ -43,6 +43,8 @@
+ #include "detail/watermark_frame_decorator.hpp"
+ #include "detail/watermark_store.hpp"
+ #include "detail/viewer_capture_demand.hpp"
++#include "detail/natural_snapshot_source.hpp"
++#include "detail/synthetic_viewer_trace.hpp"
+ #include "detail/perf_probe.hpp"
+ #include "hyremote/core/session.hpp"
+ 
+@@ -467,6 +469,9 @@ public:
+         , m_demand(std::move(demand))
+         , m_onRuntimeObservation(std::move(onRuntimeObservation))
+     {
++        m_naturalSource = dynamic_cast<HyRemote::detail::NaturalSnapshotSource *>(m_source.get());
++        if (m_naturalSource)
++            m_naturalSource->bindViewerDemand(m_demand);
+     }
+ 
+     hyremote::CaptureCapabilities capabilities() const override
+@@ -541,13 +546,24 @@ public:
+ 
+     bool requestFrame(const hyremote::CaptureRequest &request) override
+     {
+-        if (!m_demand->waitForViewer())
+-            return false;
+-        return m_source->requestFrame(request);
++        SyntheticViewerTrace::event("issued", request.id);
++        for (;;) {
++            bool useNatural = false;
++            if (!m_demand->waitForViewer(m_naturalSource ? &useNatural : nullptr))
++                return false;
++            if (useNatural) {
++                if (m_naturalSource->tryPublishNaturalSnapshot(request))
++                    return true;
++                continue; // stale hint must not trigger a public Qt grab
++            }
++            SyntheticViewerTrace::event("admitted", request.id);
++            return m_source->requestFrame(request);
++        }
+     }
+ 
+ private:
+     std::unique_ptr<hyremote::CaptureSource> m_source;
++    HyRemote::detail::NaturalSnapshotSource *m_naturalSource = nullptr;
+     QPointer<QObject> m_target;
+     // Owned by the capture wrapper, created on the AccessInstance lifecycle
+     // thread and never moved to the source/transport worker threads.
+diff --git a/src/runtime/src/detail/viewer_capture_demand.hpp b/src/runtime/src/detail/viewer_capture_demand.hpp
+index 7a1969d0..07053510 100644
+--- a/src/runtime/src/detail/viewer_capture_demand.hpp
++++ b/src/runtime/src/detail/viewer_capture_demand.hpp
+@@ -3,7 +3,9 @@
+ #include <chrono>
+ #include <condition_variable>
+ #include <cstddef>
++#include <cstdint>
+ #include <mutex>
++#include <cstdlib>
+ 
+ #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+ #include <functional>
+@@ -44,6 +46,7 @@ public:
+     {
+         std::lock_guard<std::mutex> lock(m_mutex);
+         m_stopped = false;
++        invalidateNaturalCreditLocked();
+         m_viewers = 0;
+         m_bootstrapFrameQueued = false;
+         m_deliveryBackpressured = false;
+@@ -70,6 +73,7 @@ public:
+         {
+             std::lock_guard<std::mutex> lock(m_mutex);
+             if (m_viewers != viewers) {
++                invalidateNaturalCreditLocked();
+                 resetIdleLocked(); // every new viewer requires a prompt, full initialization
+                 if (viewers > m_viewers)
+                     m_backpressureEscape = true;
+@@ -93,7 +97,7 @@ public:
+                 if (m_identicalFrames < kConsecutiveUnchangedFrames)
+                     ++m_identicalFrames;
+                 if (m_identicalFrames >= kConsecutiveUnchangedFrames)
+-                    m_nextStaticProbe = Clock::now() + kStaticProbeInterval;
++                    m_nextStaticProbe = Clock::now() + staticProbeInterval();
+             }
+         }
+         m_changed.notify_all();
+@@ -108,6 +112,8 @@ public:
+     {
+         {
+             std::lock_guard<std::mutex> lock(m_mutex);
++            if (blocked && !m_deliveryBackpressured)
++                invalidateNaturalCreditLocked();
+             m_deliveryBackpressured = blocked;
+             // A Viewer that has no outstanding RFB update request may resume
+             // later without sending a second request. Keep a bounded periodic
+@@ -152,9 +158,37 @@ public:
+         m_changed.notify_all();
+     }
+ 
+-    bool waitForViewer()
++    // Render callbacks may ask for a token without waiting on the scheduler.
++    // Bootstrap and forced-refresh escape never authorize native prefetch.
++    std::uint64_t tryNaturalFrameCredit()
++    {
++        std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
++        return lock && naturalCreditAvailableLocked() ? m_naturalCreditEpoch : 0;
++    }
++
++    bool isNaturalFrameCreditCurrent(std::uint64_t epoch)
++    {
++        std::lock_guard<std::mutex> lock(m_mutex);
++        return epoch != 0 && epoch == m_naturalCreditEpoch && naturalCreditAvailableLocked();
++    }
++
++    bool offerNaturalSnapshot(std::uint64_t epoch)
++    {
++        {
++            std::lock_guard<std::mutex> lock(m_mutex);
++            if (epoch == 0 || epoch != m_naturalCreditEpoch || !naturalCreditAvailableLocked())
++                return false;
++            m_naturalSnapshotReady = true;
++        }
++        m_changed.notify_all();
++        return true;
++    }
++
++    bool waitForViewer(bool *useNaturalSnapshot = nullptr)
+     {
+         std::unique_lock<std::mutex> lock(m_mutex);
++        if (useNaturalSnapshot)
++            *useNaturalSnapshot = false;
+         // Never block while holding a GUI/rendering/transport lock. Core calls this only from
+         // its capture scheduler, and stop() always wakes it before joining Core workers.
+         for (;;) {
+@@ -184,12 +218,17 @@ public:
+             } else {
+                 m_backpressureEscape = false;
+             }
++            if (useNaturalSnapshot && m_naturalSnapshotReady && naturalCreditAvailableLocked()) {
++                m_naturalSnapshotReady = false;
++                *useNaturalSnapshot = true;
++                return true;
++            }
+             if (m_identicalFrames < kConsecutiveUnchangedFrames)
+                 return true; // active/changing frames retain the existing 60fps cap
+ 
+             const auto now = Clock::now();
+             if (now >= m_nextStaticProbe) {
+-                m_nextStaticProbe = now + kStaticProbeInterval;
++                m_nextStaticProbe = now + staticProbeInterval();
+                 return true; // local-only changes have bounded detection delay
+             }
+ #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+@@ -207,6 +246,7 @@ public:
+         {
+             std::lock_guard<std::mutex> lock(m_mutex);
+             m_stopped = true;
++            invalidateNaturalCreditLocked();
+             m_viewers = 0;
+             m_deliveryBackpressured = false;
+             m_noViewerUpdateDemand = false;
+@@ -218,6 +258,25 @@ public:
+     }
+ 
+ private:
++    bool naturalCreditAvailableLocked() const
++    {
++        return !m_stopped && m_viewers > 0 && !m_deliveryBackpressured;
++    }
++
++    void invalidateNaturalCreditLocked()
++    {
++        ++m_naturalCreditEpoch;
++        m_naturalSnapshotReady = false;
++    }
++    static std::chrono::milliseconds staticProbeInterval()
++    {
++        // Only in the isolated research build. Preserve the separate no-demand probe.
++        static const bool half = [] {
++            const char *value = std::getenv("HYREMOTE_SYNTHETIC_STATIC_125");
++            return value && value[0] == '1' && value[1] == '\0';
++        }();
++        return half ? std::chrono::milliseconds(125) : kStaticProbeInterval;
++    }
+     using Clock = std::chrono::steady_clock;
+ 
+     void resetIdleLocked()
+@@ -237,6 +296,8 @@ private:
+     Clock::time_point m_nextNoDemandProbe{};
+     bool m_backpressureEscape = false;
+     bool m_stopped = true;
++    std::uint64_t m_naturalCreditEpoch = 1;
++    bool m_naturalSnapshotReady = false;
+ #if defined(HYREMOTE_VIEWER_DEMAND_TEST_HOOK)
+     std::function<void()> m_testStaticWaitObserver;
+ #endif
+diff --git a/src/runtime/src/quick/quick_target.cpp b/src/runtime/src/quick/quick_target.cpp
+index 0a5b5710..9f638742 100644
+--- a/src/runtime/src/quick/quick_target.cpp
++++ b/src/runtime/src/quick/quick_target.cpp
+@@ -32,6 +32,7 @@
+ 
+ #include "detail/input_mailbox_admission.hpp"
+ #include "detail/perf_probe.hpp"
++#include "detail/synthetic_viewer_trace.hpp"
+ #include "detail/qt_window_system_input.hpp"
+ #include "quick/quick_image_frame_storage.hpp"
+ #include "quick/quick_capture_backend.hpp"
+@@ -438,6 +439,12 @@ private:
+             hyremote::RemoteFrame frame = prototype;
+             frame.timing.requestTime = request.requestTime;
+             frame.requestId = request.id;
++            if (SyntheticViewerTrace::enabled()) {
++                const unsigned color = image.pixelColor(image.width() / 2, image.height() / 2).rgb()
++                    & 0x00ffffff;
++                if (color == 0xc92a59 || color == 0x2bb77d || color == 0x374cdb || color == 0xedb627)
++                    SyntheticViewerTrace::event("quick_ready", request.id, color);
++            }
+             publishCallback(state, &State::onFrame, std::move(frame),
+                             batch->generation);
+         }
+diff --git a/src/runtime/src/transport/rfb_transport.cpp b/src/runtime/src/transport/rfb_transport.cpp
+index 018f5c91..3c9b985d 100644
+--- a/src/runtime/src/transport/rfb_transport.cpp
++++ b/src/runtime/src/transport/rfb_transport.cpp
+@@ -28,6 +28,7 @@
+ 
+ #include "hyremote/core/storage.hpp"
+ #include "detail/perf_probe.hpp"
++#include "detail/synthetic_viewer_trace.hpp"
+ #include "rfb_delivery_state.hpp"
+ #include "rfb_trle.hpp"
+ 
+@@ -1991,6 +1992,8 @@ private:
+             protocolFailure(client, "RFB socket write failed");
+             return;
+         }
++        if (frame->requestId)
++            SyntheticViewerTrace::event("rfb_queued", *frame->requestId);
+         client.delivery.commitDelivered(selected);
+         client.continuousRequestArmed = false;
+         // A continuously enabled viewer keeps one outstanding incremental

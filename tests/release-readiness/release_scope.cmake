@@ -405,7 +405,9 @@ if(DEFINED HYREMOTE_SCOPE_SELF_TEST AND HYREMOTE_SCOPE_SELF_TEST)
             "0.2.0.0|143,174,259,326,271|258,332|0.1.0.0"
             "0.2.0.1|382,387,389,390,391,392||0.2.0.0"
             "0.3.0.0|264,240,335||0.2.0.0"
-            "0.3.4.0|265,566,603||0.3.3.0")
+            "0.3.4.0|265,566,603||0.3.3.0"
+            "0.3.5.0|591,589||0.3.4.0"
+            "0.3.6.0|581,582,583,584,585,590,586||0.3.5.0")
         string(REPLACE "|" ";" parts "${expectation}")
         list(GET parts 0 expectation_version)
         list(GET parts 1 expectation_children)

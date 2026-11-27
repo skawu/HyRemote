@@ -1,0 +1,280 @@
+{
+  "viewer_pid": 42068,
+  "window_titles": [
+    "127.0.0.1::15921 (HyRemote (view-only)) - RealVNC Viewer"
+  ],
+  "samples": [
+    {
+      "sequence": 1,
+      "detected_qpc": 14583940627778,
+      "detected_ms": 269.5989,
+      "scan_interval_ms": 30.1606,
+      "request_id": 12,
+      "capture_route": "public",
+      "source_to_quick_ready_ms": 257.394,
+      "quick_ready_to_queue_ms": 0.9099,
+      "source_to_admission_ms": 247.0632,
+      "request_gate_wait_ms": 261.3655,
+      "admission_to_quick_ready_ms": 10.3308
+    },
+    {
+      "sequence": 2,
+      "detected_qpc": 14583948128310,
+      "detected_ms": 19.0202,
+      "scan_interval_ms": null,
+      "request_id": 18,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 7.4105,
+      "quick_ready_to_queue_ms": 0.8058
+    },
+    {
+      "sequence": 3,
+      "detected_qpc": 14583958298848,
+      "detected_ms": 33.4183,
+      "scan_interval_ms": 31.6886,
+      "request_id": 26,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 19.1914,
+      "quick_ready_to_queue_ms": 2.8836
+    },
+    {
+      "sequence": 4,
+      "detected_qpc": 14583968287545,
+      "detected_ms": 31.2859,
+      "scan_interval_ms": 29.4165,
+      "request_id": 35,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 21.0593,
+      "quick_ready_to_queue_ms": 2.6027
+    },
+    {
+      "sequence": 5,
+      "detected_qpc": 14583978454993,
+      "detected_ms": 50.1649,
+      "scan_interval_ms": 29.684,
+      "request_id": 44,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 28.0626,
+      "quick_ready_to_queue_ms": 1.5708
+    },
+    {
+      "sequence": 6,
+      "detected_qpc": 14583988289200,
+      "detected_ms": 28.1653,
+      "scan_interval_ms": 26.5652,
+      "request_id": 53,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 15.5723,
+      "quick_ready_to_queue_ms": 1.307
+    },
+    {
+      "sequence": 7,
+      "detected_qpc": 14583998450513,
+      "detected_ms": 40.2779,
+      "scan_interval_ms": 29.7277,
+      "request_id": 62,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 19.934,
+      "quick_ready_to_queue_ms": 1.2029
+    },
+    {
+      "sequence": 8,
+      "detected_qpc": 14584008630450,
+      "detected_ms": 65.4497,
+      "scan_interval_ms": 30.8821,
+      "request_id": 71,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 17.0666,
+      "quick_ready_to_queue_ms": 2.6763
+    },
+    {
+      "sequence": 9,
+      "detected_qpc": 14584018453717,
+      "detected_ms": 50.3191,
+      "scan_interval_ms": 29.4302,
+      "request_id": 80,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 17.8414,
+      "quick_ready_to_queue_ms": 1.1569
+    },
+    {
+      "sequence": 10,
+      "detected_qpc": 14584028787919,
+      "detected_ms": 75.5738,
+      "scan_interval_ms": 30.1507,
+      "request_id": 90,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 27.9526,
+      "quick_ready_to_queue_ms": 1.8826
+    },
+    {
+      "sequence": 11,
+      "detected_qpc": 14584038614238,
+      "detected_ms": 59.1267,
+      "scan_interval_ms": 29.9167,
+      "request_id": 99,
+      "capture_route": "public",
+      "source_to_quick_ready_ms": 31.3405,
+      "quick_ready_to_queue_ms": 3.0601,
+      "source_to_admission_ms": 11.6887,
+      "request_gate_wait_ms": 282.0374,
+      "admission_to_quick_ready_ms": 19.6518
+    },
+    {
+      "sequence": 12,
+      "detected_qpc": 14584048277751,
+      "detected_ms": 25.7182,
+      "scan_interval_ms": 23.207,
+      "request_id": 108,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 15.4475,
+      "quick_ready_to_queue_ms": 0.8521
+    },
+    {
+      "sequence": 13,
+      "detected_qpc": 14584058277390,
+      "detected_ms": 21.9697,
+      "scan_interval_ms": 20.3273,
+      "request_id": 117,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 16.7387,
+      "quick_ready_to_queue_ms": 1.1614
+    },
+    {
+      "sequence": 14,
+      "detected_qpc": 14584068456208,
+      "detected_ms": 39.311,
+      "scan_interval_ms": 30.2814,
+      "request_id": 126,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 17.7428,
+      "quick_ready_to_queue_ms": 0.8781
+    },
+    {
+      "sequence": 15,
+      "detected_qpc": 14584078273991,
+      "detected_ms": 28.4383,
+      "scan_interval_ms": 27.5049,
+      "request_id": 135,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 17.2516,
+      "quick_ready_to_queue_ms": 1.0837
+    },
+    {
+      "sequence": 16,
+      "detected_qpc": 14584088607138,
+      "detected_ms": 62.6493,
+      "scan_interval_ms": 29.5559,
+      "request_id": 145,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 19.1514,
+      "quick_ready_to_queue_ms": 0.9074
+    },
+    {
+      "sequence": 17,
+      "detected_qpc": 14584098438884,
+      "detected_ms": 36.4409,
+      "scan_interval_ms": 35.3825,
+      "request_id": 154,
+      "capture_route": "public",
+      "source_to_quick_ready_ms": 3.3903,
+      "quick_ready_to_queue_ms": 1.0192,
+      "source_to_admission_ms": -18.6934,
+      "request_gate_wait_ms": 281.9201,
+      "admission_to_quick_ready_ms": 22.0837
+    },
+    {
+      "sequence": 18,
+      "detected_qpc": 14584108288310,
+      "detected_ms": 23.948,
+      "scan_interval_ms": 20.6836,
+      "request_id": 163,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 14.1685,
+      "quick_ready_to_queue_ms": 2.3488
+    },
+    {
+      "sequence": 19,
+      "detected_qpc": 14584118289058,
+      "detected_ms": 33.6366,
+      "scan_interval_ms": 31.332,
+      "request_id": 172,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 17.772,
+      "quick_ready_to_queue_ms": 0.9697
+    },
+    {
+      "sequence": 20,
+      "detected_qpc": 14584128618082,
+      "detected_ms": 64.5357,
+      "scan_interval_ms": 30.8469,
+      "request_id": 180,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 18.3877,
+      "quick_ready_to_queue_ms": 0.9787
+    },
+    {
+      "sequence": 21,
+      "detected_qpc": 14584138461177,
+      "detected_ms": 41.5142,
+      "scan_interval_ms": 29.7359,
+      "request_id": 189,
+      "capture_route": "public",
+      "source_to_quick_ready_ms": 3.0488,
+      "quick_ready_to_queue_ms": 2.1571,
+      "source_to_admission_ms": -17.773,
+      "request_gate_wait_ms": 285.0786,
+      "admission_to_quick_ready_ms": 20.8218
+    },
+    {
+      "sequence": 22,
+      "detected_qpc": 14584148441941,
+      "detected_ms": 43.9468,
+      "scan_interval_ms": 28.4041,
+      "request_id": 197,
+      "capture_route": "native",
+      "source_to_quick_ready_ms": 19.732,
+      "quick_ready_to_queue_ms": 3.2769
+    }
+  ],
+  "missed_sequences": [],
+  "scan_duration_max_ms": 18.7055,
+  "viewer_window_positioned": true,
+  "host_trace_events": 634,
+  "native_requests": [
+    18,
+    26,
+    35,
+    44,
+    53,
+    62,
+    71,
+    80,
+    90,
+    108,
+    117,
+    126,
+    135,
+    145,
+    163,
+    172,
+    180,
+    197
+  ],
+  "host_exit_code": 0,
+  "native_stop": {
+    "contexts": 1,
+    "buffers": 1,
+    "submissions": 19,
+    "cleaned": 1
+  },
+  "credit_before_viewer": [],
+  "credit_after_viewer": [],
+  "cpu": {
+    "window_seconds": 17.6938269,
+    "host_pct_one_core": 5.475073343234753,
+    "viewer_pct_one_core": 2.4726137679124687
+  },
+  "viewer_exit_code": null,
+  "viewer_diagnostic": ""
+}

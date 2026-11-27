@@ -183,8 +183,20 @@ PROSE_ONLY_GOVERNANCE_PATHS = (
     "tests/EXECUTION_MANUAL.md",
 )
 
+# A script-discipline guard runs in the Qt-free facts-layout governance group.
+# Any PR that adds/moves an executable script, touches the project asset rules,
+# or edits the guard/its registration must execute that group. This is additive:
+# it only ever turns governance on, never off, and does not change product lanes.
+SCRIPT_DISCIPLINE_SUFFIXES = (".py", ".ps1", ".cmd", ".bat", ".sh")
+SCRIPT_DISCIPLINE_PREFIXES = (
+    ".codebuddy/",
+    "tests/release-readiness/check_script_discipline.cmake",
+    "tests/release-readiness/run_grouped_checks.cmake",
+)
+
 GOVERNANCE_PREFIXES = (
     *PROSE_ONLY_GOVERNANCE_PATHS,
+    *SCRIPT_DISCIPLINE_PREFIXES,
     ".github/release/",
     ".github/workflows/git-flow-policy.yml",
     "tests/release-readiness/release_scope.cmake",
@@ -411,7 +423,10 @@ def resolve(event: str, changed: list[str], draft: bool = False,
     )
 
     governance = full_gate or any(
-        path.startswith(GOVERNANCE_PREFIXES) or path in GOVERNANCE_ONLY_PATHS for path in changed
+        path.startswith(GOVERNANCE_PREFIXES)
+        or path in GOVERNANCE_ONLY_PATHS
+        or path.endswith(SCRIPT_DISCIPLINE_SUFFIXES)
+        for path in changed
     )
 
     # Ordinary product CI builds with security off, so the VNC-auth tests are never compiled by it and a green
@@ -594,6 +609,17 @@ def self_test() -> int:
          {"product": "true", "qt5_scope": "true"}),
         ("unrelated docs keep the fast lane", "pull_request", ["docs/proposals/notes.md"], False,
          {"lane": "PR_FAST", "product": "false"}),
+        # Script discipline: any executable-script change (including a new one
+        # under tmp/) and any project-asset/guard change must run the Qt-free
+        # governance group. Product lanes are unchanged by this additive rule.
+        ("new script runs the script-discipline governance lane", "pull_request",
+         ["tools/perf/new_probe.py"], False, {"governance": "true", "product": "false"}),
+        ("stray tmp script runs the script-discipline governance lane", "pull_request",
+         ["tmp/sem/observer.py"], False, {"governance": "true"}),
+        ("project asset change runs the governance lane", "pull_request",
+         [".codebuddy/rules/session-anchor.md"], False, {"governance": "true", "product": "false"}),
+        ("guard registration change runs the governance lane", "pull_request",
+         ["tests/release-readiness/run_grouped_checks.cmake"], False, {"governance": "true"}),
         # Readiness-consumed surfaces must execute readiness.
         ("release package manifest runs readiness", "pull_request", ["docs/release-package-manifest.md"], False,
          {"readiness_evidence": "true"}),

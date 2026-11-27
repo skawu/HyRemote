@@ -4,8 +4,10 @@
 // QImage returned by QQuickItemGrabResult::image(). The pixel owner must outlive
 // any Core/transport consumer, including consumers on non-GUI threads.
 //
-// Only this exact byte format is published as hyremote::Rgba8888/Premultiplied.
-// Other QImage formats are normalized by the Quick capture adapter first.
+// RGBA8888_Premultiplied is the canonical layout. RGBX8888 is also a
+// valid zero-copy source: Qt guarantees the final X byte is 255, hence these
+// samples are already equivalent to opaque premultiplied RGBA. No format
+// re-tagging or QImage detachment is necessary. Other formats are normalized.
 #include <QImage>
 
 #include <cstddef>
@@ -24,7 +26,9 @@ class QuickImageFrameStorage final : public hyremote::FrameStorage
 public:
     static std::shared_ptr<const hyremote::FrameStorage> create(const QImage &image)
     {
-        if (image.isNull() || image.format() != QImage::Format_RGBA8888_Premultiplied
+        if (image.isNull()
+            || (image.format() != QImage::Format_RGBA8888_Premultiplied
+                && image.format() != QImage::Format_RGBX8888)
             || image.width() <= 0 || image.height() <= 0)
             return {};
 

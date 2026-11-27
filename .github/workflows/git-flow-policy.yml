@@ -335,7 +335,7 @@ jobs:
                       from release_correction import validate as validate_correction
                       from release_correction import validate_reopen, validate_reopen_rc7
                       from release_correction import validate_v035_numeric_watermark, validate_v036_notes
-                      from release_correction import validate_v0351_maintenance
+                      from release_correction import validate_v0351_maintenance, validate_v036_lineage
                       if old_notes.startswith("Status: **accepted for V0.3.5.0**"):
                           # Only two exact independently reviewed exceptions exist:
                           # #806 accepted RC6->RC7, and #812/#768 accepted RC7->next
@@ -369,6 +369,13 @@ jobs:
                       elif (actual_base == "73c0a7ce115d6f530f86ca3316f1d23c524374db"
                             and head == "feature/1086-release-preparation"):
                           stage = validate_v0351_maintenance(
+                              git=git, version=version, notes_name=notes_name,
+                              base_notes=old_notes, head_notes=notes,
+                              base_cmake=old_cmake, head_cmake=new_cmake,
+                              actual_base_sha=actual_base, head_ref=head)
+                      elif (actual_base == "1f4db80bd683d8f5aebbf77fa5ecb7391e7e2749"
+                            and head == "feature/95-release-preparation"):
+                          stage = validate_v036_lineage(
                               git=git, version=version, notes_name=notes_name,
                               base_notes=old_notes, head_notes=notes,
                               base_cmake=old_cmake, head_cmake=new_cmake,

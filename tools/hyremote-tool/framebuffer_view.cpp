@@ -22,9 +22,21 @@ FramebufferView::FramebufferView(QWidget *parent)
     m_placeholder = QStringLiteral("Not connected. Enter a remote IP and port, then Connect.");
 }
 
+void FramebufferView::setDisplayMode(DisplayMode mode)
+{
+    m_displayMode = mode;
+    if (mode == DisplayMode::Native && !m_frame.isNull())
+        resize(m_frame.size());
+    else if (parentWidget())
+        resize(parentWidget()->size());
+    update();
+}
+
 void FramebufferView::setFrame(const QImage &frame)
 {
     m_frame = frame;
+    if (m_displayMode == DisplayMode::Native && !frame.isNull())
+        resize(frame.size());
     update();
 }
 
@@ -86,6 +98,8 @@ QRect FramebufferView::imageRect() const
 {
     if (m_frame.isNull())
         return QRect();
+    if (m_displayMode == DisplayMode::Native)
+        return QRect(QPoint(0, 0), m_frame.size());
     const double scale = std::min(static_cast<double>(width()) / m_frame.width(),
                                   static_cast<double>(height()) / m_frame.height());
     const int scaledWidth = std::max(1, static_cast<int>(m_frame.width() * scale));

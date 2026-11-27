@@ -1,0 +1,1575 @@
+{
+  "analyzer": "tools/perf/analyze_frame_trace.py (schema=3, (pid,requestId) pairing)",
+  "endpoint": "RFB_socket_queued_not_viewer_present",
+  "metric_type": "host_monotonic_wall_latency",
+  "runs": {
+    "viewers-0-A1": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 1,
+        "duplicate_content_pts_requests": 0,
+        "host_monotonic_only": true,
+        "host_pids": [
+          29288
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 3,
+            "p50_ms": 0.61,
+            "p95_ms": 49.181,
+            "p99_ms": 49.181
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 3,
+            "p50_ms": 0.019,
+            "p95_ms": 0.22,
+            "p99_ms": 0.22
+          },
+          "submit_to_source_completed": {
+            "n": 3,
+            "p50_ms": 7.44,
+            "p95_ms": 75.785,
+            "p99_ms": 75.785
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 14
+        },
+        "socket_queued_per_viewer_id": {},
+        "steps": {
+          "capture_request": 3,
+          "core_frame_queued": 3,
+          "quick_grab_submitted": 3,
+          "rfb_observed": 2,
+          "source_completed": 3
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 2,
+        "unique_content_pts": 0,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 3,
+            "p50_ms": 0.002,
+            "p95_ms": 0.002,
+            "p99_ms": 0.002
+          },
+          "core_issue_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "core_to_rfb_worker": {
+            "n": 2,
+            "p50_ms": 0.187,
+            "p95_ms": 0.228,
+            "p99_ms": 0.232
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 3,
+            "p50_ms": 7.44,
+            "p95_ms": 68.95,
+            "p99_ms": 74.418
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "request_to_source": {
+            "n": 3,
+            "p50_ms": 56.608,
+            "p95_ms": 74.416,
+            "p99_ms": 75.999
+          },
+          "rfb_compare_to_encode": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "source_to_core_dispatch": {
+            "n": 3,
+            "p50_ms": 0.019,
+            "p95_ms": 0.2,
+            "p99_ms": 0.216
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 3,
+          "core_frame_queued": 3,
+          "quick_grab_submitted": 3,
+          "rfb_observed": 2,
+          "source_completed": 3
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 3475,
+      "raw_sha256": "28acf05cfebd186d94aebca5853e9e9550978728a80ba98e0d9a011659e42409",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": null
+    },
+    "viewers-0-A2": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 1,
+        "duplicate_content_pts_requests": 0,
+        "host_monotonic_only": true,
+        "host_pids": [
+          15448
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 3,
+            "p50_ms": 0.583,
+            "p95_ms": 78.454,
+            "p99_ms": 78.454
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 3,
+            "p50_ms": 0.023,
+            "p95_ms": 0.036,
+            "p99_ms": 0.036
+          },
+          "submit_to_source_completed": {
+            "n": 3,
+            "p50_ms": 7.195,
+            "p95_ms": 94.952,
+            "p99_ms": 94.952
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 14
+        },
+        "socket_queued_per_viewer_id": {},
+        "steps": {
+          "capture_request": 3,
+          "core_frame_queued": 3,
+          "quick_grab_submitted": 3,
+          "rfb_observed": 2,
+          "source_completed": 3
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 2,
+        "unique_content_pts": 0,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 3,
+            "p50_ms": 0.002,
+            "p95_ms": 0.002,
+            "p99_ms": 0.002
+          },
+          "core_issue_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "core_to_rfb_worker": {
+            "n": 2,
+            "p50_ms": 0.356,
+            "p95_ms": 0.497,
+            "p99_ms": 0.51
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 3,
+            "p50_ms": 7.195,
+            "p95_ms": 86.176,
+            "p99_ms": 93.196
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "request_to_source": {
+            "n": 3,
+            "p50_ms": 85.637,
+            "p95_ms": 94.457,
+            "p99_ms": 95.241
+          },
+          "rfb_compare_to_encode": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "source_to_core_dispatch": {
+            "n": 3,
+            "p50_ms": 0.023,
+            "p95_ms": 0.035,
+            "p99_ms": 0.036
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 3,
+          "core_frame_queued": 3,
+          "quick_grab_submitted": 3,
+          "rfb_observed": 2,
+          "source_completed": 3
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 3475,
+      "raw_sha256": "41ae501856bff543ae6cad624e2b6687321d93194853a3a7620aba2b380df68a",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": null
+    },
+    "viewers-0-B": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 1,
+        "duplicate_content_pts_requests": 1,
+        "host_monotonic_only": true,
+        "host_pids": [
+          38112
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 3,
+            "p50_ms": 367.046,
+            "p95_ms": 392.697,
+            "p99_ms": 392.697
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 3,
+            "p50_ms": 0.028,
+            "p95_ms": 0.452,
+            "p99_ms": 0.452
+          },
+          "submit_to_source_completed": {
+            "n": 3,
+            "p50_ms": 4.84,
+            "p95_ms": 4.857,
+            "p99_ms": 4.857
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 14
+        },
+        "socket_queued_per_viewer_id": {},
+        "steps": {
+          "capture_request": 3,
+          "core_frame_queued": 3,
+          "gpu_readback_submitted": 3,
+          "rfb_observed": 2,
+          "source_completed": 3
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 2,
+        "unique_content_pts": 2,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 3,
+            "p50_ms": 0.001,
+            "p95_ms": 0.001,
+            "p99_ms": 0.001
+          },
+          "core_issue_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "core_to_rfb_worker": {
+            "n": 2,
+            "p50_ms": 0.725,
+            "p95_ms": 0.924,
+            "p99_ms": 0.942
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 3,
+            "p50_ms": 4.848,
+            "p95_ms": 4.864,
+            "p99_ms": 4.866
+          },
+          "request_to_source": {
+            "n": 3,
+            "p50_ms": 371.902,
+            "p95_ms": 394.973,
+            "p99_ms": 397.024
+          },
+          "rfb_compare_to_encode": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "source_to_core_dispatch": {
+            "n": 3,
+            "p50_ms": 0.028,
+            "p95_ms": 0.41,
+            "p99_ms": 0.444
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 3,
+          "core_frame_queued": 3,
+          "gpu_readback_submitted": 3,
+          "rfb_observed": 2,
+          "source_completed": 3
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 3526,
+      "raw_sha256": "9ef4a4db34d68d0642b15790cb7324b19603a72c894c6a39947ea794432fbd4c",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": null
+    },
+    "viewers-1-A1": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 108,
+        "duplicate_content_pts_requests": 0,
+        "host_monotonic_only": true,
+        "host_pids": [
+          37456
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 935,
+            "p50_ms": 1.862,
+            "p95_ms": 6.51,
+            "p99_ms": 12.682
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 935,
+            "p50_ms": 0.047,
+            "p95_ms": 0.195,
+            "p99_ms": 0.588
+          },
+          "submit_to_source_completed": {
+            "n": 935,
+            "p50_ms": 17.807,
+            "p95_ms": 27.107,
+            "p99_ms": 31.085
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 5646
+        },
+        "socket_queued_per_viewer_id": {
+          "1": 122
+        },
+        "steps": {
+          "capture_request": 935,
+          "core_frame_queued": 935,
+          "quick_grab_submitted": 935,
+          "rfb_compared": 830,
+          "rfb_encoded": 122,
+          "rfb_observed": 832,
+          "rfb_socket_queued": 122,
+          "source_completed": 935
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 827,
+        "unique_content_pts": 0,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 23.9,
+            "p95_ms": 30.607,
+            "p99_ms": 42.959
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 935,
+            "p50_ms": 22.476,
+            "p95_ms": 284.29,
+            "p99_ms": 286.085
+          },
+          "core_issue_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 306.649,
+            "p95_ms": 313.506,
+            "p99_ms": 316.647
+          },
+          "core_to_rfb_worker": {
+            "n": 832,
+            "p50_ms": 0.572,
+            "p95_ms": 2.864,
+            "p99_ms": 3.815
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 935,
+            "p50_ms": 17.807,
+            "p95_ms": 27.098,
+            "p99_ms": 31.076
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "request_to_source": {
+            "n": 935,
+            "p50_ms": 20.512,
+            "p95_ms": 29.474,
+            "p99_ms": 41.553
+          },
+          "rfb_compare_to_encode": {
+            "n": 122,
+            "p50_ms": 0.93,
+            "p95_ms": 2.663,
+            "p99_ms": 3.279
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 0.023,
+            "p95_ms": 0.234,
+            "p99_ms": 0.601
+          },
+          "source_to_core_dispatch": {
+            "n": 935,
+            "p50_ms": 0.047,
+            "p95_ms": 0.192,
+            "p99_ms": 0.573
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 935,
+          "core_frame_queued": 935,
+          "quick_grab_submitted": 935,
+          "rfb_compared": 830,
+          "rfb_encoded": 122,
+          "rfb_observed": 832,
+          "rfb_socket_queued": 122,
+          "source_completed": 935
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 1433285,
+      "raw_sha256": "505d42fd0c7516daefd159b61d2a37e1cc97b7ade95014ad44f33def7279589b",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": {
+        "n": 113,
+        "p50": 172.3724,
+        "p95": 287.8772,
+        "p99": 304.7166
+      }
+    },
+    "viewers-1-A2": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 110,
+        "duplicate_content_pts_requests": 0,
+        "host_monotonic_only": true,
+        "host_pids": [
+          44572
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 936,
+            "p50_ms": 1.689,
+            "p95_ms": 5.524,
+            "p99_ms": 10.431
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 936,
+            "p50_ms": 0.041,
+            "p95_ms": 0.185,
+            "p99_ms": 0.483
+          },
+          "submit_to_source_completed": {
+            "n": 936,
+            "p50_ms": 17.18,
+            "p95_ms": 24.672,
+            "p99_ms": 29.363
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 5644
+        },
+        "socket_queued_per_viewer_id": {
+          "1": 122
+        },
+        "steps": {
+          "capture_request": 936,
+          "core_frame_queued": 936,
+          "quick_grab_submitted": 936,
+          "rfb_compared": 827,
+          "rfb_encoded": 122,
+          "rfb_observed": 829,
+          "rfb_socket_queued": 122,
+          "source_completed": 936
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 826,
+        "unique_content_pts": 0,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 23.494,
+            "p95_ms": 29.65,
+            "p99_ms": 33.43
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 936,
+            "p50_ms": 22.337,
+            "p95_ms": 283.905,
+            "p99_ms": 287.89
+          },
+          "core_issue_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 305.946,
+            "p95_ms": 313.539,
+            "p99_ms": 314.413
+          },
+          "core_to_rfb_worker": {
+            "n": 829,
+            "p50_ms": 0.562,
+            "p95_ms": 2.61,
+            "p99_ms": 4.146
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 936,
+            "p50_ms": 17.182,
+            "p95_ms": 24.567,
+            "p99_ms": 29.312
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "request_to_source": {
+            "n": 936,
+            "p50_ms": 19.954,
+            "p95_ms": 27.072,
+            "p99_ms": 33.532
+          },
+          "rfb_compare_to_encode": {
+            "n": 122,
+            "p50_ms": 0.848,
+            "p95_ms": 2.373,
+            "p99_ms": 4.683
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 0.02,
+            "p95_ms": 0.246,
+            "p99_ms": 0.742
+          },
+          "source_to_core_dispatch": {
+            "n": 936,
+            "p50_ms": 0.041,
+            "p95_ms": 0.184,
+            "p99_ms": 0.477
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 936,
+          "core_frame_queued": 936,
+          "quick_grab_submitted": 936,
+          "rfb_compared": 827,
+          "rfb_encoded": 122,
+          "rfb_observed": 829,
+          "rfb_socket_queued": 122,
+          "source_completed": 936
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 1432696,
+      "raw_sha256": "0e2b016c8ccc3051aceec17dfe002f6cfe59548610a958b0b072bea39616120a",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": {
+        "n": 113,
+        "p50": 156.4512,
+        "p95": 303.2801,
+        "p99": 315.8773
+      }
+    },
+    "viewers-1-B": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 393,
+        "duplicate_content_pts_requests": 393,
+        "host_monotonic_only": true,
+        "host_pids": [
+          29184
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 1176,
+            "p50_ms": 41.554,
+            "p95_ms": 52.734,
+            "p99_ms": 59.191
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 1176,
+            "p50_ms": 0.035,
+            "p95_ms": 0.267,
+            "p99_ms": 0.747
+          },
+          "submit_to_source_completed": {
+            "n": 1176,
+            "p50_ms": 1.117,
+            "p95_ms": 3.458,
+            "p99_ms": 6.535
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 6532
+        },
+        "socket_queued_per_viewer_id": {
+          "1": 122
+        },
+        "steps": {
+          "capture_request": 1176,
+          "core_frame_queued": 1176,
+          "gpu_readback_submitted": 1176,
+          "rfb_compared": 792,
+          "rfb_encoded": 122,
+          "rfb_observed": 792,
+          "rfb_socket_queued": 122,
+          "source_completed": 1176
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 783,
+        "unique_content_pts": 783,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 0,
+          "p50_ms": null,
+          "p95_ms": null,
+          "p99_ms": null
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 52.231,
+            "p95_ms": 59.04,
+            "p99_ms": 62.683
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 1176,
+            "p50_ms": 0.003,
+            "p95_ms": 314.155,
+            "p99_ms": 316.739
+          },
+          "core_issue_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 364.533,
+            "p95_ms": 375.963,
+            "p99_ms": 380.699
+          },
+          "core_to_rfb_worker": {
+            "n": 792,
+            "p50_ms": 0.159,
+            "p95_ms": 2.303,
+            "p99_ms": 3.772
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 2.313,
+            "p95_ms": 6.127,
+            "p99_ms": 9.271
+          },
+          "render_pts_to_source": {
+            "n": 1176,
+            "p50_ms": 1.129,
+            "p95_ms": 3.472,
+            "p99_ms": 6.341
+          },
+          "request_to_source": {
+            "n": 1176,
+            "p50_ms": 43.219,
+            "p95_ms": 54.733,
+            "p99_ms": 61.405
+          },
+          "rfb_compare_to_encode": {
+            "n": 122,
+            "p50_ms": 0.762,
+            "p95_ms": 2.655,
+            "p99_ms": 3.674
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 122,
+            "p50_ms": 0.019,
+            "p95_ms": 0.297,
+            "p99_ms": 0.55
+          },
+          "source_to_core_dispatch": {
+            "n": 1176,
+            "p50_ms": 0.035,
+            "p95_ms": 0.267,
+            "p99_ms": 0.723
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 1176,
+          "core_frame_queued": 1176,
+          "gpu_readback_submitted": 1176,
+          "rfb_compared": 792,
+          "rfb_encoded": 122,
+          "rfb_observed": 792,
+          "rfb_socket_queued": 122,
+          "source_completed": 1176
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 1674061,
+      "raw_sha256": "d8cf4cb8b61464c0685961d2ea5d4d8dd229d19d9df25e0b4a669291dbc38bf4",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": {
+        "n": 113,
+        "p50": 180.6659,
+        "p95": 314.5939,
+        "p99": 336.5795
+      }
+    },
+    "viewers-2-A1": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 117,
+        "duplicate_content_pts_requests": 0,
+        "host_monotonic_only": true,
+        "host_pids": [
+          13976
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 933,
+            "p50_ms": 1.7,
+            "p95_ms": 3.559,
+            "p99_ms": 6.198
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 933,
+            "p50_ms": 0.033,
+            "p95_ms": 0.157,
+            "p99_ms": 0.392
+          },
+          "submit_to_source_completed": {
+            "n": 933,
+            "p50_ms": 17.274,
+            "p95_ms": 21.599,
+            "p99_ms": 24.532
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 5862
+        },
+        "socket_queued_per_viewer_id": {
+          "1": 122,
+          "2": 122
+        },
+        "steps": {
+          "capture_request": 933,
+          "core_frame_queued": 933,
+          "quick_grab_submitted": 933,
+          "rfb_compared": 820,
+          "rfb_encoded": 244,
+          "rfb_observed": 822,
+          "rfb_socket_queued": 244,
+          "source_completed": 933
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 816,
+        "unique_content_pts": 0,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 122,
+          "p50_ms": 0.824,
+          "p95_ms": 2.295,
+          "p99_ms": 98.579
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 22.975,
+            "p95_ms": 27.932,
+            "p99_ms": 33.986
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 933,
+            "p50_ms": 21.163,
+            "p95_ms": 284.079,
+            "p99_ms": 286.355
+          },
+          "core_issue_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 305.566,
+            "p95_ms": 311.693,
+            "p99_ms": 328.773
+          },
+          "core_to_rfb_worker": {
+            "n": 822,
+            "p50_ms": 0.51,
+            "p95_ms": 1.978,
+            "p99_ms": 2.942
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 933,
+            "p50_ms": 17.274,
+            "p95_ms": 21.567,
+            "p99_ms": 24.459
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "request_to_source": {
+            "n": 933,
+            "p50_ms": 19.635,
+            "p95_ms": 23.597,
+            "p99_ms": 26.893
+          },
+          "rfb_compare_to_encode": {
+            "n": 244,
+            "p50_ms": 1.458,
+            "p95_ms": 3.677,
+            "p99_ms": 5.229
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 0.015,
+            "p95_ms": 0.053,
+            "p99_ms": 0.466
+          },
+          "source_to_core_dispatch": {
+            "n": 933,
+            "p50_ms": 0.033,
+            "p95_ms": 0.155,
+            "p99_ms": 0.39
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 933,
+          "core_frame_queued": 933,
+          "quick_grab_submitted": 933,
+          "rfb_compared": 820,
+          "rfb_encoded": 244,
+          "rfb_observed": 822,
+          "rfb_socket_queued": 244,
+          "source_completed": 933
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 1491139,
+      "raw_sha256": "7070e63e7035a60f691c103d959d82ef7c9f59013e1d4f78e066b8164ab8d023",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": {
+        "n": 114,
+        "p50": 177.5601,
+        "p95": 292.9856,
+        "p99": 315.0469
+      }
+    },
+    "viewers-2-A2": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 15,
+        "duplicate_content_pts_requests": 0,
+        "host_monotonic_only": true,
+        "host_pids": [
+          43252
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 821,
+            "p50_ms": 0.258,
+            "p95_ms": 2.083,
+            "p99_ms": 22.021
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 821,
+            "p50_ms": 0.018,
+            "p95_ms": 0.031,
+            "p99_ms": 0.227
+          },
+          "submit_to_source_completed": {
+            "n": 821,
+            "p50_ms": 8.366,
+            "p95_ms": 14.793,
+            "p99_ms": 42.291
+          }
+        },
+        "missing_stage_per_request": {
+          "source_completed": 1
+        },
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 5384
+        },
+        "socket_queued_per_viewer_id": {
+          "1": 122,
+          "2": 122
+        },
+        "steps": {
+          "capture_request": 822,
+          "core_frame_queued": 821,
+          "quick_grab_submitted": 822,
+          "rfb_compared": 804,
+          "rfb_encoded": 244,
+          "rfb_observed": 806,
+          "rfb_socket_queued": 244,
+          "source_completed": 821
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 806,
+        "unique_content_pts": 0,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 122,
+          "p50_ms": 0.82,
+          "p95_ms": 1.037,
+          "p99_ms": 1.489
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 10.521,
+            "p95_ms": 25.792,
+            "p99_ms": 101.427
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 822,
+            "p50_ms": 242.028,
+            "p95_ms": 262.227,
+            "p99_ms": 278.912
+          },
+          "core_issue_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 270.675,
+            "p95_ms": 294.54,
+            "p99_ms": 331.871
+          },
+          "core_to_rfb_worker": {
+            "n": 806,
+            "p50_ms": 0.428,
+            "p95_ms": 1.623,
+            "p99_ms": 3.213
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 821,
+            "p50_ms": 8.366,
+            "p95_ms": 14.793,
+            "p99_ms": 42.069
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "request_to_source": {
+            "n": 821,
+            "p50_ms": 8.782,
+            "p95_ms": 18.559,
+            "p99_ms": 135.117
+          },
+          "rfb_compare_to_encode": {
+            "n": 244,
+            "p50_ms": 1.025,
+            "p95_ms": 2.385,
+            "p99_ms": 12.572
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 0.012,
+            "p95_ms": 0.172,
+            "p99_ms": 0.813
+          },
+          "source_to_core_dispatch": {
+            "n": 821,
+            "p50_ms": 0.018,
+            "p95_ms": 0.031,
+            "p99_ms": 0.225
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 822,
+          "core_frame_queued": 821,
+          "quick_grab_submitted": 822,
+          "rfb_compared": 804,
+          "rfb_encoded": 244,
+          "rfb_observed": 806,
+          "rfb_socket_queued": 244,
+          "source_completed": 821
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 1371694,
+      "raw_sha256": "ca8867b7c3f39a5b7617f26a8d8f80199d4e6bf82d61db089f699de1357f0dc0",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": {
+        "n": 114,
+        "p50": 156.1245,
+        "p95": 286.6575,
+        "p99": 832.2909
+      }
+    },
+    "viewers-2-B": {
+      "analyzer_schema": 1,
+      "extra": {
+        "duplicate_completion_requests": 342,
+        "duplicate_content_pts_requests": 342,
+        "host_monotonic_only": true,
+        "host_pids": [
+          34552
+        ],
+        "intervals": {
+          "capture_request_to_submit": {
+            "n": 1078,
+            "p50_ms": 42.591,
+            "p95_ms": 51.377,
+            "p99_ms": 53.244
+          },
+          "source_completed_to_core_frame_queued": {
+            "n": 1078,
+            "p50_ms": 0.027,
+            "p95_ms": 0.186,
+            "p99_ms": 0.441
+          },
+          "submit_to_source_completed": {
+            "n": 1078,
+            "p50_ms": 0.982,
+            "p95_ms": 2.692,
+            "p99_ms": 3.697
+          }
+        },
+        "missing_stage_per_request": {},
+        "qt_activity_hint_is_noncausal": true,
+        "request_identity_collisions": 0,
+        "schemas": {
+          "3": 6286
+        },
+        "socket_queued_per_viewer_id": {
+          "1": 122,
+          "2": 122
+        },
+        "steps": {
+          "capture_request": 1078,
+          "core_frame_queued": 1078,
+          "gpu_readback_submitted": 1078,
+          "rfb_compared": 742,
+          "rfb_encoded": 244,
+          "rfb_observed": 744,
+          "rfb_socket_queued": 244,
+          "source_completed": 1078
+        },
+        "trace_events_dropped": 0,
+        "unique_completion": 736,
+        "unique_content_pts": 736,
+        "viewer_present": "NOT_MEASURED",
+        "viewer_socket_fork_ms": {
+          "n": 122,
+          "p50_ms": 0.756,
+          "p95_ms": 2.397,
+          "p99_ms": 72.996
+        }
+      },
+      "official": {
+        "content_change_to_present": "NOT_MEASURED",
+        "endpoint": "RFB_socket_queued_not_viewer_present",
+        "hint_to_request_is_noncausal_nearest_sample": true,
+        "intervals": {
+          "capture_request_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 52.016,
+            "p95_ms": 58.154,
+            "p99_ms": 61.666
+          },
+          "core_issue_to_runtime_admit": {
+            "n": 1078,
+            "p50_ms": 0.003,
+            "p95_ms": 313.675,
+            "p99_ms": 316.045
+          },
+          "core_issue_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 363.961,
+            "p95_ms": 371.677,
+            "p99_ms": 373.742
+          },
+          "core_to_rfb_worker": {
+            "n": 744,
+            "p50_ms": 0.123,
+            "p95_ms": 1.711,
+            "p99_ms": 2.811
+          },
+          "gpu_submit_to_ready": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "grab_submit_to_source": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "qt_activity_hint_to_request": {
+            "n": 0,
+            "p50_ms": null,
+            "p95_ms": null,
+            "p99_ms": null
+          },
+          "render_pts_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 2.607,
+            "p95_ms": 6.779,
+            "p99_ms": 10.888
+          },
+          "render_pts_to_source": {
+            "n": 1078,
+            "p50_ms": 0.996,
+            "p95_ms": 2.693,
+            "p99_ms": 3.693
+          },
+          "request_to_source": {
+            "n": 1078,
+            "p50_ms": 43.767,
+            "p95_ms": 52.395,
+            "p99_ms": 56.543
+          },
+          "rfb_compare_to_encode": {
+            "n": 244,
+            "p50_ms": 1.26,
+            "p95_ms": 3.337,
+            "p99_ms": 6.164
+          },
+          "rfb_encode_to_socket_queue": {
+            "n": 244,
+            "p50_ms": 0.013,
+            "p95_ms": 0.043,
+            "p99_ms": 0.34
+          },
+          "source_to_core_dispatch": {
+            "n": 1078,
+            "p50_ms": 0.027,
+            "p95_ms": 0.181,
+            "p99_ms": 0.42
+          }
+        },
+        "metric_type": "host_monotonic_wall_latency",
+        "negative_or_out_of_order_pairs_skipped": 0,
+        "qt_activity_disposition": {
+          "qt_activity_hint": 0,
+          "qt_activity_ignored_already_active": 0,
+          "qt_activity_ignored_backpressure": 0,
+          "qt_activity_ignored_in_flight": 0,
+          "qt_activity_ignored_no_viewer": 0,
+          "qt_activity_ignored_stopped": 0
+        },
+        "qt_activity_is_not_content_damage": true,
+        "request_identity_collisions_skipped": 0,
+        "schema": 1,
+        "steps": {
+          "capture_request": 1078,
+          "core_frame_queued": 1078,
+          "gpu_readback_submitted": 1078,
+          "rfb_compared": 742,
+          "rfb_encoded": 244,
+          "rfb_observed": 744,
+          "rfb_socket_queued": 244,
+          "source_completed": 1078
+        },
+        "trace_events_dropped": 0
+      },
+      "raw_bytes": 1613371,
+      "raw_sha256": "5d88c4d4a78880465a4ded01a25ff0aa0e92b0dcfeafdedb2488e47101e25151",
+      "source_sha": "4eb45ec13ceb907966e4619f4e10eec9b6ff468d",
+      "viewer_detect_ms": {
+        "n": 114,
+        "p50": 177.9139,
+        "p95": 320.5797,
+        "p99": 440.7156
+      }
+    }
+  }
+}
