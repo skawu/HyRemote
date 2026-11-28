@@ -109,6 +109,7 @@ HyRemote 是独立开源 SDK/Runtime。本路线图仅覆盖本仓公开 API、�
 | **V1.2.0.0** | **真实工业 Qt Quick/ARM64 低侵入交付**：将现有 HMI 应用低成本启用远控，Quick-only 不额外加载 Qt Widgets，保留本地触控/显示 | **#149/#203/#7/#236/#18/#154**；准确 RK3588/Buildroot/EGLFS 参考 Kit 与性能/依赖正反例；QtPrivate/QPA-EGLFS #148 单元只能依 GO/NO-GO 判定真实支持范围 | **CONDITIONAL / POST_GA**；有硬件和可复现实机证据后才准入，不重启 Windows GA 物理门禁 |
 | **V1.2.1.0** | **Linux Wayland 原生平台可用性**：原生 Qt 程序在明确的 Wayland Kit 上看/控/部署，保持桌面输入与正确平台身份 | **#346/#148/#563**；先 Linux x86_64 Qt6.8 真实 Wayland 用户场景，按 C++/QML/Generic/QPA 逐单元验收，XWayland 不能冒充 native | **CONDITIONAL / POST_GA**；真实环境和平台兼容证据门槛 |
 | **V1.2.2.0** | **工业 HMI 真实单点/多点触控**：区别于鼠标模拟，触点 ID、按下/移动/释放/取消语义对 Qt Quick 正确 | **#172**；基于 V1.2.0 适用 HMI 参考板，协议/Viewer 触控能力先选型；远端切断释放全部触点，本机触控持续可用 | **CONDITIONAL / POST_GA**；未有真实触控通道只能提供 Mouse Emulation，不能宣称多点触控 |
+| **未分配版本的条件候选** | **业务应用控制平面**：C++/QML 应用可声明准入、只读/控制、撤权与敏感区域隐私策略；Generic/QPA 不推定所有业务能力都适用 | **#225**；依赖明确用户故事、可用的身份/Session 原语、权限撤销与无一帧泄露负例；不得提前预留版本 | **DISCOVERY_DEPENDENT / NOT_ACTIVATED**；无版本槽位，不阻塞当前交付 |
 | **V1.2.4.0** | **安全文件交付 SDK/Runtime GO/NO-GO 评估**：判断跨前端有界文件提供能力是否属于通用 SDK/Runtime 责任，或应采用外部安全维护通道 | **#173**；先确认互操作机制、认证/加密前置、应用授权与文件系统范围、配额/取消/路径安全/回滚；只有 GO 才建立实现范围，NO-GO 则明确外部安全通道替代方案 | **DISCOVERY_DEPENDENT / NOT_ACTIVE**；未作 GO 决定前不实现，不构成当前 V0.3.6.0 或 V1 GA 阻塞 |
 | **V1.2.6.0** | **工业设备低负载待机和按需远程捕获**：无人观看时不过度占用 CPU/GPU，有人接入时画面/输入仍有响应 | **#151**，需在实际设备上给出 no-viewer/one-viewer/idle/reconnect 的资源与可用性测量；复用 #370/#372 既有机制，不重新发明 Core Scheduler | **CONDITIONAL / POST_GA**；只有真实设备资源预算不能满足时才独立激活 |
 | **V1.2.7.0** | **面向现场运维的高级性能诊断**：解释为什么远端变慢/帧丢弃/输入失败，明确数据来源与不可用项 | **#180**，依赖 S2 基础诊断 #587 / 已有 Core SessionStats 正确性，按受支持 SDK C++/QML 公开有界只读指标 | **CONDITIONAL / POST_GA**；需证明基础诊断不足以定位真实客户故障，否则合并需求/不制造独立发行 |
@@ -122,10 +123,11 @@ HyRemote 是独立开源 SDK/Runtime。本路线图仅覆盖本仓公开 API、�
 | --- | --- | --- |
 | 已报告现场功能/体验缺陷 | **#565 数字键盘 Keysym 未覆盖**、**#567 大画面更新从上到下刷入**、**#362 目标不在 OS 焦点时无法激活**：按已承诺行为、风险与用户交互语义 triage，当下维护修复或可审查限制；不推迟至 V1.2 平台/触控版本；#567/#565 RK3588/EGLFS 证据不能反推 Windows 必然有同样故障 | #565/#567/#362、#95/#370；正常/异常输入、增量刷新、真实 Viewer 行为 + 受影响 exact-Kit 回归 |
 | 现行代码的 RFB/Qt 安全和资源上限 | **已修** Tool #641/#642、CPU frame #643、Alpha #644：保持已合并修复回归；**未结** Host RFB #158 读缓冲、Normal 占槽/RFB3.8 要按实际风险于 RC 前收口 | #158、#393、#611；真实非法输入负例/asan（可用时）/合法流程回归 |
-| CPU/帧新鲜度和慢 Viewer 公平性 | 0/1/2/8 Viewer CPU/RSS，W1–W4、Raw/TRLE、负载、帧龄、输入时延；有数据再优化，不默认 GPU | #370/#374/#609；每个敏感 Feature 的跨版本回归基线 |
+| CPU/帧新鲜度和慢 Viewer 公平性 | 0/1/2/8 Viewer CPU/RSS，W1–W4、Raw/TRLE、负载、帧龄、输入时延；有数据再优化，不默认 GPU | #370/#374/#609/#205；每个敏感 Feature 的跨版本回归基线，N-viewer 成本模型仅在真实产品阻塞时启动 |
 | Qt LTS 长期架构护栏 | **22 项 WBS A01–E02** 随 V0.3.4 实施、V0.4 资格治理收口；**F01–F03** 归 GA 后新增/退出 LTS | #209/#265/#57/#603/#602/#605；[22 项 WBS](qt-lts-architecture-wbs-2026-10-24.md)，未实现项目不算 PASS |
-| 安全依赖/公开声明/审查门禁 | 真实 LAN 监听、VNC 密码不加密，准确 QtPrivate 依赖、真实 CI Review Gate、单一 machine train 和发行审计 | #611/#269/#393/#95/#602；只发布真实 Supported / NOT_RUN 状态 |
+| 安全依赖/公开声明/审查门禁 | 真实 LAN 监听、VNC 密码不加密，准确 QtPrivate 依赖、真实 CI Review Gate、单一 machine train 和发行审计；Direct 访问独立于云端，未来 Relay 不进入 Core | #611/#269/#393/#95/#602/#189；只发布真实 Supported / NOT_RUN 状态 |
 | SDK 运行诊断/采集加速/极端弱网 | 仅在用户场景或量测支持下做小规模研究；成功试验不自动激活 Feature | #180（计划 V1.2.7）/#123/#371/#372：下一次路线 Owner 复审时做 GO/NO-GO，必要时调整后续版本规划 |
+| 官方客户端的 SDK 服务端能力契约 | 按需提供版本化能力描述、可信只读诊断元数据和安全能力协商/拒绝；标准 RFB 兼容保持独立 | #246；仅记录 SDK server-side 设计依赖，须另行授权并提供服务端真实证据，不以客户端 mock 代替 | DESIGN_DEPENDENCY / NOT_ACTIVATED |
 
 ### D. 本地 Owner 顺序、依赖和可修订版本的规则
 
