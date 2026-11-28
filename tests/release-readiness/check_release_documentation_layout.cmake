@@ -279,8 +279,8 @@ require_doc_token("${full_roadmap_doc}" "V1.2.7.0"
 # activation, task acceptance, and shipped-support evidence are separate facts.
 require_doc_token("${full_roadmap_doc}" "## 事实源与冲突处理（本地 Owner 必须遵守）"
                   "mandatory source-of-truth and conflict protocol")
-require_doc_token("${full_roadmap_doc}" "Issue #594 是 Owner 决策/变更台账"
-                  "#594 is a decision ledger, not a parallel version table")
+require_doc_token("${full_roadmap_doc}" "由 Owner 在 #594 记录日期、旧→新版本"
+                  "#594 records Owner decisions and version changes, not a parallel version table")
 require_doc_token("${full_roadmap_doc}" "只有相应审查 PR 合并后"
                   "new roadmap decisions take effect only after reviewed sync")
 require_doc_token("${full_roadmap_doc}" "PLANNING_RECONCILIATION_REQUIRED"
