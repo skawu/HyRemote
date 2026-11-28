@@ -13,7 +13,7 @@ checklist, not a second entry or a second set of rules.
 1. Read root `AGENTS.md` and the current target Issue/latest authoritative comment. For “继续工作” without a target, read #768's current Owner dispatch as specified in AGENTS.md; post the actual task receipt before implementation. The historical product-phase snapshot is not a queue. Do not re-read the whole AGENTS.md mid-task.
 2. Skim `memory/MEMORY.md` hooks; open only the topic files whose hook matches.
    Never load all topics "just in case".
-3. Write the task contract into the todo list. Keep exactly one in-progress item.
+3. Read the Cloud Owner's existing design/verification contract (test identities, canonical entry, profile, expected oracle and gate). Write the task contract into the todo list. Keep exactly one in-progress item. Do not invent or widen the acceptance plan when no approved plan exists; record the specific missing item for Cloud Owner and continue independent approved work.
    If the task needs an executable script, fix its name, purpose, inputs, outputs
    and tracked home **in that contract before writing any file**; load the
    `script-planning` Skill (detailed procedure). No contract entry, no new script.

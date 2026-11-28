@@ -85,10 +85,12 @@ public:
     AdaptiveQuickCaptureSource(
         QQuickWindow *window,
         std::unique_ptr<hyremote::CaptureSource> native,
-        std::unique_ptr<hyremote::CaptureSource> publicQt)
+        std::unique_ptr<hyremote::CaptureSource> publicQt,
+        const char *nativeRouteToken = "NATIVE")
         : m_native(std::move(native))
         , m_public(std::move(publicQt))
         , m_state(std::make_shared<State>())
+        , m_nativeRouteToken(nativeRouteToken ? nativeRouteToken : "NATIVE")
     {
         if (window) {
             // These signals describe Qt's actual Surface, not a GPU model.
@@ -205,6 +207,11 @@ public:
             if (state->active && state->generation == generation)
                 state->nativeEnabled = nativeStarted;
         }
+        // Report the route that actually started, not merely the compiled or
+        // selected route. A capability/starter failure must not be advertised
+        // as a native session.
+        qInfo().nospace() << "HYREMOTE_QUICK_CAPTURE="
+                          << (nativeStarted ? m_nativeRouteToken : "PUBLIC_QT");
         return true;
     }
 
@@ -498,6 +505,7 @@ private:
     std::unique_ptr<hyremote::CaptureSource> m_native;
     std::unique_ptr<hyremote::CaptureSource> m_public;
     std::shared_ptr<State> m_state;
+    const char *m_nativeRouteToken = "NATIVE";
     std::vector<QMetaObject::Connection> m_connections;
 };
 

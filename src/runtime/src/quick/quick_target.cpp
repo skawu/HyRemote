@@ -978,36 +978,40 @@ TargetComponents createQuickTargetComponents(
     // Operational fallback: an operator can force the public Qt route without
     // rebuilding. Capability admission below still guards every native frame.
     const QByteArray backendOverride = qgetenv("HYREMOTE_QUICK_CAPTURE_BACKEND");
-    const bool publicOnly = qEnvironmentVariableIsSet("HYREMOTE_QUICK_DISABLE_GL_PBO")
-        || backendOverride == "public" || backendOverride == "grab";
+    // Public-only switches are distinct from per-backend disables: turning off
+    // GL must not silently disable a qualified D3D11 build (or vice versa).
+    const bool publicOnly = backendOverride == "public" || backendOverride == "grab"
+        || qEnvironmentVariableIsSet("HYREMOTE_QUICK_DISABLE_NATIVE_CAPTURE");
+    const bool disableGl = qEnvironmentVariableIsSet("HYREMOTE_QUICK_DISABLE_GL_PBO");
+    const bool disableD3d11 = qEnvironmentVariableIsSet("HYREMOTE_QUICK_DISABLE_D3D11");
     const auto *ri = window->rendererInterface();
     const auto selection = selectQuickCaptureRoute(
         ri ? ri->graphicsApi() : QSGRendererInterface::Unknown,
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
-        !publicOnly,
+        !publicOnly && !disableGl,
 #else
         false,
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
-        !publicOnly,
+        !publicOnly && !disableD3d11,
 #else
         false,
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
-        !publicOnly
+        !publicOnly && !disableGl
 #else
         false
 #endif
     );
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO)
     if (selection.route == QuickCaptureRoute::ExperimentalOpenGlPbo) {
-        qInfo() << "HYREMOTE_QUICK_CAPTURE=GL_PBO";
-        // Compatibility token for existing qualification evidence.
+        // Compatibility token for existing qualification evidence; the effective
+        // HYREMOTE_QUICK_CAPTURE token is emitted by AdaptiveQuickCaptureSource::start().
         qInfo() << "HYREMOTE_EXPERIMENTAL_QUICK_CAPTURE=GL_RHI_PBO_SOURCE";
         result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
             window, createExperimentalQuickGlPboCaptureSource(window),
             std::make_unique<QuickCaptureSource>(
-                window, logicalPixelsForComposite));
+                window, logicalPixelsForComposite), "GL_PBO");
     }
 #endif
 #if defined(HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING)
@@ -1016,7 +1020,7 @@ TargetComponents createQuickTargetComponents(
         result.capture = std::make_unique<AdaptiveQuickCaptureSource>(
             window, createExperimentalQuickD3d11StagingCaptureSource(window),
             std::make_unique<QuickCaptureSource>(
-                window, logicalPixelsForComposite));
+                window, logicalPixelsForComposite), "D3D11_STAGING");
     }
 #endif
     if (!result.capture) {
@@ -1027,6 +1031,7 @@ TargetComponents createQuickTargetComponents(
             window, logicalPixelsForComposite);
     }
 #else
+    qInfo() << "HYREMOTE_QUICK_CAPTURE=PUBLIC_QT";
     result.capture = std::make_unique<QuickCaptureSource>(
         window, logicalPixelsForComposite);
 #endif

@@ -172,7 +172,7 @@
     "hyremote-quick-capture-test": "Qt Quick adapter",
     "hyremote-quick-gl-pbo-session-test": "Linux xcb/Xvfb and desktop GL for actual session coverage",
     "hyremote-runtime-dll-lifecycle-test": "Windows Qt 6.8.3, C++ API, VNC, and experimental GL PBO",
-    "hyremote-runtime-dll-d3d11-lifecycle-test": "Windows Qt 6.8.3 DLL fixture, VNC, and both experimental providers enabled",
+    "hyremote-runtime-dll-d3d11-lifecycle-test": "Windows Qt 6.8.3 DLL fixture, VNC, and the qualified-build D3D11 staging opt-in",
     "hyremote-security-descriptor-test": "Shared Runtime tests",
     "hyremote-vnc-auth-test": "VNC plus available OpenSSL transport-security implementation",
     "hyremote-rfb-vnc-auth-handshake-test": "VNC plus available OpenSSL transport-security implementation",

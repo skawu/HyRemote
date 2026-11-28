@@ -498,7 +498,7 @@ export LD_LIBRARY_PATH="$HYREMOTE_SDK_ROOT/bin:$LD_LIBRARY_PATH"
 
 实测（pristine Qt 6.8.3 应用，零 HyRemote 代码）：进程正常存活并监听 `0.0.0.0:5921`。应用会输出与其他路线相同的 Shared Runtime 有界诊断报告。健康的 Generic 运行请看稳定字段：`INTEGRATION_ROUTE=generic`、`STATE=Running`、`LISTENER_EFFECTIVE=0.0.0.0:5921`；失败时看 `LAST_ERROR_CODE` / `LAST_ERROR_MESSAGE`，不要再匹配某一句启动文案。不传 `-plugin hyremote` 时，同一个二进制就是普通应用（原生平台仍是 `windows`/`xcb`）。
 
-Qt 6.8.3 Quick 应用使用 OpenGL RHI 时，可通过合格构建的显式选项 `HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON` 选择原生 PBO/Fence 产品路径；默认与未合格环境仍使用公共 `grabToImage` 回退。实际选择由宿主日志的 `HYREMOTE_QUICK_CAPTURE=GL_PBO` 或 `=PUBLIC_QT` 给出，不做芯片组绑定。能力准入不通过、D3D11/Vulkan/Metal 等其他 API、或设置 `HYREMOTE_QUICK_CAPTURE_BACKEND=public` / `HYREMOTE_QUICK_DISABLE_GL_PBO=1` 时均安全回退，不扩大 Qt 支持范围、不改变像素质量契约。
+Qt 6.8.3 Quick 应用使用 OpenGL RHI 时，可通过合格构建的显式选项 `HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO=ON` 选择原生 PBO/Fence 产品路径；Windows 上 Qt 6.8.3 Direct3D11 RHI 可通过 `HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING=ON` 选择 D3D11 staging 产品路径。两者都不是默认：未显式启用、能力准入不通过或不匹配的 RHI 时均使用公共 `grabToImage` 回退。运行时 `HYREMOTE_QUICK_CAPTURE_BACKEND=public` 或 `HYREMOTE_QUICK_DISABLE_NATIVE_CAPTURE=1` 关闭全部原生路径；`HYREMOTE_QUICK_DISABLE_GL_PBO=1` 只关闭 GL PBO，`HYREMOTE_QUICK_DISABLE_D3D11=1` 只关闭 D3D11，二者互不影响。宿主日志 `HYREMOTE_QUICK_CAPTURE=GL_PBO` / `=D3D11_STAGING` / `=PUBLIC_QT` 在采集源实际启动后输出有效 route，不做芯片组绑定，不扩大 Qt 支持范围，不改变像素质量契约。
 
 ### QPA（Transparent QPA Proxy，零代码）
 

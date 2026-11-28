@@ -5,6 +5,10 @@ not what it asserts (that stays in `TEST_CATALOG.md`).
 
 Measurements behind it: [`test-inventory-ts1-2026-10-30.md`](../docs/internal/test-inventory-ts1-2026-10-30.md).
 
+## Verification is defined with the design
+
+Before a work package is assigned, Cloud Owner records its verification plan in the owning Issue/design: behavior and oracle, affected layer, existing catalog case/driver, canonical profile/command, environment, gate and expected run count, reused evidence and remaining qualification. Select from the catalog and the G0–G6 table below. A plan can be a few lines for a small fix. Do not run an unchanged case twice or add a new wrapper/runner/fixture to make a plan look complete. Where existing coverage is insufficient, the design specifies the smallest extension and its tracked path before coding. Local Owner executes the plan and records actual differences; unplanned bounded diagnosis is not acceptance, and a real new contract/risk is referred to Cloud Owner for a minimal plan revision before scope expansion. Required gates remain in force. No additional CI or separate test-plan files are required.
+
 ## Focused positive test selection (development only)
 
 The canonical `build.cmd` authority supports positive `--test-filter=REGEX` selection

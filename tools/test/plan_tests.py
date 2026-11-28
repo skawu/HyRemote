@@ -112,6 +112,7 @@ def ctest_audit(build: Path, plan: dict, registry: dict, ctest: str,
         "CMAKE_GENERATOR", "CMAKE_BUILD_TYPE", "Qt5Core_DIR", "Qt6Core_DIR",
         "HYREMOTE_BUILD_CPP_API", "HYREMOTE_BUILD_QML_API", "HYREMOTE_WITH_VNC",
         "HYREMOTE_WITH_TRANSPORT_SECURITY", "HYREMOTE_EXPERIMENTAL_QUICK_GL_PBO",
+        "HYREMOTE_EXPERIMENTAL_QUICK_D3D11_STAGING",
     )}
     verdict = ("BLOCKED_UNMAPPED" if plan["unclassified_files"] else
                "BLOCKED_CAPABILITY" if missing or disabled else "MANUAL_GATE_REQUIRED")

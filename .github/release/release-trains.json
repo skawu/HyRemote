@@ -26,22 +26,17 @@
     372,
     374,
     565,
-    567,
     569,
     576,
-    609,
     611,
     641,
     642,
     643,
     644,
     655,
-    789,
-    790,
     827,
     843,
     922,
-    1016,
     1024
   ],
   "notes": {
@@ -381,6 +376,48 @@
       },
       "rule": "V0.3.5.0 is the ACTIVE DEVELOPMENT FEATURE on the released V0.3.4.0 lineage: operable host configuration (config file, writable state/data directory, protected secret references, one precedence order across all four integration routes, fail-closed on an invalid explicit selection) followed by a server-side static text watermark that a standard RFB viewer can see without changing the local Qt application's pixels. Activation assigns local development ownership, NOT a release/RC PASS: mandatory children and required evidence must close before a release/v0.3.5.0 candidate or tag, and the exact-candidate L2 plus maintained-viewer acceptance stay mandatory. V0.4.0.0 remains inactive qualification-only under #235."
     },
+    "0.3.5.1": {
+      "authority_parent": 594,
+      "candidate_freeze_authority": 1086,
+      "lineage_parent": "0.3.5.0",
+      "mandatory_children": [
+        1086
+      ],
+      "candidate_prerequisites": [],
+      "required_evidence": [
+        "accepted-v0.3.5.0-lineage",
+        "reviewed-bounded-maintenance-fix-set-and-dependencies",
+        "affected-user-behavior-and-regression-evidence",
+        "exact-candidate-artifact-identity-and-rollback",
+        "current-head-ci-l2-and-independent-review",
+        "truthful-customer-field-acceptance-and-remaining-defect-disposition"
+      ],
+      "cross_version_references": [
+        24,
+        95,
+        609,
+        567,
+        789,
+        790,
+        1008
+      ],
+      "non_blockers": [
+        586,
+        592,
+        605,
+        1016
+      ],
+      "notes": {
+        "567": "Customer display defect remains open unless actually resolved.",
+        "586": "The independent V0.3.6.0 candidate must not block this maintenance train.",
+        "609": "Existing implementation and agreed verification plan; not a closeable version-wide prerequisite.",
+        "789": "Customer CPU defect remains open unless actually resolved.",
+        "790": "Customer memory/resource defect remains open unless actually resolved.",
+        "1008": "Use the existing field acceptance entry for the actual qualified new candidate; no unapproved production deployment.",
+        "1016": "Further native capture qualification does not block independently qualified maintenance fixes."
+      },
+      "rule": "V0.3.5.1 is the customer-priority maintenance release of the accepted V0.3.5.0 lineage under Owner #594. Scope is the reviewed independently deliverable defect fixes only, with actual evidence and no added capability or unqualified default native capture. Unresolved customer issues retain their own follow-up and truthful qualification. This registration enables implementation and selection, not acceptance or release authorization; all existing exact-candidate protections apply."
+    },
     "0.3.6.0": {
       "authority_parent": 594,
       "candidate_freeze_authority": 586,
@@ -404,7 +441,9 @@
         "client-observed-bounded-redacted-basic-diagnostics",
         "local-auto-manual-language-and-cli-precedence",
         "real-installed-windows-qt6.8.3-s1-acceptance-at-candidate-sha",
-        "current-head-ci-l2-and-independent-review"
+        "current-head-ci-l2-and-independent-review",
+        "developer-workspace-sdk-kit-static-inspection-four-integration-guidance",
+        "actual-installed-developer-diagnostics-workflow-and-visual-acceptance"
       ],
       "cross_version_references": [
         57,
@@ -422,12 +461,13 @@
         605
       ],
       "notes": {
-        "579": "Approved D/A Tool S1 design; parent design is referenced, not a substitute for functional acceptance.",
-        "586": "Whole S1 clean-installed Windows acceptance is the candidate freeze authority; all six implementation children and actual acceptance must close.",
+        "579": "Human H-T01=B: developer and diagnostics workspace; no new remote-access client features. Legacy access remains compatible until qualified replacement and migration.",
+        "586": "Same-SHA installed developer workflow and legacy compatibility acceptance; retain all six implementation children and prior safety/compatibility evidence.",
         "592": "Docker is a separate conditional outcome."
       },
-      "rule": "V0.3.6.0 is the next admitted Feature on the accepted V0.3.5.0 lineage: HyRemoteTool S1 under the approved D/A design only. Existing standard RFB, explicit view-only/control, local device profiles, viewport, basic diagnostics and local language settings; full #586 Windows acceptance. Registration enables implementation, not release approval. The registered scope does not expand platform support. V0.4 remains inactive qualification-only."
+      "rule": "V0.3.6.0 is the admitted Feature on the accepted V0.3.5.0 lineage, with Human-approved H-T01=B scope: SDK developer and diagnostics workspace, static SDK/Qt Kit checks, four integration guidance, explicit protocol/frame observations, redacted reports and language. Existing RFB access/profile/viewport/control remain compatibility-only; no new remote client features. Full #586 exact-candidate acceptance and all current gates remain required. Registration enables implementation, not release approval; no platform scope expansion. V0.4 remains inactive qualification-only."
     },
+
     "1.0.0.0": {
       "authority_parent": 33,
       "scope_authority": 594,
