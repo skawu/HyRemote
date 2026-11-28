@@ -26,12 +26,13 @@ public:
         Result result = Result::UnknownSource;
         QString reason;
         QString nextStep;
-        QJsonObject toObject() const;
+        QJsonObject toObject(bool chinese = false) const;
     };
 
     struct Report {
         QVector<Check> checks;
         QString sdkVersion;
+        QString sdkQtVersion;
         QString sdkArch;
         QString sdkBuildType;
         QString kitVersion;
@@ -39,7 +40,7 @@ public:
         QString sdkSourceSha;
 
         QJsonObject summaryObject() const;
-        QVariantList checkList() const;
+        QVariantList checkList(bool chinese = false) const;
     };
 
     static Report inspect(const QString &sdkRoot, const QString &kitRoot);

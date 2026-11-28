@@ -21,7 +21,13 @@ ApplicationWindow {
         const zh = hyWorkbench.language === "zh"
         const map = {
             product: zh ? "华艳远程开发工具" : "HyRemoteTool",
-            version: zh ? "V0.3.6.0 · 研发工作台" : "V0.3.6.0 · Developer Workbench",
+            version: zh
+                ? (hyWorkbench && hyWorkbench.version === "0.0.0"
+                   ? "V0.0.0 · 开发哨兵 · 研发工作台"
+                   : "V" + (hyWorkbench ? hyWorkbench.version : "0.0.0") + " · 研发工作台")
+                : (hyWorkbench && hyWorkbench.version === "0.0.0"
+                   ? "V0.0.0 · DEVELOP SENTINEL · Developer Workbench"
+                   : "V" + (hyWorkbench ? hyWorkbench.version : "0.0.0") + " · Developer Workbench"),
             environment: zh ? "开发环境" : "Environment",
             integration: zh ? "集成指导" : "Integration",
             connection: zh ? "连接验证" : "Connection",

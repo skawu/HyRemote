@@ -1404,36 +1404,50 @@ namespace {
 
 bool writeWorkbenchFixture(const QString &root)
 {
-    const auto write = [&root](const QString &relative, const QString &content) {
-        const QString path = QDir(root).absoluteFilePath(relative);
-        if (!QDir().mkpath(QFileInfo(path).absolutePath()))
-            return false;
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            return false;
-        file.write(content.toUtf8());
-        return file.error() == QFile::NoError;
+    const auto writer = [&root](const QString &base) {
+        return [base](const QString &relative, const QString &content) {
+            const QString path = QDir(base).absoluteFilePath(relative);
+            if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+                return false;
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                return false;
+            file.write(content.toUtf8());
+            return file.error() == QFile::NoError;
+        };
     };
-    return write(QStringLiteral("HYREMOTE-MANIFEST.txt"),
-                 QStringLiteral("SOURCE_SHA=fixture\nOS=Windows\nARCH=AMD64\nQT_VERSION=6.8.3\n"
-                                "BUILD_TYPE=Release\nCPP=ON\nQML=TRUE\nGENERIC=TRUE\nQPA=TRUE\n"))
-        && write(QStringLiteral("include/HyRemote/RemoteAccess.h"), QStringLiteral("// fixture\n"))
-        && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteConfig.cmake"), QStringLiteral("# fixture\n"))
-        && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteTargets.cmake"), QStringLiteral("# fixture\n"))
-        && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteConfigVersion.cmake"),
-                 QStringLiteral("set(PACKAGE_VERSION \"0.0.0\")\n"))
-        && write(QStringLiteral("bin/HyRemoteRemoteAccess.dll"), QStringLiteral("fixture\n"))
-        && write(QStringLiteral("qml/HyRemote/qmldir"), QStringLiteral("module HyRemote\n"))
-        && write(QStringLiteral("plugins/generic/qhyremote.dll"), QStringLiteral("fixture\n"))
-        && write(QStringLiteral("plugins/platforms/qhyremote.dll"), QStringLiteral("fixture\n"))
-        && write(QStringLiteral("kit/mkspecs/qconfig.pri"),
-                 QStringLiteral("QT_VERSION = 6.8.3\nQT_ARCH = x86_64\n"))
-        && write(QStringLiteral("kit/bin/qmake.exe"), QStringLiteral("fixture\n"))
-        && write(QStringLiteral("kit/lib/Qt6Core.lib"), QStringLiteral("fixture\n"))
-        && write(QStringLiteral("kit/mismatch/mkspecs/qconfig.pri"),
-                 QStringLiteral("QT_VERSION = 5.15.2\nQT_ARCH = x86_64\n"))
-        && write(QStringLiteral("kit/mismatch/bin/qmake.exe"), QStringLiteral("fixture\n"))
-        && write(QStringLiteral("kit/mismatch/lib/Qt6Core.lib"), QStringLiteral("fixture\n"));
+    const auto writeSdk = [&writer](const QString &base, bool omitQmlPlugin,
+                                    const QString &qpaFlag = QStringLiteral("TRUE")) {
+        const auto write = writer(base);
+        return write(QStringLiteral("HYREMOTE-MANIFEST.txt"),
+                     QStringLiteral("SOURCE_SHA=fixture\nOS=Windows\nARCH=AMD64\nQT_VERSION=6.8.3\n"
+                                    "BUILD_TYPE=Release\nCPP=ON\nQML=TRUE\nGENERIC=TRUE\nQPA=%1\n").arg(qpaFlag))
+            && write(QStringLiteral("include/HyRemote/RemoteAccess.h"), QStringLiteral("// fixture\n"))
+            && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteConfig.cmake"), QStringLiteral("# fixture\n"))
+            && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteTargets.cmake"), QStringLiteral("# fixture\n"))
+            && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteConfigVersion.cmake"),
+                     QStringLiteral("set(PACKAGE_VERSION \"0.0.0\")\n"))
+            && write(QStringLiteral("bin/HyRemoteRemoteAccess.dll"), QStringLiteral("fixture\n"))
+            && write(QStringLiteral("lib/qml/HyRemote/qmldir"), QStringLiteral("module HyRemote\n"))
+            && (omitQmlPlugin
+                || write(QStringLiteral("lib/qml/HyRemote/hyremote-qmlplugin.dll"), QStringLiteral("fixture\n")))
+            && write(QStringLiteral("lib/HyRemote/plugins/generic/qhyremote.dll"), QStringLiteral("fixture\n"))
+            && write(QStringLiteral("lib/HyRemote/plugins/platforms/qhyremote.dll"), QStringLiteral("fixture\n"));
+    };
+    const auto writeKit = [&writer](const QString &base, const QString &version, const QString &core) {
+        const auto write = writer(base);
+        return write(QStringLiteral("mkspecs/qconfig.pri"),
+                     QStringLiteral("QT_VERSION = %1\nQT_ARCH = x86_64\n").arg(version))
+            && write(QStringLiteral("bin/qmake.exe"), QStringLiteral("fixture\n"))
+            && write(QStringLiteral("lib/%1").arg(core), QStringLiteral("fixture\n"));
+    };
+    return writeSdk(root, false)
+        && writeSdk(QDir(root).absoluteFilePath(QStringLiteral("missing-qml-payload")), true)
+        && writeSdk(QDir(root).absoluteFilePath(QStringLiteral("qpa-off")), false, QStringLiteral("OFF"))
+        && writeKit(QDir(root).absoluteFilePath(QStringLiteral("kit")),
+                    QStringLiteral("6.8.3"), QStringLiteral("Qt6Core.lib"))
+        && writeKit(QDir(root).absoluteFilePath(QStringLiteral("kit-mismatch")),
+                    QStringLiteral("5.15.2"), QStringLiteral("Qt5Core.lib"));
 }
 
 bool runDeveloperWorkbench(QApplication &app, QSettings &settings,

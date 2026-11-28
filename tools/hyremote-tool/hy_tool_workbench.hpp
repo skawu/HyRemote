@@ -24,10 +24,11 @@ public:
 
     Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(QString languagePreference READ languagePreference NOTIFY languageChanged)
+    Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString sdkRoot READ sdkRoot WRITE setSdkRoot NOTIFY inspectionChanged)
     Q_PROPERTY(QString kitRoot READ kitRoot WRITE setKitRoot NOTIFY inspectionChanged)
     Q_PROPERTY(QVariantList checks READ checks NOTIFY inspectionChanged)
-    Q_PROPERTY(QVariantList routes READ routes CONSTANT)
+    Q_PROPERTY(QVariantList routes READ routes NOTIFY inspectionChanged)
     Q_PROPERTY(QVariantMap routeStatuses READ routeStatuses NOTIFY inspectionChanged)
     Q_PROPERTY(QString sdkSummary READ sdkSummary NOTIFY inspectionChanged)
     Q_PROPERTY(QString connectionState READ connectionState NOTIFY connectionChanged)
@@ -46,9 +47,10 @@ public:
 
     QString language() const { return m_language == ToolLanguage::Chinese ? QStringLiteral("zh") : QStringLiteral("en"); }
     QString languagePreference() const { return toolLanguagePreferenceToken(m_preference); }
+    QString version() const;
     QString sdkRoot() const { return m_sdkRoot; }
     QString kitRoot() const { return m_kitRoot; }
-    QVariantList checks() const { return m_report.checkList(); }
+    QVariantList checks() const { return m_report.checkList(m_language == ToolLanguage::Chinese); }
     QVariantList routes() const;
     QVariantMap routeStatuses() const;
     QString sdkSummary() const;
@@ -99,9 +101,16 @@ private:
         const char *deploy;
         const char *launch;
         const char *verify;
+        const char *zhTitle;
+        const char *zhPrerequisites;
+        const char *zhCall;
+        const char *zhDeploy;
+        const char *zhLaunch;
+        const char *zhVerify;
     };
 
     static const RouteInfo &routeInfo(const QString &route);
+    QString mismatchWarningText() const;
     void refreshConnectionText();
     void clearFrame();
 

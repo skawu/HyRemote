@@ -159,8 +159,36 @@ HyToolWorkbench::HyToolWorkbench(QSettings &settings,
     refreshConnectionText();
 }
 
+#ifndef HYREMOTE_TOOL_VERSION
+#define HYREMOTE_TOOL_VERSION "0.0.0"
+#endif
+
+QString HyToolWorkbench::version() const
+{
+    return QString::fromLatin1(HYREMOTE_TOOL_VERSION);
+}
+
+QString HyToolWorkbench::mismatchWarningText() const
+{
+    const bool mismatch = [this]() {
+        for (const HySdkInspector::Check &check : m_report.checks) {
+            if (check.id == QStringLiteral("version-match")
+                && check.result != HySdkInspector::Result::PassObserved)
+                return true;
+        }
+        return false;
+    }();
+    if (!mismatch)
+        return QString();
+    return m_language == ToolLanguage::Chinese
+        ? QStringLiteral("警告：当前 SDK/Kit 根不匹配或来源未知；文件存在不代表可运行。\n\n")
+        : QStringLiteral("WARNING: selected SDK/Kit roots do not match or are unknown; file presence is not runtime eligibility.\n\n");
+}
+
 QVariantList HyToolWorkbench::routes() const
 {
+    const bool chinese = m_language == ToolLanguage::Chinese;
+    const QString warning = mismatchWarningText();
     QVariantList list;
     for (const RouteInfo &info : std::array<RouteInfo, 4>{
              HyToolWorkbench::routeInfo(QStringLiteral("cpp")),
@@ -169,12 +197,13 @@ QVariantList HyToolWorkbench::routes() const
              HyToolWorkbench::routeInfo(QStringLiteral("qpa"))}) {
         QVariantMap item;
         item.insert(QStringLiteral("id"), QString::fromLatin1(info.id));
-        item.insert(QStringLiteral("title"), QString::fromUtf8(info.title));
-        item.insert(QStringLiteral("prerequisites"), QString::fromUtf8(info.prerequisites));
-        item.insert(QStringLiteral("call"), QString::fromUtf8(info.call));
-        item.insert(QStringLiteral("deploy"), QString::fromUtf8(info.deploy));
-        item.insert(QStringLiteral("launch"), QString::fromUtf8(info.launch));
-        item.insert(QStringLiteral("verify"), QString::fromUtf8(info.verify));
+        item.insert(QStringLiteral("title"), QString::fromUtf8(chinese ? info.zhTitle : info.title));
+        item.insert(QStringLiteral("prerequisites"),
+                    warning + QString::fromUtf8(chinese ? info.zhPrerequisites : info.prerequisites));
+        item.insert(QStringLiteral("call"), QString::fromUtf8(chinese ? info.zhCall : info.call));
+        item.insert(QStringLiteral("deploy"), QString::fromUtf8(chinese ? info.zhDeploy : info.deploy));
+        item.insert(QStringLiteral("launch"), QString::fromUtf8(chinese ? info.zhLaunch : info.launch));
+        item.insert(QStringLiteral("verify"), QString::fromUtf8(chinese ? info.zhVerify : info.verify));
         list.append(item);
     }
     return list;
@@ -230,6 +259,7 @@ void HyToolWorkbench::setSdkRoot(const QString &root)
     if (m_sdkRoot == root)
         return;
     m_sdkRoot = root;
+    m_report = HySdkInspector::Report{};
     emit inspectionChanged();
 }
 
@@ -238,6 +268,7 @@ void HyToolWorkbench::setKitRoot(const QString &root)
     if (m_kitRoot == root)
         return;
     m_kitRoot = root;
+    m_report = HySdkInspector::Report{};
     emit inspectionChanged();
 }
 
@@ -259,6 +290,7 @@ void HyToolWorkbench::setLanguagePreference(const QString &token)
     m_cliLanguage.reset();
     m_language = resolveToolLanguage(m_preference, QLocale::system(), std::nullopt);
     emit languageChanged();
+    emit inspectionChanged();
     emit connectionChanged();
 }
 
@@ -270,35 +302,59 @@ const HyToolWorkbench::RouteInfo &HyToolWorkbench::routeInfo(const QString &rout
         "Qt 6.8.3 or Qt 5.15.2 SDK; HyRemote::RemoteAccess; C++17 consumer.",
         "HyRemote::RemoteAccess remote(&window); remote.setPort(5921); remote.start();",
         "find_package(HyRemote CONFIG REQUIRED)\ntarget_link_libraries(MyApp PRIVATE HyRemote::RemoteAccess)\nhyremote_deploy(TARGET MyApp)",
-        "Launch the installed consumer; connect a trusted viewer explicitly.",
+        "Launch the installed consumer; connect a trusted viewer explicitly. Default deployment is read-only: remote input stays off unless explicitly enabled.",
         "Use a real consumer to verify startup, frame delivery and explicit control.",
+        "C++ / Widgets SDK 路线",
+        "Qt 6.8.3 或 Qt 5.15.2 SDK；HyRemote::RemoteAccess；C++17 消费者。",
+        "HyRemote::RemoteAccess remote(&window); remote.setPort(5921); remote.start();",
+        "find_package(HyRemote CONFIG REQUIRED)\ntarget_link_libraries(MyApp PRIVATE HyRemote::RemoteAccess)\nhyremote_deploy(TARGET MyApp)",
+        "启动已安装消费者，并显式连接可信查看端。默认部署为只读：未显式启用时远程输入保持关闭。",
+        "用真实消费者验证启动、帧投递与显式控制。",
     };
     static const RouteInfo qml{
         "qml",
         "QML SDK route",
         "Qt 6.8.3; installed HyRemote QML module; public import HyRemote.",
-        "import HyRemote\nRemoteAccess { port: 5921 }",
+        "import HyRemote\nRemoteAccess {\n    target: window\n    enabled: true\n}",
         "find_package(HyRemote CONFIG REQUIRED)\nhyremote_deploy(TARGET MyApp QML)",
         "Launch the installed QML consumer; verify imports resolve inside the deployed tree.",
         "Use a real QML consumer to verify frame and input behavior.",
+        "QML SDK 路线",
+        "Qt 6.8.3；已安装 HyRemote QML 模块；公共 import HyRemote。",
+        "import HyRemote\nRemoteAccess {\n    target: window\n    enabled: true\n}",
+        "find_package(HyRemote CONFIG REQUIRED)\nhyremote_deploy(TARGET MyApp QML)",
+        "启动已安装 QML 消费者，验证导入在部署树内解析。",
+        "用真实 QML 消费者验证帧与输入行为。",
     };
     static const RouteInfo generic{
         "generic",
         "Generic zero-code route",
         "Ordinary Qt application; no HyRemote source include or link; generic deploy payload.",
-        "Run the unchanged application with the HyRemote plugin selected explicitly.",
+        "Run the unchanged binary with -plugin hyremote (or -plugin hyremote:port=5921).",
         "find_package(HyRemote CONFIG REQUIRED)\nhyremote_deploy(TARGET MyApp GENERIC)",
-        "Launch with the documented generic plugin argument; no implicit connection.",
+        "Keep the native Qt platform; no implicit connection and remote input stays off unless explicitly enabled.",
         "Verify the unchanged app remains locally interactive and a viewer can connect explicitly.",
+        "Generic 零代码路线",
+        "普通 Qt 应用；不include HyRemote 头、不链接 HyRemote；使用 generic 部署 payload。",
+        "原样启动二进制并追加 -plugin hyremote（或 -plugin hyremote:port=5921）。",
+        "find_package(HyRemote CONFIG REQUIRED)\nhyremote_deploy(TARGET MyApp GENERIC)",
+        "保留原生 Qt platform；不隐式连接，未显式启用时远程输入保持关闭。",
+        "验证未修改的应用仍可本地交互，且查看端可显式连接。",
     };
     static const RouteInfo qpa{
         "qpa",
         "QPA transparent proxy route",
         "Exact Qt 6.8.3 private ABI; ordinary Qt app; native platform delegate remains authoritative.",
-        "Run the unchanged Qt app with the HyRemote platform plugin.",
-        "find_package(HyRemote 6.8.3 EXACT CONFIG REQUIRED)\nhyremote_deploy(TARGET MyApp QPA)",
-        "-platform hyremote with explicit hyremote-address/hyremote-port policy when needed.",
+        "Run the installed example with -platform hyremote; hyremote-address=<ip>, hyremote-port=<1..65535> are explicit launch options.",
+        "find_package(HyRemote CONFIG REQUIRED)\n# QPA requires exact Qt 6.8.3; verify the selected Kit separately.\nhyremote_deploy(TARGET MyApp QPA)",
+        "Use the installed example launch form; default deployment is read-only unless explicitly enabled.",
         "Verify exact-version deployment and native/local coexistence with a real consumer.",
+        "QPA 透明代理路线",
+        "精确 Qt 6.8.3 私有 ABI；普通 Qt 应用；原生 platform delegate 仍是权威。",
+        "用 -platform hyremote 启动已安装示例；hyremote-address=<ip>、hyremote-port=<1..65535> 为显式启动参数。",
+        "find_package(HyRemote CONFIG REQUIRED)\n# QPA 要求精确 Qt 6.8.3；所选 Kit 必须另行核对。\nhyremote_deploy(TARGET MyApp QPA)",
+        "使用已安装示例的启动形式；默认部署只读，除非显式启用。",
+        "用真实消费者验证精确版本部署与原生/本地共存。",
     };
     if (route == QStringLiteral("qml"))
         return qml;
@@ -312,10 +368,15 @@ const HyToolWorkbench::RouteInfo &HyToolWorkbench::routeInfo(const QString &rout
 QString HyToolWorkbench::guidance(const QString &route) const
 {
     const RouteInfo &info = routeInfo(route);
-    return QStringLiteral("%1\n\n%2\n\n%3\n\n%4\n\n%5\n\n%6")
-        .arg(QString::fromUtf8(info.title), QString::fromUtf8(info.prerequisites),
-             QString::fromUtf8(info.call), QString::fromUtf8(info.deploy),
-             QString::fromUtf8(info.launch), QString::fromUtf8(info.verify));
+    const bool chinese = m_language == ToolLanguage::Chinese;
+    const QString warning = mismatchWarningText();
+    return warning + QStringLiteral("%1\n\n%2\n\n%3\n\n%4\n\n%5\n\n%6")
+        .arg(QString::fromUtf8(chinese ? info.zhTitle : info.title),
+             QString::fromUtf8(chinese ? info.zhPrerequisites : info.prerequisites),
+             QString::fromUtf8(chinese ? info.zhCall : info.call),
+             QString::fromUtf8(chinese ? info.zhDeploy : info.deploy),
+             QString::fromUtf8(chinese ? info.zhLaunch : info.launch),
+             QString::fromUtf8(chinese ? info.zhVerify : info.verify));
 }
 
 QString HyToolWorkbench::routeStatus(const QString &route) const
@@ -502,26 +563,74 @@ bool HyToolWorkbench::verifyWorkbench(QObject *root, const QString &sdkRoot,
         }
         return false;
     };
-    ok = ok && hasResult(QStringLiteral("manifest"), HySdkInspector::Result::PassObserved)
-             && hasResult(QStringLiteral("kit"), HySdkInspector::Result::PassObserved)
-             && hasResult(QStringLiteral("qpa-exact"), HySdkInspector::Result::PassObserved)
-             && hasResult(QStringLiteral("sdk-version"), HySdkInspector::Result::UnknownSource);
-    for (const char *route : {"cpp", "qml", "generic", "qpa"}) {
-        if (routeStatus(QString::fromLatin1(route)) == HySdkInspector::localizedResult(
-                HySdkInspector::Result::UnknownSource, false))
-            ok = false;
-        if (guidance(QString::fromLatin1(route)).size() < 100)
-            ok = false;
+    const auto checkResult = [](const HySdkInspector::Report &report, const QString &id,
+                                HySdkInspector::Result result) {
+        for (const HySdkInspector::Check &check : report.checks) {
+            if (check.id == id)
+                return check.result == result;
+        }
+        return false;
+    };
+    ok = ok && checkResult(m_report, QStringLiteral("manifest"), HySdkInspector::Result::PassObserved)
+             && checkResult(m_report, QStringLiteral("kit"), HySdkInspector::Result::PassObserved)
+             && checkResult(m_report, QStringLiteral("kit-binaries"), HySdkInspector::Result::PassObserved)
+             && checkResult(m_report, QStringLiteral("version-match"), HySdkInspector::Result::PassObserved)
+             && checkResult(m_report, QStringLiteral("qpa-exact"), HySdkInspector::Result::PassObserved)
+             && checkResult(m_report, QStringLiteral("sdk-version"), HySdkInspector::Result::UnknownSource)
+             && m_report.sdkVersion == QStringLiteral("0.0.0")
+             && m_report.sdkQtVersion == QStringLiteral("6.8.3");
+    const char *routes[] = {"cpp", "qml", "generic", "qpa"};
+    for (const char *route : routes) {
+        ok = ok && checkResult(m_report, QString::fromLatin1(route), HySdkInspector::Result::PassObserved)
+                 && routeStatus(QString::fromLatin1(route))
+                    == HySdkInspector::localizedResult(HySdkInspector::Result::PassObserved, false);
     }
+    const QString cppGuide = guidance(QStringLiteral("cpp"));
+    const QString qmlGuide = guidance(QStringLiteral("qml"));
+    const QString genericGuide = guidance(QStringLiteral("generic"));
+    const QString qpaGuide = guidance(QStringLiteral("qpa"));
+    ok = ok && cppGuide.contains(QStringLiteral("HyRemote::RemoteAccess"))
+             && cppGuide.contains(QStringLiteral("find_package(HyRemote CONFIG REQUIRED)"))
+             && cppGuide.contains(QStringLiteral("read-only"))
+             && qmlGuide.contains(QStringLiteral("target: window"))
+             && qmlGuide.contains(QStringLiteral("enabled: true"))
+             && genericGuide.contains(QStringLiteral("-plugin hyremote"))
+             && qpaGuide.contains(QStringLiteral("-platform hyremote"))
+             && qpaGuide.contains(QStringLiteral("hyremote-port="))
+             && qpaGuide.contains(QStringLiteral("find_package(HyRemote CONFIG REQUIRED)"))
+             && !qpaGuide.contains(QStringLiteral("6.8.3 EXACT"));
+    copyGuidance(QStringLiteral("qml"));
+    const QClipboard *clipboard = QGuiApplication::clipboard();
+    ok = ok && clipboard && clipboard->text().contains(QStringLiteral("target: window"))
+             && clipboard->text().contains(QStringLiteral("enabled: true"));
 
-    const QString missingRoot = sdkRoot + QStringLiteral("/missing-fixture");
-    const HySdkInspector::Report missing = HySdkInspector::inspect(missingRoot, kitRoot);
-    ok = ok && !missing.checks.isEmpty()
-             && missing.checks.first().result == HySdkInspector::Result::UnknownSource;
+    const HySdkInspector::Report missingPayload = HySdkInspector::inspect(
+        sdkRoot + QStringLiteral("/missing-qml-payload"), kitRoot);
+    ok = ok && checkResult(missingPayload, QStringLiteral("qml"), HySdkInspector::Result::FailObserved);
 
-    const QString mismatchKit = kitRoot + QStringLiteral("/mismatch");
-    const HySdkInspector::Report mismatch = HySdkInspector::inspect(sdkRoot, mismatchKit);
-    ok = ok && !mismatch.checks.isEmpty();
+    const HySdkInspector::Report mismatch = HySdkInspector::inspect(
+        sdkRoot, QFileInfo(kitRoot).absolutePath() + QStringLiteral("/kit-mismatch"));
+    ok = ok && checkResult(mismatch, QStringLiteral("version-match"), HySdkInspector::Result::FailObserved)
+             && checkResult(mismatch, QStringLiteral("kit-binaries"), HySdkInspector::Result::PassObserved);
+
+    const HySdkInspector::Report qpaOff = HySdkInspector::inspect(
+        sdkRoot + QStringLiteral("/qpa-off"), kitRoot);
+    ok = ok && checkResult(qpaOff, QStringLiteral("qpa-exact"), HySdkInspector::Result::NotApplicable)
+             && checkResult(qpaOff, QStringLiteral("qpa"), HySdkInspector::Result::NotApplicable);
+
+    const QString staleRoot = sdkRoot + QStringLiteral("/missing-fixture");
+    setSdkRoot(staleRoot);
+    ok = ok && checks().isEmpty();
+    setSdkRoot(sdkRoot);
+    setKitRoot(kitRoot);
+    inspectSelectedPaths();
+
+    setLanguagePreference(QStringLiteral("zh"));
+    ok = ok && guidance(QStringLiteral("cpp")).contains(QStringLiteral("只读"))
+             && !checks().isEmpty()
+             && checks().first().toMap().value(QStringLiteral("reason")).toString().contains(QStringLiteral("manifest"));
+    setLanguagePreference(languageToken);
+    inspectSelectedPaths();
 
     ToolDiagnosticSession fixture;
     fixture.beginAttempt(QStringLiteral("198.51.100.7"), 5921);
@@ -536,13 +645,20 @@ bool HyToolWorkbench::verifyWorkbench(QObject *root, const QString &sdkRoot,
              && languageToken == language()
              && !guidance(QStringLiteral("cpp")).isEmpty();
 
-    const int sdkOk = hasResult(QStringLiteral("manifest"), HySdkInspector::Result::PassObserved)
-        && hasResult(QStringLiteral("kit"), HySdkInspector::Result::PassObserved)
-        && hasResult(QStringLiteral("qpa-exact"), HySdkInspector::Result::PassObserved)
-        && hasResult(QStringLiteral("sdk-version"), HySdkInspector::Result::UnknownSource) ? 1 : 0;
-    const int routesOk = routeStatus(QStringLiteral("cpp"))
-        != HySdkInspector::localizedResult(HySdkInspector::Result::UnknownSource, false) ? 1 : 0;
-    const int fixturesOk = !missing.checks.isEmpty() ? 1 : 0;
+    const int sdkOk = checkResult(m_report, QStringLiteral("manifest"), HySdkInspector::Result::PassObserved)
+        && checkResult(m_report, QStringLiteral("kit"), HySdkInspector::Result::PassObserved)
+        && checkResult(m_report, QStringLiteral("version-match"), HySdkInspector::Result::PassObserved)
+        && checkResult(m_report, QStringLiteral("qpa-exact"), HySdkInspector::Result::PassObserved)
+        && checkResult(m_report, QStringLiteral("sdk-version"), HySdkInspector::Result::UnknownSource) ? 1 : 0;
+    bool allRoutesPass = true;
+    for (const char *route : routes) {
+        allRoutesPass = allRoutesPass
+            && checkResult(m_report, QString::fromLatin1(route), HySdkInspector::Result::PassObserved);
+    }
+    const int routesOk = allRoutesPass ? 1 : 0;
+    const int fixturesOk = checkResult(missingPayload, QStringLiteral("qml"), HySdkInspector::Result::FailObserved)
+        && checkResult(mismatch, QStringLiteral("version-match"), HySdkInspector::Result::FailObserved)
+        && checkResult(qpaOff, QStringLiteral("qpa"), HySdkInspector::Result::NotApplicable) ? 1 : 0;
     const int previewOk = preview.contains("[redacted]") ? 1 : 0;
     const int stateOk = m_client.state() == RfbClient::State::Disconnected
         && !m_client.remoteControlEnabled() ? 1 : 0;
