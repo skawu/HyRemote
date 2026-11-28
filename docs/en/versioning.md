@@ -162,12 +162,16 @@ This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5
 | V1.0.0.0 | Windows first GA qualified Qt5.15/Qt6.8 support contract | Not released |
 | V1.0.1.0 / V1.0.2.0 | Independently qualify Qt6.5 / Qt6.12 post-GA #605 | Planned, not activated |
 | V1.0.3.0 / V1.0.4.0 | Tool S2 imported diagnostics #587 / S3 local SDK guidance #588 | Planned, not activated |
+| V1.0.5.0 | Post-GA server-side Logo/image watermark #593 after the accepted text watermark; reuses the Shared Runtime remote-frame output path, with asset format and safety bounds designed separately | Conditional, not activated |
 
 | V1.2.0.0 | Real Qt Quick/ARM64 HMI adoption without an accidental Qt Widgets dependency #149/#203/#7/#236 | Conditional; actual hardware evidence |
 | V1.2.1.0 | Native Linux Wayland support and local GUI preservation #346/#148 | Conditional, platform evidence |
 | V1.2.2.0 | True single- and multi-touch in Qt Quick / industrial HMI #172 | Conditional, viewer and hardware evidence |
+| V1.2.4.0 | SDK/Runtime secure file-delivery GO/NO-GO evaluation #173; implementation depends on interoperability, authenticated/encrypted transport, application authorization, quotas and path-safety evaluation | Conditional, not activated |
 | V1.2.6.0 | Appliance capture-on-demand and bounded idle resource use #151 | Conditional after device measurement |
 | V1.2.7.0 | Operational performance diagnostics beyond baseline #180 | Conditional on real support needs |
+
+**Unassigned SDK/Runtime capability candidate:** Authenticated Session Operations (#170) remains a Runtime capability to activate only when real user needs justify it. C++/QML share the same session identity, admission, events and per-session termination semantics; Generic/QPA reuse Runtime enforcement. It is not a HyRemoteTool session-management UI, has no assigned version, and does not block current releases.
 
 **Change control:** any rearrangement needs a #594 Owner decision, a reviewed roadmap PR, old→new version mapping, reason, impact on dependencies/CI/support claims, and an auditable merge SHA. Do not create unapproved `release/*` or tags. The local owner follows the current roadmap and registered train; V0.4 remains qualification-only.
 
