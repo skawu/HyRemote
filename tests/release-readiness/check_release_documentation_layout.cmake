@@ -260,8 +260,12 @@ endforeach()
 
 # Product-first future work must be rooted in real users and distinguish current
 # field defects from conditional post-GA product capabilities.
-require_doc_token("${full_roadmap_doc}" "## 产品北极星"
-                  "product-centered user outcomes before release numbers")
+require_doc_token("${full_roadmap_doc}" "## 产品目标：提供可验证、可维护的 Qt 远程访问 SDK/Runtime"
+                  "open-source SDK/Runtime product goal before release numbers")
+require_doc_token("${full_roadmap_doc}" "### 主要使用者与用户结果"
+                  "identified SDK/Runtime users and their outcomes")
+require_doc_token("${full_roadmap_doc}" "| 使用者 | 主要任务 | 验收证据 |"
+                  "user-task-to-acceptance-evidence traceability")
 foreach(field_issue IN ITEMS 565 567 362)
     require_doc_token("${full_roadmap_doc}" "#${field_issue}"
                       "known current field-user problem #${field_issue}")
