@@ -5,6 +5,16 @@
 #include "tool_diagnostic_session.hpp"
 #include "tool_diagnostics_dialog.hpp"
 
+#ifdef HYREMOTE_TOOL_WORKBENCH
+#include "hy_tool_workbench.hpp"
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QQmlError>
+#ifdef HYREMOTE_TOOL_WORKBENCH
+#include <QQuickStyle>
+#endif
+#endif
+
 #include <QApplication>
 #include <QClipboard>
 #include <QJsonDocument>
@@ -40,6 +50,7 @@
 #include <QSettings>
 #include <QStringList>
 #include <QSize>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -121,9 +132,6 @@ public:
         m_connectPageButton->setCheckable(true);
         m_sessionPageButton->setCheckable(true);
         m_diagnosticsPageButton->setCheckable(true);
-        m_connectPageButton->setMaximumWidth(40);
-        m_sessionPageButton->setMaximumWidth(40);
-        m_diagnosticsPageButton->setMaximumWidth(40);
         nav->addWidget(m_connectPageButton);
         nav->addWidget(m_sessionPageButton);
         nav->addWidget(m_diagnosticsPageButton);
@@ -238,14 +246,15 @@ public:
         m_fitButton->setCheckable(true);
         m_nativeButton->setCheckable(true);
         m_fitButton->setChecked(true);
-        m_fitButton->setMaximumWidth(36);
-        m_nativeButton->setMaximumWidth(40);
-        m_fullscreenButton->setMaximumWidth(40);
         m_fps = new QLabel(sessionPage);
         m_mbps = new QLabel(sessionPage);
         m_frames = new QLabel(sessionPage);
         m_bytes = new QLabel(sessionPage);
         m_resolution = new QLabel(sessionPage);
+        for (QLabel *telemetry : {m_fps, m_mbps, m_frames, m_bytes, m_resolution}) {
+            telemetry->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+            telemetry->setMinimumWidth(0);
+        }
         telemetryRow->addWidget(m_control);
         telemetryRow->addWidget(m_fitButton);
         telemetryRow->addWidget(m_nativeButton);
@@ -460,6 +469,13 @@ public:
                       && m_fitButton->isChecked()
                       && m_viewScroll->widgetResizable();
         }
+        const auto textFits = [](const QAbstractButton *button) {
+            return button && button->width() >= button->sizeHint().width();
+        };
+        const bool navAndActionsFit = textFits(m_connectPageButton)
+            && textFits(m_sessionPageButton) && textFits(m_diagnosticsPageButton)
+            && textFits(m_fitButton) && textFits(m_nativeButton)
+            && textFits(m_fullscreenButton);
         const bool ok = m_brand && m_pages && m_connectPageButton && m_sessionPageButton
                         && m_diagnosticsPageButton && m_pages->count() == 3
                         && !QGuiApplication::windowIcon().isNull()
@@ -470,12 +486,14 @@ public:
                         && m_profilesLabel && m_profilesBox && m_profileSave
                         && m_profileEdit && m_profileDelete && m_profileConnect
                         && m_profileRecover && m_profileWarning
-                        && m_diagnosticsAction && modeControls && nativeMode && fitMode;
+                        && m_diagnosticsAction && modeControls && nativeMode && fitMode
+                        && navAndActionsFit;
         std::cout << (ok ? "TOOL_CLIENT_UI_PASS" : "TOOL_CLIENT_UI_FAIL")
                   << " host=" << (m_host != nullptr)
                   << " port=" << (m_port != nullptr)
                   << " view=" << (m_view != nullptr)
                   << " view-modes=" << (nativeMode && fitMode)
+                  << " text-fit=" << (navAndActionsFit ? 1 : 0)
                   << " task-pages=" << (m_pages ? m_pages->count() : 0)
                   << " telemetry=" << (m_fps != nullptr && m_mbps != nullptr)
                   << " language=" << (m_languageBox != nullptr)
@@ -1384,6 +1402,103 @@ bool ClientWindow::verifyProfileUi()
 
 }  // namespace
 
+#ifdef HYREMOTE_TOOL_WORKBENCH
+namespace {
+
+bool writeWorkbenchFixture(const QString &root)
+{
+    const auto writer = [&root](const QString &base) {
+        return [base](const QString &relative, const QString &content) {
+            const QString path = QDir(base).absoluteFilePath(relative);
+            if (!QDir().mkpath(QFileInfo(path).absolutePath()))
+                return false;
+            QFile file(path);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                return false;
+            file.write(content.toUtf8());
+            return file.error() == QFile::NoError;
+        };
+    };
+    const auto writeSdk = [&writer](const QString &base, bool omitQmlPlugin,
+                                    const QString &qpaFlag = QStringLiteral("TRUE")) {
+        const auto write = writer(base);
+        return write(QStringLiteral("HYREMOTE-MANIFEST.txt"),
+                     QStringLiteral("SOURCE_SHA=fixture\nOS=Windows\nARCH=AMD64\nQT_VERSION=6.8.3\n"
+                                    "BUILD_TYPE=Release\nCPP=ON\nQML=TRUE\nGENERIC=TRUE\nQPA=%1\n").arg(qpaFlag))
+            && write(QStringLiteral("include/HyRemote/RemoteAccess.h"), QStringLiteral("// fixture\n"))
+            && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteConfig.cmake"), QStringLiteral("# fixture\n"))
+            && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteTargets.cmake"), QStringLiteral("# fixture\n"))
+            && write(QStringLiteral("lib/cmake/HyRemote/HyRemoteConfigVersion.cmake"),
+                     QStringLiteral("set(PACKAGE_VERSION \"0.0.0\")\n"))
+            && write(QStringLiteral("bin/HyRemoteRemoteAccess.dll"), QStringLiteral("fixture\n"))
+            && write(QStringLiteral("lib/qml/HyRemote/qmldir"), QStringLiteral("module HyRemote\n"))
+            && (omitQmlPlugin
+                || write(QStringLiteral("lib/qml/HyRemote/hyremote-qmlplugin.dll"), QStringLiteral("fixture\n")))
+            && write(QStringLiteral("lib/HyRemote/plugins/generic/qhyremote.dll"), QStringLiteral("fixture\n"))
+            && write(QStringLiteral("lib/HyRemote/plugins/platforms/qhyremote.dll"), QStringLiteral("fixture\n"));
+    };
+    const auto writeKit = [&writer](const QString &base, const QString &version, const QString &core) {
+        const auto write = writer(base);
+        return write(QStringLiteral("mkspecs/qconfig.pri"),
+                     QStringLiteral("QT_VERSION = %1\nQT_ARCH = x86_64\n").arg(version))
+            && write(QStringLiteral("bin/qmake.exe"), QStringLiteral("fixture\n"))
+            && write(QStringLiteral("lib/%1").arg(core), QStringLiteral("fixture\n"));
+    };
+    return writeSdk(root, false)
+        && writeSdk(QDir(root).absoluteFilePath(QStringLiteral("missing-qml-payload")), true)
+        && writeSdk(QDir(root).absoluteFilePath(QStringLiteral("qpa-off")), false, QStringLiteral("OFF"))
+        && writeKit(QDir(root).absoluteFilePath(QStringLiteral("kit")),
+                    QStringLiteral("6.8.3"), QStringLiteral("Qt6Core.lib"))
+        && writeKit(QDir(root).absoluteFilePath(QStringLiteral("kit-mismatch")),
+                    QStringLiteral("5.15.2"), QStringLiteral("Qt5Core.lib"));
+}
+
+bool runDeveloperWorkbench(QApplication &app, QSettings &settings,
+                           const std::optional<ToolLanguage> &cliLanguage,
+                           bool cliOverride, bool verification, bool &switchToLegacy)
+{
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    QQmlApplicationEngine engine;
+    QObject::connect(&engine, &QQmlEngine::warnings, &app,
+                     [](const QList<QQmlError> &errors) {
+                         for (const QQmlError &error : errors)
+                             std::cerr << "HY_WORKBENCH_QML_ERROR "
+                                       << qPrintable(error.toString()) << std::endl;
+                     });
+    HyToolWorkbench workbench(settings, cliLanguage, cliOverride);
+    engine.setInitialProperties({
+        {QStringLiteral("hyWorkbench"), QVariant::fromValue<QObject *>(&workbench)},
+    });
+    QObject::connect(&workbench, &HyToolWorkbench::legacySwitchRequested, &app,
+                     [&app, &switchToLegacy] {
+                         switchToLegacy = true;
+                         app.quit();
+                     });
+    engine.loadFromModule(QStringLiteral("HyRemoteToolWorkbench"),
+                          QStringLiteral("HyToolWorkbench"));
+    if (engine.rootObjects().isEmpty()) {
+        std::cerr << "TOOL_DEVELOPER_WORKBENCH_QML_LOAD_FAIL" << std::endl;
+        return false;
+    }
+
+    if (verification) {
+        QTemporaryDir fixture;
+        if (!fixture.isValid() || !writeWorkbenchFixture(fixture.path())) {
+            std::cerr << "TOOL_DEVELOPER_WORKBENCH_FIXTURE_FAIL" << std::endl;
+            return false;
+        }
+        const QString language = cliLanguage && *cliLanguage == ToolLanguage::Chinese
+            ? QStringLiteral("zh") : QStringLiteral("en");
+        return workbench.verifyWorkbench(
+            engine.rootObjects().first(), fixture.path(),
+            fixture.filePath(QStringLiteral("kit")), language);
+    }
+    return app.exec() == 0;
+}
+
+}  // namespace
+#endif
+
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
@@ -1407,6 +1522,14 @@ int main(int argc, char **argv)
     QCommandLineOption verifyUiOption(
         QStringLiteral("verify-ui"),
         QStringLiteral("仅检查界面构造，不连接 / construct the window without connecting."));
+#ifdef HYREMOTE_TOOL_WORKBENCH
+    QCommandLineOption verifyWorkbenchOption(
+        QStringLiteral("verify-workbench"),
+        QStringLiteral("仅检查研发工作台构造与静态检查，不连接 / verify the developer workbench without connecting."));
+    QCommandLineOption legacyAccessOption(
+        QStringLiteral("legacy-access"),
+        QStringLiteral("打开既有 Widgets 兼容联调入口 / open the existing Widgets compatibility entry."));
+#endif
     QCommandLineOption languageOption(
         QStringLiteral("language"),
         QStringLiteral("界面语言：zh 或 en，仅本次启动 / UI language: zh or en, this launch only."),
@@ -1414,6 +1537,10 @@ int main(int argc, char **argv)
     parser.addOption(connectOption);
     parser.addOption(secondsOption);
     parser.addOption(verifyUiOption);
+#ifdef HYREMOTE_TOOL_WORKBENCH
+    parser.addOption(verifyWorkbenchOption);
+    parser.addOption(legacyAccessOption);
+#endif
     parser.addOption(languageOption);
     parser.process(app);
 
@@ -1512,6 +1639,37 @@ int main(int argc, char **argv)
         }
         profilePath = profileTestRoot->filePath(QStringLiteral("connections.json"));
     }
+#ifdef HYREMOTE_TOOL_WORKBENCH
+    const bool verifyWorkbench = parser.isSet(verifyWorkbenchOption);
+    const bool legacyAccess = parser.isSet(legacyAccessOption);
+    const bool useWorkbench = verifyWorkbench
+        || (!legacyAccess && !parser.isSet(connectOption) && !parser.isSet(verifyUiOption));
+    if (useWorkbench) {
+        bool switchToLegacy = false;
+        std::unique_ptr<QTemporaryDir> workbenchSettingsRoot;
+        std::unique_ptr<QSettings> workbenchSettings;
+        if (verifyWorkbench) {
+            workbenchSettingsRoot = std::make_unique<QTemporaryDir>();
+            if (!workbenchSettingsRoot->isValid()) {
+                std::cerr << "TOOL_DEVELOPER_WORKBENCH_SETTINGS_FAIL" << std::endl;
+                return 1;
+            }
+            workbenchSettings = std::make_unique<QSettings>(
+                workbenchSettingsRoot->filePath(QStringLiteral("settings.ini")),
+                QSettings::IniFormat);
+        }
+        const bool workbenchResult = runDeveloperWorkbench(
+            app, verifyWorkbench ? *workbenchSettings : *languageSettings,
+            cliLanguage, cliLanguage.has_value(), verifyWorkbench, switchToLegacy);
+        if (verifyWorkbench)
+            return workbenchResult ? 0 : 1;
+        if (!switchToLegacy)
+            return workbenchResult ? 0 : 1;
+        if (!workbenchResult)
+            return 1;
+    }
+#endif
+
     const auto savedLanguage = loadToolLanguagePreference(*languageSettings);
     const auto startLanguage = resolveToolLanguage(savedLanguage, QLocale::system(),
                                                    cliLanguage);

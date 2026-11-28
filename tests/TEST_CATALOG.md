@@ -179,6 +179,7 @@ All entries are distinct positive/negative deployment contracts; a failure means
 | `hyremote-tool-client-ui-language-repeat` | Runs the actual offscreen Tool combo signal while a launch-only English CLI override matches its already selected index; persists a new English manual preference over an existing saved Chinese setting without touching the user's profile. |
 | `hyremote-tool-client-ui-language-save-failure` | Runs the actual offscreen Tool combo against an unwritable settings path; proves language remains usable while a visible warning says the setting was not persisted. |
 | `hyremote-tool-client-ui-cli-en` | Boots the actual offscreen HyRemoteTool application with an explicit --language=en launch override and verifies it renders English without connecting or altering persistent settings. |
+| `hyremote-tool-developer-workbench` | Qt6-only H-T01=B seam: real QML developer workbench root, four reachable pages at 800x600/1366x768 and both languages plus font scaling, isolated SDK/Kit static-check fixtures, four-route guidance, offline read-only state, redacted diagnostic preview and CLI/legacy entry reachability. |
 | `hyremote-tool-client-ui` | Constructs the real HyRemoteTool client window offscreen and verifies the connection bar, framebuffer view and telemetry surface exist; it must not connect or open a listener. |
 
 `hyremote-v01-rfb-product-fit` is listed under C++ above because its current registration lives with the C++ maintained-viewer harness, but semantically it is T5/RFB E2E evidence.
