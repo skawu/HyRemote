@@ -138,17 +138,9 @@ Windows-qualified #343 capability baseline before V0.4 entry; **Linux/embedded e
 
 A planned or registered V0.3.x version does not weaken any accepted product qualification obligation.
 
-### Evidence-driven optional capabilities
+### Evidence-driven optional SDK capabilities
 
-Do not pull these into active scope without their owning evidence/Product Owner decision:
-
-- Session Operations / Session Registry;
-- native TLS/VeNCrypt/certificate lifecycle;
-- network convenience beyond the basic listener contract;
-- cloud/relay/NAT traversal;
-- first-party viewer/browser client;
-- vendor-specific acceleration;
-- Application Control Plane.
+Only extensions that directly belong to the open-source SDK/Runtime contract may be considered. Do not enumerate or describe product scope outside this repository here. Any SDK/Runtime extension requires a concrete user outcome, owning Issue, reviewed design, Product Owner decision, and verifiable evidence; speculative items do not receive roadmap slots.
 
 ## Architecture invariants
 
