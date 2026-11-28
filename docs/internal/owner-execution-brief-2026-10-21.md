@@ -1,3 +1,5 @@
+> **历史执行简报（2026-10-21）：** 本文件保留当时任务交接记录，不是当前任务队列。当前产品范围、版本状态和 Owner 分工以 `AGENTS.md`、唯一产品路线图及 `.github/release/release-trains.json` 为准。
+
 # HyRemote - Local Owner execution brief (2026-10-21)
 
 > **ARCHIVED OWNER HANDOFF (2026-10-21; NOT the current roadmap/GA scope/execution order).** Use [canonical current product roadmap](product-version-delivery-roadmap-2026-10-23.md) (#594/#605), current machine `.github/release/release-trains.json`, and #24/#95. Older Qt5/6.5/6.8 pre-GA requirements, Qt6.12 preflight priority, Tool scheduling, and #558 platform gates below are superseded. The handoff was once accepted via #549/#550, but is preserved here only for historical context.
@@ -9,7 +11,7 @@
 - `V0.3.3.0` is the activated **Qt 6.8.3 Windows x86_64 verified** Feature with mandatory children **#144 + #175** and candidate prerequisite #261. Latest Owner [#563](https://github.com/skawu/HyRemote/issues/563) overrides #558's older Linux/ARM64 physical qualification requirement: Linux desktop, ARM64/EGLFS and Wayland are user-validation pending and never release blockers. See [Windows-first policy](windows-first-platform-validation-policy-2026-10-22.md). `0.3.1.0` and `0.3.2.0` are retired and must not be revived. **V0.4.0.0 remains conditionally inactive and qualification-only**.
 - Architecture freeze: one Core, one Shared Runtime; C++ / QML / Generic / QPA are peer integration technologies whose applicability is decided per exact cell; Widgets / Quick are UI targets; RFB is the first transport, not the product identity.
 - Default security reality: listen on `0.0.0.0:5921`, with no authentication, no encryption and remote input disabled by default. Optional VNC password authentication is still **unencrypted**; `AuthenticatedEncrypted` is unavailable and fails closed. Do not claim the current product is safe for direct Internet exposure.
-- This execution order does not add TLS, cloud relay, Session Registry, a first-party browser viewer or GPU/hardware encoding to GA. #123 is activated only after measurement proves a product blocker.
+- 不在本简报中列出未批准的 SDK/Runtime 范围；当前工作只按唯一产品路线图与已激活版本执行。
 
 ## 1. Owner and Agent split
 
@@ -31,7 +33,7 @@ Authorities: the [machine release train](../../.github/release/release-trains.js
 - #144: prove Raw deterministic fallback, an actual compressed path, incremental requests and lossless damage, no redundant payload on static scenes, bounded slow-viewer/backpressure behavior, resize/full-refresh correctness and per-viewer state isolation. Combine it with #371 Continuous/Fence and #372 demand-driven capture. Do not turn ordinary users into encoding or queue tuners.
 - #175: record **at least two maintained real VNC viewers on Windows x86_64**. For each exact version, record Qt/target, security + encoding negotiation, pointer/buttons/wheel/keyboard/basic text, cursor, resize, reconnect/stop, view-only and applicable input rejection. Internal protocol clients are not physical viewer evidence. Missing Linux viewer host is nonblocking per #563; it is not a fake PASS.
 - Performance: use the #370 W1 static, W2 localized, W3 interactive and W4 high-motion workloads. Record P50/P95, frame age, CPU/RSS, wire bytes, slow-client behavior and local UI impact. `1080p / wired RTT <= 20 ms / >= 100 Mbps / one qualified viewer`, interaction `P50 <= 200 ms` and `P95 <= 500 ms` are a **bounded envelope**, not an arbitrary-network guarantee. Track the known #410 multi-second stall history; one good run must not hide a tail defect.
-- **V0.3.3.0 remains blocked by Windows #144/#175 real-viewer correctness/performance and same-SHA evidence, not non-Windows hardware.** Owner #563 removes Linux/ARM64/EGLFS/Wayland qualification as a blocker for **V0.3.3, V0.4 and V1**. Do not infer non-Windows support from Windows success. Qt5/TLS/cloud are not V0.3.3 children. Use `docs/internal/v0.3.3.0-release-admission.md`.
+- 不在本简报中列出未批准的 SDK/Runtime 范围；当前工作只按唯一产品路线图与已激活版本执行。
 
 ### P1 - Parallel mandatory breadth preparation, without displacing the current Feature
 
@@ -44,7 +46,7 @@ Authorities: the [machine release train](../../.github/release/release-trains.js
 
 **Embedded (optional user-validation / port issue, never a release gate per #563):** #203 Quick-only appliance correctness comes before acceleration. When a user supplies RK3588 + Buildroot + Qt 6.8.3 + EGLFS/OpenGL ES evidence, use that as an exact-cell investigation: clean rootfs, no accidental QtWidgets dependency, local Quick display/input, remote view/control/reconnect and runtime/manifest loader provenance. Optionally investigate Wayland only when user evidence/environment is available; do not extrapolate one board to all ARM64/SoC. Any DMA-BUF/RKMPP/H.264 proposal must first provide #370 failure metrics and root-cause analysis under #123; otherwise DEFER. The parallel preparation and current toolchain blockers are recorded in `docs/internal/qt5-arm64-foundation-2026-10-22.md`; they do not expand V0.3.3.0.
 
-**HyRemoteTool and product description:** align [#378](https://github.com/skawu/HyRemote/issues/378) with the actual shipped roles in the current release. Distinguish the SDK/Runtime (the core product), the Tool Host and Viewer work surfaces, and diagnostics/release tooling. Do not mix a host diagnostic tool, an RFB viewer and an authenticated management plane. Recheck any old V0.2 badge against the real release identity. State the LAN-only, default-insecure boundary separately from authenticated login.
+- 不在本简报中列出未批准的 SDK/Runtime 范围；当前工作只按唯一产品路线图与已激活版本执行。
 
 ### P2 - V0.4 / V1.0 decision boundary
 

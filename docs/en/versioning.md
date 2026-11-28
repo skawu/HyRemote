@@ -92,7 +92,7 @@ Accepted security and access facts:
 - the unavailable stronger `AuthenticatedEncrypted` profile fails closed with no silent downgrade;
 - trusted LAN only, not Internet-safe.
 
-Native TLS/VeNCrypt, certificate lifecycle, authenticated Session Registry, roles, admission, and per-session termination are not V0.2 capabilities. V0.2.0.1 is a maintenance repair on the same First User Trial lineage, not a security or session Feature.
+V0.2 security boundary: VNC authentication does not encrypt the transport or provide per-session authorization. Do not equate authentication with encryption or authorization. V0.2.0.1 is a maintenance repair on the same First User Trial lineage.
 
 ## V0.3: Productize It
 
@@ -105,19 +105,19 @@ V0.3 turns all four frontends into complete product-deliverable paths:
 
 The line also completes the deployment matrix, task-oriented self-service documentation and examples (#240), four-frontend SDK/deployment productization (#264), and minimum self-service diagnostics (#335).
 
-V0.3.0.0 additionally ships **HyRemoteTool**, an out-of-process access-plane companion client. It connects to a remote HyRemote-enabled application by explicit IP and port and provides viewing, view-only or control input, FPS/throughput telemetry, and connection diagnostics. Management-plane capabilities are outside V0.3.0.0. See [`../internal/hyremote-tool-plan.md`](../internal/hyremote-tool-plan.md).
+V0.3.0.0 also shipped a basic RFB access compatibility entry in HyRemoteTool as a historical release fact. Under H-T01=B, the current Tool scope is an SDK development and diagnostics workbench; the released entry is maintained for compatibility only and is not expanded. See [`../internal/hyremote-tool-plan.md`](../internal/hyremote-tool-plan.md).
 
 The V0.3 family carries two separate classes of work:
 
 ### Mandatory pre-GA V0.3 baseline
 
-**Current product roadmap (November 24, 2026):** [sole complete product/version outcome roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). V0.3.5.0 is released. Next development target: V0.3.6.0 Tool S1, pending separate machine registration. First GA is limited to qualified Qt 5.15/6.8 cells; Qt 6.5/6.12 follow GA. V0.4 is qualification only.
+**Current product roadmap (November 28, 2026):** [sole SDK/Runtime version roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The latest published release is V0.3.5.1; V0.3.5.2 is an unactivated maintenance plan; V0.3.6.0 is registered as the SDK development and diagnostics workbench. PR #1101 is merged, #581 implementation is complete, and #586 new-scope acceptance remains open; old candidate #1076 remains HOLD. First GA is limited to qualified Qt 5.15/6.8 cells; Qt 6.5/6.12 follow GA. V0.4 is qualification only.
 
 Only **Windows x86_64 Qt 5.15 and Qt 6.8 applicable supported cells** require physical/real-runtime pre-GA qualification, alongside RFB Raw/TRLE incremental damage, maintained Viewer interoperability, #370 performance, SDK installation and packaging. Linux/ARM64/qxcb/Wayland/EGLFS remain user-validation pending and non-blocking (#563). Qt6.5/6.12 are not pre-RC or first-GA conditions.
 
-### Optional, quality, or differentiating outcomes
+### Scope of this repository
 
-Session Registry and Session Operations, full branding expansion, HyRemoteTool management-plane enhancements, native TLS, and additional BSP/SoC/platform expansion beyond the declared GA reference cells are activated separately as coherent product outcomes. The V0.3.0.0 access-plane companion baseline is part of that release, not an optional enhancement.
+This repository's version plan tracks only the independent open-source SDK/Runtime outcomes: integration, build/deploy, platform compatibility, transport, security, performance, resource lifecycle, and developer diagnostics. Product scope outside this repository is not enumerated here. Research without a user outcome and acceptance criteria does not receive a reserved version.
 
 ### Activated V0.3 family Feature
 
@@ -132,13 +132,15 @@ Session Registry and Session Operations, full branding expansion, HyRemoteTool m
 
 First-GA Qt5.15/Qt6.8 compatibility was the **V0.3.4.0** outcome, released on 2026-10-29 (tag `v0.3.4.0` → `main` `27bf97d`). Tool improves incrementally; Host config/text-watermark and Docker are later independent planned outcomes. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. The canonical [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) assigns planned versions to known user outcomes; this summary does not independently assign versions.
 
-## Next development Feature: V0.3.6.0 (November 24, 2026)
+## Current development Feature: V0.3.6.0 (November 28, 2026)
 
-V0.3.5.0 is released at `b95cf752eb2aa2722c9f5a0af9e3bd5511275ba3`. The next development target is HyRemoteTool S1 (#581–#586/#590). New implementation follows separate reviewed machine registration; no release authorization is implied.
+The latest published release is V0.3.5.1. V0.3.5.2 is an unactivated maintenance plan; V0.3.6.0 is registered under H-T01=B as the SDK development and diagnostics workbench. PR #1101 is merged, #581 implementation is complete, and #586 new-scope installation/acceptance remains open. Old candidate #1076 remains Draft/HOLD; no release authorization is implied.
 
 - **V0.3.4.0: released** (2026-10-29). Post-release correction: the D05 record cited by its notes was added to the released tree and the tag was re-pointed to the corrected `main` HEAD before any announcement.
 - **V0.3.5.0: released** (November 24, 2026), host configuration/state and static text watermark #591/#589.
-- **V0.3.6.0: next development target**, machine registration pending.
+- **V0.3.5.1: latest published release** (November 27, 2026), source distribution.
+- **V0.3.5.2: planned maintenance**, not an activated machine train.
+- **V0.3.6.0: registered SDK development and diagnostics workbench**; #581 implementation complete, #586 acceptance open.
 - **V0.4.0.0: NOT ACTIVE RC**, strictly qualification of already implemented functionality. It cannot absorb missing V0.3 Qt LTS/SDK/Tool feature implementation.
 
 This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5/6.12 pre-GA support, or authorize a release/tag before all mandatory acceptance and #95 release gates pass.
@@ -154,21 +156,16 @@ This roadmap correction does not reopen retired V0.3.1/V0.3.2 slots, imply Qt6.5
 | --- | --- | --- |
 | V0.3.4.0 | Windows Qt5.15/Qt6.8 real SDK and Runtime product compatibility #603 | **Released** (2026-10-29, tag `v0.3.4.0` → main `27bf97d`) |
 | V0.3.5.0 | Host config/state paths and server-side static text watermark #591/#589 | **Released** (November 24, 2026) |
-| V0.3.6.0 | HyRemoteTool S1 workspace, safe control, profiles, view, basic diagnostics, locale #581–#586/#590 | Next development target; machine registration pending |
+| V0.3.6.0 | HyRemoteTool SDK development and diagnostics workbench S1: static SDK/Qt Kit inspection, four-route guidance, read-only protocol/frame diagnostics, redacted report and local language #581–#586/#590 | Registered; #581 implementation complete, #586 new-scope acceptance open |
 | V0.3.7.0 | Real user Qt app + HyRemote Docker deployment #592 | Conditional plan; actual container required |
 | V0.4.0.0 | Qualification-only RC, **not development of missing features** | Inactive conditional RC |
 | V1.0.0.0 | Windows first GA qualified Qt5.15/Qt6.8 support contract | Not released |
 | V1.0.1.0 / V1.0.2.0 | Independently qualify Qt6.5 / Qt6.12 post-GA #605 | Planned, not activated |
 | V1.0.3.0 / V1.0.4.0 | Tool S2 imported diagnostics #587 / S3 local SDK guidance #588 | Planned, not activated |
-| V1.0.5.0 / V1.0.6.0 / V1.0.7.0 | Logo #593 / no-install viewer #204 / permissioned text clipboard #171 | Post-GA; latter two conditional |
-| V1.1.0.0 / V1.1.1.0 | Secure Internet Gateway #190 / authenticated Session Operations #170 | Strategic conditional plan |
 
 | V1.2.0.0 | Real Qt Quick/ARM64 HMI adoption without an accidental Qt Widgets dependency #149/#203/#7/#236 | Conditional; actual hardware evidence |
 | V1.2.1.0 | Native Linux Wayland support and local GUI preservation #346/#148 | Conditional, platform evidence |
 | V1.2.2.0 | True single- and multi-touch in Qt Quick / industrial HMI #172 | Conditional, viewer and hardware evidence |
-| V1.2.3.0 | Application-owned admission, control rights, and privacy policy #225 | Strategic conditional, after #170 |
-| V1.2.4.0 | Secure file exchange or a documented external secure alternative #173 | Discovery gate / GO–NO-GO |
-| V1.2.5.0 | Official viewer enhanced server capability/diagnostic/secure-channel contract #246 | Discovery gate / GO–NO-GO |
 | V1.2.6.0 | Appliance capture-on-demand and bounded idle resource use #151 | Conditional after device measurement |
 | V1.2.7.0 | Operational performance diagnostics beyond baseline #180 | Conditional on real support needs |
 
@@ -214,7 +211,7 @@ Post-GA work is activated as coherent user or product outcomes beyond the frozen
 
 The retired fixed slots `V1.1 = Embedded`, `V1.2 = Acceleration`, and `V1.3 = Differentiate` are not used, and no replacement slots are invented.
 
-Platform or BSP expansion beyond the declared GA reference cells, evidence-driven acceleration where still useful, and advanced programmable capabilities are admitted separately. They must preserve one logical Runtime and must not create separate public `RuntimeQuick` or `RuntimeWidgets` products.
+Post-GA changes may extend only the open-source SDK/Runtime contract after an explicit Owner decision, a user outcome, and exact qualification evidence. Do not reserve unapproved version slots; preserve one shared Runtime.
 
 ## Release authority
 
