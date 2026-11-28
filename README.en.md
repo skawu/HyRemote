@@ -17,19 +17,19 @@ Add remote viewing and optional remote control to existing Qt Widgets and Qt Qui
   <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
 </p>
 
-**Platform validation policy (2026-10-22):** Windows x86_64 is the required, actually qualified development and release platform. Linux desktop, ARM64/embedded Linux and Wayland/EGLFS are Qt-based **user-validation pending** paths; lacking those target devices or tests does **not** block new Feature/RC/GA releases, and Qt portability alone does not make them Supported. Reproducible user reports are handled through Issues and reviewed maintenance/hotfixes. The historical v0.3.0.0 release notes are unchanged. See [compatibility](docs/compatibility.md) and the [Owner platform decision](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
+**Platform validation policy (2026-10-22):** Windows x86_64 is the required, actually qualified development and release platform. Linux desktop, ARM64/embedded Linux and Wayland/EGLFS are Qt-based **user-validation pending** paths; lacking those target devices or tests does **not** block new Feature/RC/GA releases, and Qt portability alone does not make them Supported. Reproducible user reports are handled through Issues and reviewed maintenance/hotfixes. The historical v0.3.0.0 release notes are unchanged. See [compatibility](docs/en/compatibility.md) and the [Owner platform decision](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
 ## Start here
 
 Three steps, in this order. Nothing else has to be read first.
 
 1. **Get HyRemote** - download the release artifact, or build it: `build.cmd install`
-   ([install guide](docs/guide/install.md))
+   ([install guide](docs/en/guide/install.md))
 2. **Integrate it into your project** - one canonical walkthrough from acquisition to a running application:
-   **[Integrate HyRemote into your Qt project](docs/guide/integrate-your-project.md)**
+   **[Integrate HyRemote into your Qt project](docs/en/guide/integrate-your-project.md)**
    ([中文](docs/guide/integrate-your-project.md) ｜ [English](docs/en/guide/integrate-your-project.md))
 3. **Connect a viewer** - host LAN endpoint, the real defaults, reconnect and stop:
-   [viewer connection](docs/guide/viewer-connection.md)
+   [viewer connection](docs/en/guide/viewer-connection.md)
 
 Real open-source integration studies (one Widgets/C++ application, one Qt Quick/QML application) live in
 [`examples/real-world/`](examples/real-world/).
@@ -46,7 +46,7 @@ HyRemote provides one shared remote-access Runtime and four peer ways to enter i
 | **QPA** | Launch with `-platform hyremote` | peer route (exact Qt private ABI) | Specialized zero-code integration that requires an exact qualified Qt private ABI |
 
 The four routes are **peers**: none is primary, and every one follows the same
-[acquisition -> integrate -> deploy -> run -> connect](docs/guide/integrate-your-project.md) flow.
+[acquisition -> integrate -> deploy -> run -> connect](docs/en/guide/integrate-your-project.md) flow.
 
 All four frontends converge on the same Runtime/Core implementation. There is no second Session, capture, transport, or input stack hidden behind a different integration mode.
 
@@ -104,7 +104,7 @@ or through `QT_QPA_GENERIC_PLUGINS=hyremote` where environment-based activation 
 
 The Generic Plugin is not a QPA replacement. The native Qt platform remains authoritative for the local window, display, input, and GPU integration.
 
-See [`docs/getting-started/generic.md`](docs/getting-started/generic.md) for configuration options.
+See [`docs/getting-started/generic.md`](docs/en/getting-started/generic.md) for configuration options.
 
 ## QML API
 
@@ -207,42 +207,42 @@ Do not expose the current product directly to the public Internet.
 
 Encrypted transport, certificate policy, authenticated sessions and production network policy belong to a later release.
 
-See [`docs/security.md`](docs/security.md).
+See [`docs/security.md`](docs/en/security.md).
 
 ## Release and support scope
 
-The latest published release is [`V0.3.5.1`](docs/releases/v0.3.5.1.md), distributed as source. Its release notes do not promise binary attachments. Changes on `develop` are not released product until the protected release process produces an accepted tag.
+The latest published release is [`V0.3.5.1` release notes (Chinese)](docs/releases/v0.3.5.1.md), distributed as source. Its release notes do not promise binary attachments. Changes on `develop` are not released product until the protected release process produces an accepted tag.
 
-Use the [compatibility matrix](docs/compatibility.md) for exact support cells. In brief, Windows x86_64 / Qt 6.8.3 is the current primary qualification environment for the four integration routes; Qt 5.15.2 remains a Limited C++/Widgets path. Linux, ARM64, embedded Linux, Wayland and EGLFS remain user-validation pending and are not Supported merely because Qt is portable.
+Use the [compatibility matrix](docs/en/compatibility.md) for exact support cells. In brief, Windows x86_64 / Qt 6.8.3 is the current primary qualification environment for the four integration routes; Qt 5.15.2 remains a Limited C++/Widgets path. Linux, ARM64, embedded Linux, Wayland and EGLFS remain user-validation pending and are not Supported merely because Qt is portable.
 
 ## Documentation
 
 Repository paths are architecture boundaries rather than arbitrary folders: the canonical source layout and module
-ownership are defined by [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
+ownership are defined by [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md) (Chinese maintainer reference).
 
 User guides:
 
-- [`docs/guide/install.md`](docs/guide/install.md) - install and reference setup;
-- [`docs/guide/deployment.md`](docs/guide/deployment.md) - deployment forms, including `hyremote_deploy(TARGET MyApp GENERIC)`;
-- [`docs/guide/viewer-connection.md`](docs/guide/viewer-connection.md) - connecting a viewer to a running application;
-- [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) - diagnosing a deployment or connection problem;
-- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) - Embedded C++ (peer route);
-- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) - Generic Plugin (peer route);
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) - Declarative QML (peer route);
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) - Transparent QPA (peer route).
+- [`docs/guide/install.md`](docs/en/guide/install.md) - install and reference setup;
+- [`docs/guide/deployment.md`](docs/en/guide/deployment.md) - deployment forms, including `hyremote_deploy(TARGET MyApp GENERIC)`;
+- [`docs/guide/viewer-connection.md`](docs/en/guide/viewer-connection.md) - connecting a viewer to a running application;
+- [`docs/guide/troubleshooting.md`](docs/en/guide/troubleshooting.md) - diagnosing a deployment or connection problem;
+- [`docs/getting-started/cpp.md`](docs/en/getting-started/cpp.md) - Embedded C++ (peer route);
+- [`docs/getting-started/generic.md`](docs/en/getting-started/generic.md) - Generic Plugin (peer route);
+- [`docs/getting-started/qml.md`](docs/en/getting-started/qml.md) - Declarative QML (peer route);
+- [`docs/getting-started/qpa-proxy.md`](docs/en/getting-started/qpa-proxy.md) - Transparent QPA (peer route).
 
-Start with [`docs/README.md`](docs/README.md).
+Start with [`docs/README.md`](docs/en/README.md).
 
 Peer product guides:
 
-- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — C++ API
-- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) — Generic Plugin
-- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — QML API
-- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — QPA
-- [`docs/guide/deployment.md`](docs/guide/deployment.md) — packaging and deployment
-- [`docs/security.md`](docs/security.md) — security behavior and limitations
-- [`docs/compatibility.md`](docs/compatibility.md) — compatibility matrix
-- [`docs/known-limitations.md`](docs/known-limitations.md) — known product limitations
+- [`docs/getting-started/cpp.md`](docs/en/getting-started/cpp.md) — C++ API
+- [`docs/getting-started/generic.md`](docs/en/getting-started/generic.md) — Generic Plugin
+- [`docs/getting-started/qml.md`](docs/en/getting-started/qml.md) — QML API
+- [`docs/getting-started/qpa-proxy.md`](docs/en/getting-started/qpa-proxy.md) — QPA
+- [`docs/guide/deployment.md`](docs/en/guide/deployment.md) — packaging and deployment
+- [`docs/security.md`](docs/en/security.md) — security behavior and limitations
+- [`docs/compatibility.md`](docs/en/compatibility.md) — compatibility matrix
+- [`docs/known-limitations.md`](docs/en/known-limitations.md) — known product limitations
 
 ## License
 
