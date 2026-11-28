@@ -7,7 +7,6 @@
     149,
     151,
     154,
-    171,
     172,
     173,
     180,
@@ -56,7 +55,11 @@
     "fail_closed": "Unknown versions, retired planning labels, trains whose scope_status is retired, records whose mandatory_children are absent or empty while the Feature is active, prerequisites that are malformed or that overlap the mandatory set, an unknown or self-referential lineage parent, conditional versions without recorded activation, and note keys that belong to no classified list all fail selection instead of answering."
   },
   "development_sentinel": "0.0.0",
-  "retired_profiles": [ "0.0.1.0", "0.0.2.0", "0.0.3.0" ],
+  "retired_profiles": [
+    "0.0.1.0",
+    "0.0.2.0",
+    "0.0.3.0"
+  ],
   "conditional_trains": [
     {
       "version": "0.4.0.0",
@@ -69,8 +72,17 @@
     "0.1.0.0": {
       "authority_parent": 229,
       "candidate_freeze_authority": 229,
-      "mandatory_children": [ 230, 231, 232, 237, 238, 253 ],
-      "candidate_prerequisites": [ 250 ],
+      "mandatory_children": [
+        230,
+        231,
+        232,
+        237,
+        238,
+        253
+      ],
+      "candidate_prerequisites": [
+        250
+      ],
       "required_evidence": [
         "converged-one-core-shared-runtime-four-peer-frontends",
         "exact-head-integrated-windows-linux-evidence",
@@ -83,16 +95,38 @@
         "nonzero-hosted-normal-and-release-readiness-tests",
         "release-notes-preview-support-boundaries-and-known-limitations"
       ],
-      "cross_version_references": [ 1, 24, 41, 95, 143, 176, 209, 219, 220 ],
+      "cross_version_references": [
+        1,
+        24,
+        41,
+        95,
+        143,
+        176,
+        209,
+        219,
+        220
+      ],
       "conditional_items": [],
-      "non_blockers": [ 41, 57, 143, 144, 170, 174, 176, 209, 240, 241, 242 ],
+      "non_blockers": [
+        41,
+        57,
+        143,
+        144,
+        170,
+        174,
+        176,
+        209,
+        240,
+        241,
+        242
+      ],
       "notes": {
-        "232": "Closed before this migration; the release gate reads its live state like any other mandatory child.",
         "209": "Cross-version umbrella. Referenced for the evidence this train consumes; the whole umbrella is never a V0.1 closeable requirement.",
-        "253": "V0.1 release-truth child: shipping a false encryption capability or support statement is itself a product-contract defect, so truthful V0.1 security/version output is closeable V0.1 work.",
-        "250": "Repository evidence-integrity prerequisite. It is not a user product feature: it blocks candidate acceptance while its defect is active, and it is deliberately not part of the product work breakdown.",
+        "232": "Closed before this migration; the release gate reads its live state like any other mandatory child.",
         "240": "V0.3 Example/i18n productization. A declared non-blocker for V0.1, never a V0.1 mandatory child.",
-        "241": "V0.3 productized GUI branding. A declared non-blocker for V0.1, never a V0.1 mandatory child."
+        "241": "V0.3 productized GUI branding. A declared non-blocker for V0.1, never a V0.1 mandatory child.",
+        "250": "Repository evidence-integrity prerequisite. It is not a user product feature: it blocks candidate acceptance while its defect is active, and it is deliberately not part of the product work breakdown.",
+        "253": "V0.1 release-truth child: shipping a false encryption capability or support statement is itself a product-contract defect, so truthful V0.1 security/version output is closeable V0.1 work."
       },
       "rule": "The V0.1 user promise is the release authority. Later-train work and cross-version umbrellas are referenced, never required to close; prerequisites gate candidate acceptance without entering the product work breakdown."
     },
@@ -100,8 +134,17 @@
       "authority_parent": 233,
       "candidate_freeze_authority": 233,
       "lineage_parent": "0.1.0.0",
-      "mandatory_children": [ 143, 174, 259, 326, 271 ],
-      "candidate_prerequisites": [ 258, 332 ],
+      "mandatory_children": [
+        143,
+        174,
+        259,
+        326,
+        271
+      ],
+      "candidate_prerequisites": [
+        258,
+        332
+      ],
       "required_evidence": [
         "accepted-v0.1-lineage",
         "usable-lan-remote-access-evidence",
@@ -110,17 +153,28 @@
         "bilingual-release-notes-evidence",
         "customer-trial-evidence"
       ],
-      "cross_version_references": [ 95, 143, 170, 174, 259, 326, 332 ],
+      "cross_version_references": [
+        95,
+        143,
+        170,
+        174,
+        259,
+        326,
+        332
+      ],
       "conditional_items": [],
-      "non_blockers": [ 170, 239 ],
+      "non_blockers": [
+        170,
+        239
+      ],
       "notes": {
         "143": "Secure remote access is a mandatory child because the trial needs a usable and truthfully reported transport, not because an encrypted profile has to exist before the first candidate can be accepted. The shipped facts - authentication off, no transport encryption, remote input off, listener on the host's IPv4 interfaces - are what this train requires to be stated truthfully; encrypted-profile work still being unfinished is not a blocker for it.",
+        "170": "Session operations are an evidence-driven optional/differentiating capability. #333 retires the pre-reserved 0.2.1.0 slot; no exact Feature version is assigned until a coherent product outcome is explicitly activated. Declared non-blocker here.",
+        "239": "Minimal operational examples for session operations share the same evidence-driven optional classification; no exact Feature version is assigned. Declared non-blocker here.",
         "258": "Security-modelling entry preflight for the secure-remote Feature. Preflight is risk work, not product implementation, so it is a prerequisite rather than a mandatory child.",
         "271": "First real customer trial on the frozen candidate. One real user in one real environment is what the trial requires; Windows and Ubuntu are the internal qualification matrix, and the trial records whichever platform that user actually had. Product-owner decision: the first customer trial belongs to V0.2.0, not to V0.1.",
         "326": "The unified build/install entry point and the single user-facing install tree are mandatory children because the trial cannot start from developer intermediate output.",
-        "332": "Bilingual release notes are a candidate prerequisite: a release that states its facts in one language only has not stated them to its users.",
-        "170": "Session operations are an evidence-driven optional/differentiating capability. #333 retires the pre-reserved 0.2.1.0 slot; no exact Feature version is assigned until a coherent product outcome is explicitly activated. Declared non-blocker here.",
-        "239": "Minimal operational examples for session operations share the same evidence-driven optional classification; no exact Feature version is assigned. Declared non-blocker here."
+        "332": "Bilingual release notes are a candidate prerequisite: a release that states its facts in one language only has not stated them to its users."
       },
       "rule": "The V0.2 user promise is the first real user trial of remote access across a local network, with every fact the user is told matching what the artifact actually does. A candidate is accepted on the facts it ships - a listener reachable on the host's IPv4 interfaces, authentication off, transport encryption off, remote input off, which is not Internet-safe - and it is never blocked by an encrypted profile still being unfinished. Evidence must name those facts, the staged artifact that carries them and the bilingual release notes that state them, rather than any trust state the product cannot verify for itself."
     },
@@ -128,7 +182,14 @@
       "authority_parent": 386,
       "candidate_freeze_authority": 386,
       "lineage_parent": "0.2.0.0",
-      "mandatory_children": [ 382, 387, 389, 390, 391, 392 ],
+      "mandatory_children": [
+        382,
+        387,
+        389,
+        390,
+        391,
+        392
+      ],
       "candidate_prerequisites": [],
       "required_evidence": [
         "accepted-v0.2.0.0-lineage",
@@ -137,8 +198,21 @@
         "relocatable-install-tree-evidence",
         "release-artifact-checksum-evidence"
       ],
-      "cross_version_references": [ 24, 95, 233, 271, 326, 332, 333 ],
-      "non_blockers": [ 170, 239, 240, 241 ],
+      "cross_version_references": [
+        24,
+        95,
+        233,
+        271,
+        326,
+        332,
+        333
+      ],
+      "non_blockers": [
+        170,
+        239,
+        240,
+        241
+      ],
       "rule": "V0.2.0.1 is a bounded maintenance repair of the accepted V0.2.0.0 First User Trial lineage. It restores the released Windows/Linux build, install, deployment and runnable-example promise without adding V0.3 capability."
     },
     "0.2.1.0": {
@@ -146,15 +220,28 @@
       "authority_parent": 233,
       "candidate_freeze_authority": 233,
       "lineage_parent": "0.2.0.0",
-      "mandatory_children": [ 170, 239 ],
+      "mandatory_children": [
+        170,
+        239
+      ],
       "candidate_prerequisites": [],
       "required_evidence": [
         "accepted-v0.2.0.0-lineage",
         "session-operations-evidence"
       ],
-      "cross_version_references": [ 95, 143, 174, 259 ],
+      "cross_version_references": [
+        95,
+        143,
+        174,
+        259
+      ],
       "conditional_items": [],
-      "non_blockers": [ 143, 174, 259, 271 ],
+      "non_blockers": [
+        143,
+        174,
+        259,
+        271
+      ],
       "notes": {
         "170": "Session Registry and its public API surface, as the closeable session-operations work this retired slot once carried.",
         "239": "Minimal operational examples for the session operations this retired slot once carried.",
@@ -166,7 +253,11 @@
       "authority_parent": 234,
       "candidate_freeze_authority": 234,
       "lineage_parent": "0.2.0.0",
-      "mandatory_children": [ 264, 240, 335 ],
+      "mandatory_children": [
+        264,
+        240,
+        335
+      ],
       "candidate_prerequisites": [],
       "required_evidence": [
         "accepted-v0.2.0.0-lineage",
@@ -174,21 +265,33 @@
         "example-and-localization-productization-evidence",
         "minimum-self-service-diagnostics-evidence"
       ],
-      "cross_version_references": [ 41, 95, 176 ],
+      "cross_version_references": [
+        41,
+        95,
+        176
+      ],
       "conditional_items": [],
-      "non_blockers": [ 57, 144, 175, 241, 260, 261, 378 ],
+      "non_blockers": [
+        57,
+        144,
+        175,
+        241,
+        260,
+        261,
+        378
+      ],
       "notes": {
-        "264": "Four-peer SDK/deploy productization: the closeable self-service foundation child of the delivery umbrella; the umbrella itself is not the release condition.",
-        "240": "Task-oriented self-service docs/examples: closeable self-service adoption child.",
-        "335": "Minimum self-service diagnostics: closeable adoption-foundation child so a blocked user can answer what is wrong without the maintainers.",
-        "241": "Productized GUI branding is an optional/quality outcome, not a V0.3.0.0 mandatory child (#333).",
-        "378": "HyRemoteTool ships with V0.3.0.0 as the out-of-process access-plane companion client (Owner decision, 2026-10-19), but it is not a required L2 evidence cell and never a hidden mandatory child; management-plane enhancements remain optional/differentiating (#333).",
-        "176": "Delivery umbrella. Referenced as the parent of the closeable delivery child, never required to close as a whole for this Feature.",
         "57": "Qt 5.15 adaptation/qualification is mandatory pre-GA V0.3-family compatibility baseline work under #343; after #333 no exact Feature version is pre-reserved for it.",
         "144": "Practical compressed + incremental/damage delivery is mandatory pre-GA V0.3-family baseline work (#343); the concrete encoder is chosen by #261 evidence and no exact Feature version is pre-reserved.",
         "175": "Maintained viewer interoperability is mandatory pre-GA V0.3-family baseline work; no exact Feature version is pre-reserved.",
+        "176": "Delivery umbrella. Referenced as the parent of the closeable delivery child, never required to close as a whole for this Feature.",
+        "240": "Task-oriented self-service docs/examples: closeable self-service adoption child.",
+        "241": "Productized GUI branding is an optional/quality outcome, not a V0.3.0.0 mandatory child (#333).",
         "260": "Qt5 entry preflight is #343 pre-GA baseline work, not a closeable child of any exact Feature.",
-        "261": "RFB delivery preflight is #343 pre-GA baseline work, not a closeable child of any exact Feature."
+        "261": "RFB delivery preflight is #343 pre-GA baseline work, not a closeable child of any exact Feature.",
+        "264": "Four-peer SDK/deploy productization: the closeable self-service foundation child of the delivery umbrella; the umbrella itself is not the release condition.",
+        "335": "Minimum self-service diagnostics: closeable adoption-foundation child so a blocked user can answer what is wrong without the maintainers.",
+        "378": "HyRemoteTool ships with V0.3.0.0 as the out-of-process access-plane companion client (Owner decision, 2026-10-19), but it is not a required L2 evidence cell and never a hidden mandatory child; management-plane enhancements remain optional/differentiating (#333)."
       },
       "rule": "V0.3.0.0 Product Preview is the self-service adoption foundation: four-peer SDK/deploy productization (#264), task-oriented self-service docs/examples (#240) and minimum self-service diagnostics (#335). It builds directly on the accepted V0.2.0.0 First User Trial lineage. The historical #343/#370 pre-GA family baseline originally mentioned Qt 5.15/6.5/6.8 plus non-Windows matrices; latest Owner #563 and #605 narrow FIRST GA physical qualification to Windows x86_64 Qt 5.15 and 6.8 only (Qt6.5/6.12 post-GA). This history creates no pre-reserved exact Feature or mandatory child of this release; branding (#241) and HyRemoteTool (#378) are optional/differentiating outcomes."
     },
@@ -197,22 +300,34 @@
       "authority_parent": 234,
       "candidate_freeze_authority": 234,
       "lineage_parent": "0.3.0.0",
-      "mandatory_children": [ 265 ],
-      "candidate_prerequisites": [ 260 ],
+      "mandatory_children": [
+        265
+      ],
+      "candidate_prerequisites": [
+        260
+      ],
       "required_evidence": [
         "accepted-v0.3.0.0-lineage",
         "qt5-adaptation-candidate-evidence"
       ],
-      "cross_version_references": [ 57, 95 ],
+      "cross_version_references": [
+        57,
+        95
+      ],
       "conditional_items": [],
-      "non_blockers": [ 57, 144, 175, 261 ],
+      "non_blockers": [
+        57,
+        144,
+        175,
+        261
+      ],
       "notes": {
-        "260": "Qt5 entry preflight: ecosystem and toolchain risk work, classified as a prerequisite rather than product implementation.",
-        "265": "Closeable Qt5 adaptation implementation candidate; the Qt5 qualification umbrella closure stays with V0.4.",
         "57": "The Qt5 line umbrella remains open for V0.4 qualification. This Feature must not require its whole-issue closure.",
         "144": "Damage/ZRLE delivery belongs to 0.3.2.0.",
         "175": "Maintained viewer interoperability belongs to 0.3.2.0.",
-        "261": "RFB delivery preflight belongs to 0.3.2.0."
+        "260": "Qt5 entry preflight: ecosystem and toolchain risk work, classified as a prerequisite rather than product implementation.",
+        "261": "RFB delivery preflight belongs to 0.3.2.0.",
+        "265": "Closeable Qt5 adaptation implementation candidate; the Qt5 qualification umbrella closure stays with V0.4."
       },
       "rule": "RETIRED by #333 as a pre-reserved technical train slot (Qt5). Qt 5.15 remains a #343 pre-GA hard product family, and its qualification umbrella (#57) stays with the V0.3 family, but no exact Feature version is pre-reserved for the adaptation. This record is historical provenance and cannot be selected."
     },
@@ -221,21 +336,35 @@
       "authority_parent": 234,
       "candidate_freeze_authority": 234,
       "lineage_parent": "0.3.1.0",
-      "mandatory_children": [ 144, 175 ],
-      "candidate_prerequisites": [ 261 ],
+      "mandatory_children": [
+        144,
+        175
+      ],
+      "candidate_prerequisites": [
+        261
+      ],
       "required_evidence": [
         "accepted-v0.3.1.0-lineage",
         "damage-compression-delivery-evidence",
         "maintained-viewer-interoperability-evidence"
       ],
-      "cross_version_references": [ 57, 95, 144, 175 ],
+      "cross_version_references": [
+        57,
+        95,
+        144,
+        175
+      ],
       "conditional_items": [],
-      "non_blockers": [ 57, 260, 265 ],
+      "non_blockers": [
+        57,
+        260,
+        265
+      ],
       "notes": {
-        "261": "RFB delivery profiling preflight: risk work first, classified as a prerequisite rather than product implementation.",
+        "57": "The Qt5 line umbrella remains open for V0.4 qualification.",
         "144": "Damage and ZRLE delivery work for this Feature.",
         "175": "Maintained viewer interoperability work for this Feature.",
-        "57": "The Qt5 line umbrella remains open for V0.4 qualification."
+        "261": "RFB delivery profiling preflight: risk work first, classified as a prerequisite rather than product implementation."
       },
       "rule": "RETIRED by #333 as a pre-reserved technical train slot (Bandwidth/ZRLE/compression). Compression and damage work remains V0.3-family breadth under #343/#370 without a pre-reserved exact Feature version; the maintained-viewer interoperability evidence stays with the V0.3 family. This record is historical provenance and cannot be selected."
     },
@@ -243,27 +372,46 @@
       "authority_parent": 234,
       "candidate_freeze_authority": 234,
       "lineage_parent": "0.3.0.0",
-      "mandatory_children": [ 144, 175 ],
-      "candidate_prerequisites": [ 261 ],
+      "mandatory_children": [
+        144,
+        175
+      ],
+      "candidate_prerequisites": [
+        261
+      ],
       "required_evidence": [
         "accepted-v0.3.0.0-lineage",
         "damage-compression-delivery-evidence",
         "maintained-viewer-interoperability-evidence",
         "performance-slo-evidence"
       ],
-      "cross_version_references": [ 57, 95, 144, 175, 261, 343, 370, 563 ],
+      "cross_version_references": [
+        57,
+        95,
+        144,
+        175,
+        261,
+        343,
+        370,
+        563
+      ],
       "conditional_items": [],
-      "non_blockers": [ 57, 260, 265, 378 ],
+      "non_blockers": [
+        57,
+        260,
+        265,
+        378
+      ],
       "notes": {
+        "57": "Qt 5.15 and Qt 6.8 are the ONLY mandatory first-GA Qt LTS families; Qt6.5/Qt6.12 explicitly defer until AFTER V1 GA under Owner #605. #57 retains mandatory compatibility work but ONLY for exact Windows Qt5.15/Qt6.8 applicable cells; not a V0.3.3 exact Feature blocker.",
         "144": "#144 is Windows x86_64 Qt 6.8.3 Raw+TRLE incremental/damage delivery with Windows real-viewer interaction/performance evidence; Linux desktop and ARM64/EGLFS/Wayland validation is USER_VALIDATION_PENDING and non-blocking per Owner #563.",
         "175": "#175 closes on at least two maintained real GUI viewers against the Windows x86_64 Qt 6.8.3 target/viewer profile, with cursor, input, resize/reconnect, view-only and applicable auth; Linux viewer hosts and embedded viewer results are optional user-validation evidence per #563.",
+        "260": "Qt LTS preflight belongs to mandatory V0.3-family compatibility work, not an extra V0.3.3 candidate prerequisite. #261 remains the exact Feature preflight.",
         "261": "RFB delivery profiling is risk/evidence preflight, not product implementation.",
+        "265": "Qt5 adaptation implementation must complete in the V0.3 family before V0.4 entry; not a V0.3.3 mandatory child.",
         "343": "#343 must be rebaselined under #563: Windows-qualified GA cells are release gates. Linux/ARM64/EGLFS/Wayland physical/runtime evidence is community-validation pending and never a condition of V0.3.3/V0.4/V1; no blanket cross-platform Supported claim.",
         "370": "The performance programme supplies the SLO and measurement method; it is not a closeable child of this Feature.",
-        "378": "HyRemoteTool consumes the access-plane improvements; management-plane work stays out of this Feature.",
-        "57": "Qt 5.15 and Qt 6.8 are the ONLY mandatory first-GA Qt LTS families; Qt6.5/Qt6.12 explicitly defer until AFTER V1 GA under Owner #605. #57 retains mandatory compatibility work but ONLY for exact Windows Qt5.15/Qt6.8 applicable cells; not a V0.3.3 exact Feature blocker.",
-        "260": "Qt LTS preflight belongs to mandatory V0.3-family compatibility work, not an extra V0.3.3 candidate prerequisite. #261 remains the exact Feature preflight.",
-        "265": "Qt5 adaptation implementation must complete in the V0.3 family before V0.4 entry; not a V0.3.3 mandatory child."
+        "378": "HyRemoteTool consumes the access-plane improvements; management-plane work stays out of this Feature."
       },
       "rule": "V0.3.3.0 is the activated Windows x86_64 Qt 6.8.3 Feature for #144 Raw+TRLE incremental/damage and #175 two maintained Windows real GUI viewers, #261 preflight, #370 real viewer SLO, exact-SHA Windows product and same-SHA release gates. Linux/ARM64/EGLFS/Wayland are unverified user-validation targets and their unavailable evidence is nonblocking per Owner #563. Qt5.15 and Qt6.8 Windows compatibility remains a separate explicit later Feature requirement; Qt6.5/Qt6.12 are post-V1 GA under Owner #605. Future Feature numbers and management/TLS are not preallocated."
     },
@@ -366,10 +514,10 @@
         605
       ],
       "notes": {
-        "591": "Closeable host path contract: explicit configuration file, writable state/data directory and protected secret references, with one precedence order shared by the C++ API, QML API, Generic and QPA routes. An invalid explicit selection must fail closed with an actionable error instead of silently falling back to another writable directory. No database engine is introduced before a user-visible feature needs one.",
-        "589": "Closeable server-side static text watermark: configurable UTF-8 text rendered into the frames sent to a standard RFB viewer while the local Qt application pixels stay unchanged.",
         "57": "Pre-GA Windows Qt5/Qt6.8 qualification umbrella stays independently open through V0.4/V1; this train does not force umbrella closure.",
         "209": "Architecture umbrella remains open across versions: one Qt-free Core, one Shared Runtime and four peer integration routes; no duplication.",
+        "589": "Closeable server-side static text watermark: configurable UTF-8 text rendered into the frames sent to a standard RFB viewer while the local Qt application pixels stay unchanged.",
+        "591": "Closeable host path contract: explicit configuration file, writable state/data directory and protected secret references, with one precedence order shared by the C++ API, QML API, Generic and QPA routes. An invalid explicit selection must fail closed with an actionable error instead of silently falling back to another writable directory. No database engine is introduced before a user-visible feature needs one.",
         "592": "Docker joint deployment depends on this path contract and requires a real container environment; it cannot be claimed from this train alone.",
         "593": "Logo/image watermark is post-GA and explicitly outside this train.",
         "605": "Qt6.5/Qt6.12 stay strictly after V1 GA and cannot be marked Supported here."
@@ -467,7 +615,6 @@
       },
       "rule": "V0.3.6.0 is the admitted Feature on the accepted V0.3.5.0 lineage, with Human-approved H-T01=B scope: SDK developer and diagnostics workspace, static SDK/Qt Kit checks, four integration guidance, explicit protocol/frame observations, redacted reports and language. Existing RFB access/profile/viewport/control remain compatibility-only; no new remote client features. Full #586 exact-candidate acceptance and all current gates remain required. Registration enables implementation, not release approval; no platform scope expansion. V0.4 remains inactive qualification-only."
     },
-
     "1.0.0.0": {
       "authority_parent": 33,
       "scope_authority": 594,
@@ -492,32 +639,68 @@
         "physical-acceptance-under-109",
         "ga-acceptance-under-33"
       ],
-      "cross_version_references": [ 95, 594, 602, 605 ],
+      "cross_version_references": [
+        95,
+        594,
+        602,
+        605
+      ],
       "conditional_items": [],
-      "embedded_deferred_issue_numbers": [ 7, 10, 17, 18 ],
-      "classified_referenced_issue_numbers": [ 14, 39, 41, 74, 90, 91, 95, 104, 106, 134, 143, 144, 147, 156, 157, 159, 162, 163, 164, 166, 170, 174, 175, 176, 209 ],
+      "embedded_deferred_issue_numbers": [
+        7,
+        10,
+        17,
+        18
+      ],
+      "classified_referenced_issue_numbers": [
+        14,
+        39,
+        41,
+        74,
+        90,
+        91,
+        95,
+        104,
+        106,
+        134,
+        143,
+        144,
+        147,
+        156,
+        157,
+        159,
+        162,
+        163,
+        164,
+        166,
+        170,
+        174,
+        175,
+        176,
+        209
+      ],
       "notes": {
         "9": "KEEP_CLOSEABLE: V1 requires the x86-applicable damage/asynchronous-capture work or an evidence-backed disposition; embedded follow-up remains separate.",
         "30": "KEEP_CLOSEABLE: Windows x86_64 C++ route acceptance on the exact candidate.",
         "31": "KEEP_CLOSEABLE: Windows Qt 6.8 QML route acceptance; Qt 5 QML stays Unsupported under Owner D2.",
         "32": "KEEP_CLOSEABLE: Windows qwindows acceptance for the exact Qt 6.8.3 private ABI only.",
         "33": "KEEP_CLOSEABLE: GA contract owner and authority_parent; closes when the qualified Windows baseline is frozen.",
-        "57": "KEEP_CLOSEABLE: First GA Qt family qualification covers ONLY Windows Qt5.15 LTS and Qt6.8 LTS actually applicable cells, under latest Owner #605/#563. Qt6.5 and Qt6.12 are POST-V1 GA future qualification and never a pre-RC, RC or V1 blocker; do not claim them Supported. Non-Windows Qt cells remain user-validation pending.",
-        "101": "KEEP_CLOSEABLE: public C++/QML/CMake surface frozen for 1.x compatibility before GA.",
-        "107": "KEEP_CLOSEABLE: final bilingual GA notes, notices, package manifest and exact-candidate metadata.",
-        "109": "KEEP_CLOSEABLE: the GA physical/native coexistence evidence gate is Windows x86_64 only per Owner #563. Linux, ARM64 and embedded physical absence never blocks V1; no inferred support. The exact Windows RC-frozen candidate #165 is still mandatory.",
-        "158": "KEEP_CLOSEABLE: exact RFB 3.8 and bounded Normal-phase occupancy; implementation landed in #694/#696 and the gate closes with acceptance.",
-        "165": "KEEP_CLOSEABLE: candidate freeze authority; the exact Windows candidate and control of post-freeze evidence impact.",
         "39": "HISTORICAL_COMPLETE (exited under #602): SDK contract shipped with V0.0.1.0 and is regressed by every installed consumer.",
         "41": "DEFER_NONBLOCKING (exited under #602): examples/learning breadth is not a support or qualification gate.",
+        "57": "KEEP_CLOSEABLE: First GA Qt family qualification covers ONLY Windows Qt5.15 LTS and Qt6.8 LTS actually applicable cells, under latest Owner #605/#563. Qt6.5 and Qt6.12 are POST-V1 GA future qualification and never a pre-RC, RC or V1 blocker; do not claim them Supported. Non-Windows Qt cells remain user-validation pending.",
+        "101": "KEEP_CLOSEABLE: public C++/QML/CMake surface frozen for 1.x compatibility before GA.",
         "104": "HISTORICAL_COMPLETE (exited under #602): the four-route Windows matrix is executed by every ready-PR L1.",
+        "107": "KEEP_CLOSEABLE: final bilingual GA notes, notices, package manifest and exact-candidate metadata.",
+        "109": "KEEP_CLOSEABLE: the GA physical/native coexistence evidence gate is Windows x86_64 only per Owner #563. Linux, ARM64 and embedded physical absence never blocks V1; no inferred support. The exact Windows RC-frozen candidate #165 is still mandatory.",
         "143": "HISTORICAL_COMPLETE (exited under #602): truthful optional access control shipped; ongoing security work is #611/#158.",
         "144": "HISTORICAL_COMPLETE (exited under #602): only B1/B2 were V1 x86 requirements and they landed with V0.3.3.0; embedded B3/B4 stay in dedicated embedded issues.",
         "157": "REPLACE (exited under #602): superseded as scope authority by #594 and the canonical roadmap.",
+        "158": "KEEP_CLOSEABLE: exact RFB 3.8 and bounded Normal-phase occupancy; implementation landed in #694/#696 and the gate closes with acceptance.",
         "159": "HISTORICAL_COMPLETE (exited under #602): start/stop lifetime race fixed with regression.",
         "162": "HISTORICAL_COMPLETE (exited under #602): Widgets/Quick routing, DPR and IME gaps fixed with regression.",
         "163": "HISTORICAL_COMPLETE (exited under #602): exact runtime Qt identity and delegate failure semantics fixed.",
         "164": "HISTORICAL_COMPLETE (exited under #602): callback boundary and remaining lifecycle hazards fixed.",
+        "165": "KEEP_CLOSEABLE: candidate freeze authority; the exact Windows candidate and control of post-freeze evidence impact.",
         "170": "DEFER_NONBLOCKING (exited under #602): Session Operations is planned for V1.1.1.0 and is not first-GA blocking.",
         "174": "HISTORICAL_COMPLETE (exited under #602): IPv4 listener modes shipped with the listener-matrix regression.",
         "175": "HISTORICAL_COMPLETE (exited under #602): V0.3.3.0 viewer interop delivered; V0.3.4/V0.4 RealVNC 7.15.1 evidence is owned by #603/#57.",
