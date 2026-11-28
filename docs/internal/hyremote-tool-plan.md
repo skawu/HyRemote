@@ -1,84 +1,19 @@
-> **Current product direction, 2026-10-22 — D 综合工作台 (Product Owner selected):** The full forward-looking feature list, page flows, UI state machine, SDK-assistant boundaries, diagnostics model, portable-delivery investigation, secure-management deferral and phased acceptance now live in [HyRemoteTool 综合工作台 RFC](hyremote-tool-workbench-prd-2026-10-22.md) (tracking #579). This document remains the **historical V0.3.0.0 out-of-process RFB access-client contract** and records that release's limits; it is not sufficient as the integrated workbench roadmap. **D1=A is now approved**: S1 remote session/workspace, saved connections and basic client diagnostics first (delivery tasks #581–#586); S2 advanced diagnosis #587 and S3 SDK assistance #588 follow. Only D2–D5 remain open; no new version assignment or host-management authorization. Nothing here retroactively changes the V0.3.0.0 release or authorizes host management over RFB.
+# HyRemoteTool 历史访问兼容记录
 
-# HyRemoteTool companion plan
+ > **当前范围以 H-T01=B 为准。** HyRemoteTool 当前是 SDK 开发与诊断工作台；本文件只记录既有发布兼容事实，不再定义新的远程访问客户端功能。
 
-Status: historical V0.3.0.0 Tool architecture and optional management-plane sketch (#378/#234), **not a parallel Feature/version sequencing authority**. Follow the [single current product roadmap](product-version-delivery-roadmap-2026-10-23.md) / #594/#605: Windows Qt 5.15/6.8 (#603) is first after V0.3.3; the HyRemoteTool D workbench advances incrementally via #581–#590 (OS Auto/manual language #590). Remote management/TLS requires separate product/security admission; full Tool S1 is not a prerequisite to Qt LTS Feature. Qt 6.5/6.12 are strictly post-GA.
+## 已发布事实
 
-## Position
+V0.3.0.0 曾随 HyRemote 发布基础 RFB 访问兼容入口。该入口是历史发行内容，不因后续开发工作台调整而删除已发布兼容性。
 
-HyRemoteTool is an **out-of-process companion client** shipped with HyRemote. It runs outside the business application, connects to a remote HyRemote-enabled application by an explicit IP and port, and provides access-plane observation and debugging. It is not a host-side control panel, not a business demo, and not a second Runtime.
+## 当前维护边界
 
-The tool must not define or duplicate Runtime semantics. It consumes the existing RFB access plane; any host-management action requires a separately defined HyRemote management capability.
+- 当前开发工作聚焦 SDK/Qt Kit 静态核对、四种接入方式的准确指导、只读协议/帧诊断、脱敏报告和本机语言。
+- 既有访问入口仅按已发布兼容、安全和部署要求维护，不扩展访问功能。
+- 本仓库不在该工具中另建第二套 Runtime、Session、采集、传输或输入实现。
 
-## Two planes, two ports
+## 权威依据
 
-| Plane | Purpose | Port policy | V0.3.0.0 |
-|---|---|---|---|
-| Access | RFB 3.8 framebuffer and input | Per application; configurable port, address and interface | Shipped |
-| Management | Start/stop access, policy, password, host diagnostics | Separate listener; per application; configurable port; **default disabled**, loopback by default, authenticated | Not shipped |
-
-Rules:
-
-- The two planes are never multiplexed on the RFB port.
-- The access port remains application-owned and configurable (`0.0.0.0:5921` default).
-- The management port is configurable per application. A fixed global management port is only defensible for a future per-host daemon, not for the embedded per-application model.
-- A management listener that can start a stopped access listener must be independent of `start()/stop()` and must have its own authentication and threat model.
-- The Tool must not guess or scan ports. The operator supplies access and (later) management endpoints explicitly.
-
-## V0.3.0.0: access-plane client
-
-The V0.3.0.0 tool is a pure RFB client. It does not link `HyRemote::RemoteAccess` and does not host remote access.
-
-| Capability | Behaviour |
-|---|---|
-| Remote endpoint | Operator enters IPv4/hostname and port; default port 5921; no discovery |
-| Connect / disconnect | Explicit connect, disconnect and reconnect; no listener is opened locally |
-| Handshake | RFB 3.8; SecurityType None only in this version |
-| Framebuffer | Raw and DesktopSize; window scaling preserves aspect ratio |
-| Input | View-only by default; pointer, wheel and keyboard only when remote control is enabled |
-| Frame-rate telemetry | Framebuffer updates per second, measured client-side |
-| Throughput telemetry | bytes/s, Mbit/s, cumulative frames and bytes |
-| Connection state | Connecting / Connected / Disconnected / Failed plus the last error |
-| Diagnostics | Handshake/security/encoding facts, disconnect reason and a bounded client log |
-
-### Not supported in V0.3.0.0 (stated, not faked)
-
-- VNC-auth connection passwords; the default access plane is `SecurityType None`.
-- Management-plane actions: remote start/stop, policy changes, host password changes.
-- Clipboard synchronization, fullscreen mode, multi-monitor selection, TLS/VeNCrypt and file transfer.
-
-The UI must not show disabled placeholder buttons for these. The README and release notes state the limitation.
-
-## Later phases
-
-### Future optional management plane (independent authority required; not an automatic V0.3.x commitment)
-
-Prerequisites:
-
-1. A HyRemote management API with an explicit threat model.
-2. A separate authenticated listener, disabled by default, loopback by default, with an explicit LAN opt-in.
-3. Configuration for management port and credentials; no fixed global port.
-
-Tool changes:
-
-- Optional `Management IP:Port` and credential fields, separate from the access connection.
-- Actions: start/stop access, remote-input policy, access password, bounded host diagnostics.
-- If no management endpoint is configured, management controls are absent; they are not silently emulated over RFB.
-
-### V0.4: private-viewer parity
-
-Clipboard, scaling/fullscreen, multi-monitor selection, TLS/VeNCrypt and other viewer capabilities are activated only when the corresponding HyRemote capability is qualified.
-
-## Testing and evidence
-
-- Headless unit tests with a fake RFB server: handshake, None security, Raw/DesktopSize, pointer/key encoding, FPS/byte accounting, error paths.
-- Integration test against a real HyRemote host example: first frame, input, telemetry, disconnect/reconnect.
-- Installed-artifact physical acceptance with a maintained viewer and a real remote application.
-- The old host-side tool tests (compact layout, listener editor, host diagnostic export, host product-fit) are replaced, not retained as evidence for the client.
-
-## Release integration
-
-- The tool is built from the exact accepted tag and installed under `bin/`.
-- A Tool implementation change changes the candidate SHA: the release branch must be re-frozen and the same-SHA L2 re-run before any tag.
-- The tool is part of V0.3.0.0's companion surface, but a Tool change never authorizes a release by itself.
-- The tool is **not one of the release-trains required-evidence cells**. Its own client core/UI tests and the installed-client smoke are companion evidence, not a substitute for the four-frontend SDK/deploy evidence.
+- 当前产品范围：[HyRemoteTool SDK 开发与诊断工作台 PRD](hyremote-tool-workbench-prd-2026-10-22.md)。
+- 当前版本与验收：[产品版本路线图](product-version-delivery-roadmap-2026-10-23.md)及 `.github/release/release-trains.json`。
+- H-T01=B 正式裁决：[Issue #594](https://github.com/skawu/HyRemote/issues/594)。

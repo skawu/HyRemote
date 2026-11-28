@@ -221,7 +221,7 @@ require_doc_token("docs/internal/product-version-delivery-roadmap-2026-10-23.md"
 require_doc_token("docs/versioning.md" "V0.3.4.0" "Chinese version assignment")
 require_doc_token("docs/en/versioning.md" "V0.3.4.0" "English version assignment")
 
-# #594 Owner 2026-10-26: a local developer must have the COMPLETE known
+# #594 Owner 2026-10-26: a local developer must have the COMPLETE in-scope SDK/Runtime
 # outcome-to-exact-planning-version ladder, not just the next unnamed Feature.
 # This validates planning traceability, NEVER machine activation or product PASS.
 set(full_roadmap_doc "docs/internal/product-version-delivery-roadmap-2026-10-23.md")
@@ -234,11 +234,8 @@ require_doc_token("${full_roadmap_doc}" "V0.4.0.0 继续保持"
 foreach(planned_version IN ITEMS
         V0.3.4.0 V0.3.5.0 V0.3.6.0 V0.3.7.0
         V0.4.0.0 V1.0.0.0
-        V1.0.1.0 V1.0.2.0 V1.0.3.0 V1.0.4.0
-        V1.0.5.0 V1.0.6.0 V1.0.7.0
-        V1.1.0.0 V1.1.1.0
-        V1.2.0.0 V1.2.1.0 V1.2.2.0 V1.2.3.0
-        V1.2.4.0 V1.2.5.0 V1.2.6.0 V1.2.7.0)
+        V1.0.1.0 V1.0.2.0 V1.0.3.0 V1.0.4.0 V1.0.5.0
+        V1.2.0.0 V1.2.1.0 V1.2.2.0 V1.2.4.0 V1.2.6.0 V1.2.7.0)
     require_doc_token("${full_roadmap_doc}" "**${planned_version}**"
                       "full known product version planning: ${planned_version}")
     require_doc_token("docs/versioning.md" "${planned_version}"
@@ -255,7 +252,7 @@ if(NOT planned_v03_feature_count EQUAL 4)
         "V0.3.4.0–V0.3.7.0 product Feature rows, found ${planned_v03_feature_count}")
 endif()
 foreach(planned_owner IN ITEMS 265 566 603 591 589 581 582 583 584 585 586 590
-                               592 605 587 588 593 204 171 190 170
+                               592 605 587 588 593 170
                                149 203 7 236 18 154 148 346 172 225 173 246 151 180)
     require_doc_token("${full_roadmap_doc}" "#${planned_owner}"
                       "known product deliverable Issue #${planned_owner} is absent from roadmap")
@@ -263,8 +260,12 @@ endforeach()
 
 # Product-first future work must be rooted in real users and distinguish current
 # field defects from conditional post-GA product capabilities.
-require_doc_token("${full_roadmap_doc}" "## 产品北极星"
-                  "product-centered user outcomes before release numbers")
+require_doc_token("${full_roadmap_doc}" "## 产品目标：提供可验证、可维护的 Qt 远程访问 SDK/Runtime"
+                  "open-source SDK/Runtime product goal before release numbers")
+require_doc_token("${full_roadmap_doc}" "### 主要使用者与用户结果"
+                  "identified SDK/Runtime users and their outcomes")
+require_doc_token("${full_roadmap_doc}" "| 使用者 | 主要任务 | 验收证据 |"
+                  "user-task-to-acceptance-evidence traceability")
 foreach(field_issue IN ITEMS 565 567 362)
     require_doc_token("${full_roadmap_doc}" "#${field_issue}"
                       "known current field-user problem #${field_issue}")
@@ -278,8 +279,8 @@ require_doc_token("${full_roadmap_doc}" "V1.2.7.0"
 # activation, task acceptance, and shipped-support evidence are separate facts.
 require_doc_token("${full_roadmap_doc}" "## 事实源与冲突处理（本地 Owner 必须遵守）"
                   "mandatory source-of-truth and conflict protocol")
-require_doc_token("${full_roadmap_doc}" "Issue #594 是 Owner 决策/变更台账"
-                  "#594 is a decision ledger, not a parallel version table")
+require_doc_token("${full_roadmap_doc}" "由 Owner 在 #594 记录日期、旧→新版本"
+                  "#594 records Owner decisions and version changes, not a parallel version table")
 require_doc_token("${full_roadmap_doc}" "只有相应审查 PR 合并后"
                   "new roadmap decisions take effect only after reviewed sync")
 require_doc_token("${full_roadmap_doc}" "PLANNING_RECONCILIATION_REQUIRED"

@@ -1,7 +1,7 @@
 # HyRemote 跨模块功能 RFC：水印、语言、持久化路径与 Docker
 
 - 2026-10-22；Product Owner 已明确**要求支持这三类能力**。本文定义约束和拆分，不声称已构建。
-- 主体：Shared Runtime/Host 负责水印及宿主配置；HyRemoteTool 负责自身界面语言、连接工作台和本地非秘密设置；用户 Qt 应用负责进程生命周期/部署选择；未来独立 Management Plane 仍未批准。
+- 主体：Shared Runtime/Host 负责水印及宿主配置；HyRemoteTool 负责自身界面语言、SDK 诊断工作台和本地非秘密设置；用户 Qt 应用负责进程生命周期/部署选择。当前 RFC 不定义远程修改宿主配置的接口。
 - 关联：[首批文字水印 #589](https://github.com/skawu/HyRemote/issues/589)、[后续 Logo #593](https://github.com/skawu/HyRemote/issues/593)、[Tool 语言 #590](https://github.com/skawu/HyRemote/issues/590)、[路径策略 #591](https://github.com/skawu/HyRemote/issues/591)、[Docker #592](https://github.com/skawu/HyRemote/issues/592)；产品方向 [#579](https://github.com/skawu/HyRemote/issues/579) / Tool PRD，Windows-first #563，PR CI #573。
 - 不自行占用新产品版本，也不追改 V0.3.0.0 历史；遵守四条接入方式共享一个 Runtime，旧产品行为兼容，实际未验证能力标未完成。
 
@@ -29,7 +29,7 @@
                                    local settings: language, saved endpoints
 ~~~
 
-**禁止**把 Tool 的本地连接列表设置路径当成远程宿主数据库路径，也禁止让普通 RFB 客户端直接编辑容器里的水印/密码/持久化配置。远程修改宿主参数是另一个带认证授权的管理面产品决策。
+**禁止**把 Tool 的本地连接列表设置路径当成远程宿主数据库路径，也禁止让普通 RFB 客户端直接编辑容器里的水印/密码/持久化配置。当前 RFB 连接不提供远程修改宿主配置的接口；宿主配置由本机应用和部署者按本地策略管理。
 
 ## 二、水印：首批文字，后续 Logo（Shared Runtime 出画面时生效）
 
@@ -119,7 +119,7 @@ Capture source frame (immutable)
 
 ### 4.3 关于未来密码
 
-现有 Runtime 条件式 SecurityProfile::Authenticated 使用独立 security descriptor + passwordFile，且传统 VNC 验证存在密码长度等限制，**流量仍未加密**；SecurityProfile::AuthenticatedEncrypted 尚未交付。后续真正的身份/密码管理（轮换、权限、审计）需要独立安全评审；建议利用只读 secrets mount/受保护文件引用，而非把密码塞进 config.json 或数据库明文。当前路径配置可先稳定，不以未来完整认证功能为必需依赖。
+现有 Runtime 条件式 SecurityProfile::Authenticated 使用独立 security descriptor + passwordFile，且传统 VNC 验证存在密码长度等限制，**流量仍未加密**；SecurityProfile::AuthenticatedEncrypted 尚未交付。当前 Runtime 仅按既有 security descriptor/passwordFile 读取认证材料；VNC Auth 仍不加密流量，AuthenticatedEncrypted 尚未交付。不要把密码写入普通配置、环境变量或日志。本 RFC 不定义身份或权限管理流程。
 
 ## 五、用户 Qt 应用 Docker 联合部署（不假装运行了实例）
 
@@ -152,7 +152,7 @@ host-project/
 2. **宿主配置底座 #591**：独立 shared Runtime、配置文件/数据目录/可选数据库/secret 引用。先 RFC、后 public APIs/Generic/QPA 统一入口和兼容/测试。
 3. **文字水印 #589**：按文本像素合成、Raw/TRLE/damage 与跨 Viewer 回归推进；真实可持久的 policy 集成依赖 #591 配置路径契约，不耦合 Tool 的 Viewer 界面。**Logo 水印 #593** 排在文字水印真实验收后，独立开发，不阻塞 #589。
 4. **Docker #592**：以 #591 可用为前提，提供经过真实 Qt 应用验证的镜像/compose/持久化与安全文档；#589 水印配置已稳定后增加包含水印的容器回归。
-5. **未来密码与加密**：需求与安全契约可并行评估，但不能以现有 VNC Auth 等价 TLS 或授权的正式完成状态；远端管理 API 仍独立立项。
+5. **现有安全边界**：VNC Auth 不等于 TLS/传输加密，AuthenticatedEncrypted 尚未交付；任何安全能力变化都必须以实际威胁模型、实现和资格证据为准。本 RFC 不定义远程身份或宿主配置管理接口。
 
 **版本、门禁、状态：** 无新增版本号、未自动修改 V0.3.3 机器 mandatory children；每一项均以单独 Ready PR、实际 Windows CI 和独立代码审查为合并条件。Tool S1 Windows 真实 Viewer 是独立的验收成果。水印和 Docker 路径的用户目标环境没有实测时必须保留缺失证据，不虚报通过。已公开 V0.3.0.0 事实不因本 RFC 改变。
 
