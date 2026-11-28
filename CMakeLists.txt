@@ -51,6 +51,19 @@ if(PROJECT_IS_TOP_LEVEL
     if(NOT TARGET Qt6::Core)
         find_package(Qt6 QUIET COMPONENTS Core)
     endif()
+    if(TARGET Qt6::Core AND NOT TARGET Qt6::QuickControls2)
+        # H-T01=B: the Qt6 Tool needs public QML modules for the default
+        # developer workbench. A missing module is an explicit configure
+        # failure, never a silent fallback to the Qt5 compatibility lane.
+        find_package(Qt6 QUIET COMPONENTS Network Gui Widgets Qml Quick QuickControls2)
+        if(NOT TARGET Qt6::Network OR NOT TARGET Qt6::Gui OR NOT TARGET Qt6::Widgets
+           OR NOT TARGET Qt6::Qml OR NOT TARGET Qt6::Quick OR NOT TARGET Qt6::QuickControls2)
+            message(FATAL_ERROR
+                "Qt 6.8 developer workbench requires Core/Network/Gui/Widgets/Qml/Quick/QuickControls2.\n"
+                "  CMAKE_PREFIX_PATH: '${CMAKE_PREFIX_PATH}'\n"
+                "Install the public Qt 6.8.3 modules or configure an explicit Qt 5.15 compatibility build.")
+        endif()
+    endif()
     if(NOT TARGET Qt6::Core)
         # Qt 5.15 LTS is the legacy compatibility line. Keep the public and shared-runtime
         # sources in one tree; the Qt6 target names below are compatibility aliases over the
@@ -87,6 +100,10 @@ if(PROJECT_IS_TOP_LEVEL
                     "Qt 5.15 Quick is experimental; enable explicitly with HYREMOTE_QT5_ENABLE_QUICK" FORCE)
             endif()
         endif()
+    endif()
+    if(TARGET Qt6::Core AND NOT DEFINED HYREMOTE_QT_MAJOR)
+        set(HYREMOTE_QT_MAJOR "${Qt6_VERSION_MAJOR}")
+        set(HYREMOTE_QT_VERSION "${Qt6_VERSION}")
     endif()
     if(NOT TARGET Qt6::Core)
         message(FATAL_ERROR

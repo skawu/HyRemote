@@ -46,6 +46,37 @@ target_link_libraries(hyremote-remote-support-showcase
 
 install(TARGETS hyremote-remote-support-showcase RUNTIME DESTINATION bin)
 
+# H-T01=B: the developer workbench is a Qt 6.8-only mode of the SAME tool
+# executable. Qt 5.15 keeps the existing Widgets-only compatibility lane and
+# never sees these sources, imports, compile definition or test.
+if(HYREMOTE_QT_MAJOR STREQUAL "6"
+   AND COMMAND qt_add_qml_module
+   AND TARGET Qt6::Qml
+   AND TARGET Qt6::Quick
+   AND TARGET Qt6::QuickControls2)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS QuickControls2)
+    qt_policy(SET QTP0001 NEW)
+    target_sources(hyremote-remote-support-showcase PRIVATE
+        hy_sdk_inspector.hpp
+        hy_sdk_inspector.cpp
+        hy_tool_workbench.hpp
+        hy_tool_workbench.cpp
+    )
+    target_compile_definitions(hyremote-remote-support-showcase PRIVATE HYREMOTE_TOOL_WORKBENCH=1)
+    target_link_libraries(hyremote-remote-support-showcase PRIVATE
+        Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+    qt_add_qml_module(hyremote-remote-support-showcase
+        URI HyRemoteToolWorkbench
+        VERSION 1.0
+        QML_FILES HyToolWorkbench.qml
+    )
+    if(NOT COMMAND qt_add_qml_module)
+        message(FATAL_ERROR "HyRemoteTool developer workbench requires Qt 6 QML module support")
+    endif()
+elseif(HYREMOTE_QT_MAJOR STREQUAL "6")
+    message(FATAL_ERROR "HyRemoteTool developer workbench requires Qt 6.8 Qml, Quick and QuickControls2")
+endif()
+
 # The tool needs Qt itself, not the HyRemote Runtime payload. Use Qt's own
 # deployment script when the Qt major provides it; the Qt 5.15 build is a
 # build-only compatibility lane until its packaging closure is qualified.
@@ -263,5 +294,21 @@ if(HYREMOTE_BUILD_TESTS)
     )
     if(COMMAND hyremote_label_test_family)
         hyremote_label_test_family("e2e;tool;fast" hyremote-tool-client-ui-cli-en)
+    endif()
+
+    if(HYREMOTE_QT_MAJOR STREQUAL "6" AND TARGET Qt6::QuickControls2)
+        add_test(
+            NAME hyremote-tool-developer-workbench
+            COMMAND $<TARGET_FILE:hyremote-remote-support-showcase>
+                    --verify-workbench --language en
+        )
+        set_tests_properties(hyremote-tool-developer-workbench PROPERTIES
+            TIMEOUT 30
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;HYREMOTE_TOOL_WORKBENCH_FIXTURES=${CMAKE_CURRENT_BINARY_DIR}/workbench-fixtures"
+            PASS_REGULAR_EXPRESSION "TOOL_DEVELOPER_WORKBENCH_PASS root=1 pages=4 layouts=5"
+        )
+        if(COMMAND hyremote_label_test_family)
+            hyremote_label_test_family("e2e;tool;fast" hyremote-tool-developer-workbench)
+        endif()
     endif()
 endif()
