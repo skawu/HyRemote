@@ -83,18 +83,17 @@ Rules:
 
 ## Product-phase historical snapshot (2026-10-26; not the current work queue)
 
-**As of 2026-11-02:** V0.3.4.0 is the latest published release;
-`release/v0.3.5.0@92c1ab1a354a3e8c9ad93311e308d039da59317f` is a frozen,
-**unpublished** RC2 awaiting exact-SHA L2/local Viewer evidence via #95/#768.
-The V0.3.4.0 task charter and version-specific execution order below describe
-their historical 2026-10-26 development phase, and must not be interpreted as
-new Local Owner assignments. For the live priority use the current release train,
-#95, the current #768 dispatch (interactive continuation) or the reviewed `.github/local-owner/orders/` inbox (machine worker), not prior task prose.
+**当前产品与发行状态（2026-11-28；优先于下方历史记录）：**
 
-**V0.3.0.0 Product Preview** was released on 2026-10-19. **V0.3.3.0 was validly reissued on 2026-10-24** following the documented retraction/remediation incident; the earlier retracted candidate remains historical audit evidence, not the current release. #144/#175 are historical delivered work; #370 remains long-lived performance governance. **Current development Feature = V0.3.4.0**, Windows Qt5.15.2/Qt6.8.3 exact qualified SDK/Runtime product cells (#603/#265/#566), with machine train registered by merged PR #655; a registered train is not release approval. See the [single current roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), [local Owner task charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md), and `.github/release/release-trains.json` for separate planning and activation authority. V0.3.1.0/V0.3.2.0 stay retired; V0.4 RC is inactive and qualification-only; V1 GA is not released.
+- 最新正式发行：`V0.3.5.1`，正式标签 `v0.3.5.1` 指向 `main@3cbc1cdcf6b6d2f9156ab139d7f88ed0225529de`，发行形式为源码发行。
+- `V0.3.5.2` 是计划中的客户维护目标，尚未登记为可选 machine train、未激活；#567/#790 仍开放，不得宣称客户现场问题已解决。
+- 当前 `V0.3.6.0` train 已登记，按 Human H-T01=B 定义为 SDK 研发与诊断工作台。PR #1101 已合并至 `develop@2a40b48c920a7ddfb391b22628d63b4e708e4af2`；#581 实现任务已关闭，#586 新范围安装验收仍开放。
+- 旧 V0.3.6.0 冻结候选 PR #1076 仍为 Draft/HOLD，源码不包含 PR #1101 新工作台；未经新候选 lineage、同 SHA 验收和完整发行门禁，不得合并 main、打 tag 或发布。
+- HyRemote 是独立开源 SDK/Runtime 产品；HyRemoteView 是独立客户端仓库。HyRemote 仓库不得加入高级功能或商业功能描述/实现；View 的功能、G3/G4/Gate-D/Gate-I 状态不得混作 HyRemote 发行事实。
+- Windows x86_64 是当前必须完成真实资格验证的平台；Qt 6.8.3 是四种接入方式的参考资格单元，Qt 5.15.2 仅保留 C++/Widgets Limited 路径。Linux、ARM64、嵌入式 Linux、Wayland/EGLFS 仍为用户验证待完成，不得推导为 Supported。Qt 6.5/6.12 在 V1.0 GA 后另行准入。
+- 当前任务、版本激活、mandatory children 与候选选择以本文件引用的[唯一产品路线图](docs/internal/product-version-delivery-roadmap-2026-10-23.md)、#594 和 `.github/release/release-trains.json` 为准；历史 charter、旧 Issue 正文和旧 PR 描述不能覆盖当前事实。
 
-**Historical V0.3.4.0 Local Owner charter (not today's queue):** use the [2026-10-26 V0.3.4.0 product charter](docs/internal/v0.3.4.0-windows-qt-lts-development-charter.md) and [merged canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md) with #603; `docs/internal/owner-execution-brief-2026-10-21.md` and the earlier V0.3.3 retraction/remediation notes are retained as history, not current work queues. Do not let historical text override the actual reissued V0.3.3 Release, product roadmap, machine manifest, Issue, or exact-SHA verification.
-
+**下方 2026-10-26 的 V0.3.4.0 charter 与执行顺序仅保留为历史审计记录，不是当前任务队列。**
 2026-10-26 V0.3.4.0 execution order (historical; **do not execute without a new reviewed order**):
 
 ```text
@@ -107,7 +106,7 @@ verify latest develop + merged roadmap + machine train + Issue ownership + exact
  -> promote a qualified V0.4 RC to V1.0 GA through the release authority; post-GA Qt6.5/Qt6.12 are planned under #605
 ```
 
-**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; **Qt5.15 and Qt6.8** exact applicable cells are the only first-GA LTS families. Qt6.5/Qt6.12 must wait until **after V1 GA #605**.  Current exact Feature = V0.3.4.0; subsequent known user outcomes have **PLANNED** numbers in the [single canonical roadmap](docs/internal/product-version-delivery-roadmap-2026-10-23.md), but are not automatically activated or releasable. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
+**Latest Owner decision #563 (supersedes #558's platform-validation gate):** Windows x86_64 is the *only mandatory physical/runtime qualification platform* for V0.3.3/V0.4/V1. Linux desktop, Wayland, ARM64/EGLFS and embedded are Qt-based user/community-validation paths; no absent Linux runner, maintained GUI viewer, cross-toolchain or board may block Windows development, candidate freeze or release. Never label an unverified cell Supported. Handle reproducible user-reported port defects through Issue -> bounded fix/maintenance/hotfix with truthful exact-cell evidence and notes. Keep Windows #144/#175/#370 Viewer/SLO and same-SHA L2 hard gates; **Qt5.15 and Qt6.8** exact applicable cells are the only first-GA LTS families. Qt6.5/Qt6.12 must wait until **after V1 GA #605**.  The exact active Feature, planned maintenance targets and activation status must always be read from the canonical roadmap and `.github/release/release-trains.json`; never hardcode an old current-version claim in this execution entry. See [platform validation policy](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
 
 Qt 6.5 LTS and Qt 6.12 LTS are both **post-V1.0.0.0 GA** support projects #605 (not pre-GA qualification gates); optional historical preflight is not a support claim. Changing GA scope, security promises or the machine release map requires an explicit Product Owner decision and reviewed authority updates.
 
@@ -260,3 +259,11 @@ Cloud Owner maintains the task/roadmap and execution rules; Local Owner implemen
 Prefer the smallest architecture-compatible solution. A bug in one Qt control must not create control-specific product semantics. A platform or performance opportunity must not create a second Runtime. Optional future capabilities must not leak into current release acceptance.
 
 If a change would alter product scope, GA support claims, the one-Runtime architecture, major frontend hierarchy, permissions/system-daemon behavior or desktop-wide/native input semantics, stop at the Product Owner decision boundary instead of silently expanding scope.
+
+## 中文优先与 Git 元数据规范
+
+- 面向 Human、用户和贡献者的 README、Issue/PR 标题与正文、模板、贡献说明和新建技术文档默认中文优先；确有国际协作需要时提供同步英文镜像。
+- Git 提交主题使用 `<type>: <中文摘要>`，提交正文优先中文；例如 `feat: 增加 Qt Quick 目标适配`、`fix: 修复断连后的旧帧残留`、`docs: 更新中文接入说明`。合并标题也使用中文。
+- 分支名是 Git/CI 机器标识，按 Git Flow 使用 ASCII 小写 kebab-case：`feature/<topic>`、`hotfix/<topic>`、`release/vX.Y.Z.W`、`backmerge/vX.Y.Z.W`；不得使用中文、空格或随意增加分支族。语义分支的唯一主责 Issue 按门禁写入 PR 正文的 `Issue: #N` 行。
+- API、C++/QML/CMake 标识符、命令、路径、协议字段、CI 状态值和门禁解析 token 保留正式英文拼写；中文优先不意味着重命名机器接口。
+- 仅适用于新建和实质修改内容；不批量改写历史 Issue/PR、源码注释、已发布发行说明或受门禁保护的历史 token。

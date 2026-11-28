@@ -4,6 +4,8 @@
 
 > Language / 语言: **English** | [中文](../compatibility.md)
 
+> **Current release status (2026-11-28):** The latest published release is `V0.3.5.1` (source distribution). This maintenance release declares no new Qt/platform/integration qualification cells; the qualified cells below remain the evidence-backed baseline. `V0.3.6.0` is an in-development workbench train, not a published release or a new platform-support claim. See the [V0.3.5.1 release notes](../releases/v0.3.5.1.md) for current maintenance evidence.
+
 HyRemote states compatibility only for environments with an explicit product status. Similar Qt APIs, a nearby patch version, another operating system, or a comparable graphics backend do not create a support claim.
 
 ## Status definitions
@@ -40,9 +42,9 @@ The V0.3.0.0 publication historically named **Qt 6.8.3 on Windows and Linux x86_
 
 The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified. Its 5.15.2 row is the original V0.3.0.0-era legacy record; the current state of every Qt 5 route was decided by Owner D2 (2026-10-27) and is stated in the current development-line table below.
 
-## Current development line: V0.3.4.0 exact cells (V0.3.4.0 released 2026-10-29)
+## V0.3.4.0 qualified support cells (no new cells declared by V0.3.5.1)
 
-V0.3.4.0 was **released on 2026-10-29**: annotated tag `v0.3.4.0` points at `main` `27bf97d`, the candidate and acceptance SHA is `c57dae0`, and both the same-SHA L2 (run `40812083626`) and the RealVNC Viewer 7.15.1 D05 physical run passed. A cell is the full combination of exact Qt patch, compiler/ABI, OS/architecture, integration route and UI target. One passing cell never implies another cell of the same Qt family; the next version, V0.3.5.0, is not released.
+The table below records the exact Qt/platform/integration qualification evidence obtained on the V0.3.4.0 candidate `c57dae0`; it remains the historical baseline for the currently declared support cells. V0.3.5.1 carries these existing cells forward but its maintenance notes do not declare additional Qt/platform qualification. The V0.3.4.0 D05 physical evidence must not be described as rerun on V0.3.5.1. Current maintenance evidence is in the [V0.3.5.1 release notes](../releases/v0.3.5.1.md). A cell is the full combination of exact Qt patch, compiler/ABI, OS/architecture, integration route and UI target; one passing cell never implies another combination.
 
 | Exact Qt | Compiler / ABI | Platform | Integration | UI target | Status | Evidence and boundary |
 | --- | --- | --- | --- | --- | --- | --- |

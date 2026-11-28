@@ -1,0 +1,249 @@
+<p align="center">
+  <img src="logo/huayan-software-horizontal.png" alt="HyRemote by Huayan Software" width="420">
+</p>
+
+<h1 align="center">HyRemote</h1>
+
+<p align="center"><a href="README.md">简体中文</a> ｜ <strong>English</strong></p>
+
+<p align="center"><strong>Qt Remote Access Framework</strong><br>
+Add remote viewing and optional remote control to existing Qt Widgets and Qt Quick applications without rebuilding the application around a remote-desktop stack.</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/product-V0.3%20Product%20Preview-orange.svg" alt="Product: V0.3 Product Preview">
+  <img src="https://img.shields.io/badge/qualified-Windows%20x86__64-lightgrey.svg" alt="Validated platform: Windows x86_64">
+  <img src="https://img.shields.io/badge/Qt-6.8.3%20reference-41CD52.svg" alt="Qt 6.8.3 reference">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-blue.svg" alt="C++17">
+</p>
+
+**Platform validation policy (2026-10-22):** Windows x86_64 is the required, actually qualified development and release platform. Linux desktop, ARM64/embedded Linux and Wayland/EGLFS are Qt-based **user-validation pending** paths; lacking those target devices or tests does **not** block new Feature/RC/GA releases, and Qt portability alone does not make them Supported. Reproducible user reports are handled through Issues and reviewed maintenance/hotfixes. The historical v0.3.0.0 release notes are unchanged. See [compatibility](docs/compatibility.md) and the [Owner platform decision](docs/internal/windows-first-platform-validation-policy-2026-10-22.md).
+
+## Start here
+
+Three steps, in this order. Nothing else has to be read first.
+
+1. **Get HyRemote** - download the release artifact, or build it: `build.cmd install`
+   ([install guide](docs/guide/install.md))
+2. **Integrate it into your project** - one canonical walkthrough from acquisition to a running application:
+   **[Integrate HyRemote into your Qt project](docs/guide/integrate-your-project.md)**
+   ([中文](docs/guide/integrate-your-project.md) ｜ [English](docs/en/guide/integrate-your-project.md))
+3. **Connect a viewer** - host LAN endpoint, the real defaults, reconnect and stop:
+   [viewer connection](docs/guide/viewer-connection.md)
+
+Real open-source integration studies (one Widgets/C++ application, one Qt Quick/QML application) live in
+[`examples/real-world/`](examples/real-world/).
+
+Architecture, input model, release authority and repository layout are **reference material**, not onboarding.
+
+HyRemote provides one shared remote-access Runtime and four peer ways to enter it. Applications choose the integration style that best fits their ownership model; Widgets and Qt Quick are Runtime target types, not separate products.
+
+| Integration | Application change | Status | Typical use |
+| --- | --- | --- | --- |
+| **C++ API** | Link `HyRemote::RemoteAccess` | peer route | Applications that want explicit lifecycle and policy control |
+| **Generic Plugin** | No HyRemote application linkage | peer route | Existing Qt applications that need a zero-code remote-access path while keeping their native Qt platform |
+| **QML API** | `import HyRemote` | peer route | Qt Quick applications that prefer declarative configuration |
+| **QPA** | Launch with `-platform hyremote` | peer route (exact Qt private ABI) | Specialized zero-code integration that requires an exact qualified Qt private ABI |
+
+The four routes are **peers**: none is primary, and every one follows the same
+[acquisition -> integrate -> deploy -> run -> connect](docs/guide/integrate-your-project.md) flow.
+
+All four frontends converge on the same Runtime/Core implementation. There is no second Session, capture, transport, or input stack hidden behind a different integration mode.
+
+## Quick start — C++ API
+
+```cmake
+find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets)
+find_package(HyRemote CONFIG REQUIRED)
+
+target_link_libraries(MyApp PRIVATE
+    Qt6::Widgets
+    HyRemote::RemoteAccess
+)
+```
+
+```cpp
+#include <HyRemote/RemoteAccess.h>
+
+HyRemote::RemoteAccess remote(&window);
+remote.start();
+```
+
+Construction is inert. The default listener is `0.0.0.0:5921` (the host's IPv4 interfaces, not just loopback), and remote input is disabled by default.
+
+Deploy the application and the HyRemote Runtime through the package helper:
+
+```cmake
+install(TARGETS MyApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyApp)
+```
+
+The same public facade accepts supported `QWidget` and `QQuickWindow` targets.
+
+## Quick start — Generic Plugin
+
+The Generic Plugin keeps the application Qt-only and preserves the application's normal platform plugin (`qwindows`, `qxcb`, and so on).
+
+The application itself does not link a HyRemote target:
+
+```cmake
+target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
+
+find_package(HyRemote CONFIG REQUIRED)
+install(TARGETS MyExistingApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET MyExistingApp GENERIC)
+```
+
+Activate the plugin with Qt's generic-plugin mechanism, for example:
+
+```text
+MyExistingApp -plugin hyremote
+```
+
+or through `QT_QPA_GENERIC_PLUGINS=hyremote` where environment-based activation is more convenient.
+
+The Generic Plugin is not a QPA replacement. The native Qt platform remains authoritative for the local window, display, input, and GPU integration.
+
+See [`docs/getting-started/generic.md`](docs/getting-started/generic.md) for configuration options.
+
+## QML API
+
+```qml
+import HyRemote
+
+RemoteAccess {
+    target: mainWindow
+    enabled: true
+}
+```
+
+The QML type is a thin frontend over the same Runtime used by the C++ API.
+
+```cmake
+hyremote_deploy(TARGET MyQmlApp QML)
+```
+
+The QML route is supported as a peer of the other three: the walkthrough covers acquisition, deployment and viewer connection for it like any other route.
+
+## QPA
+
+```cmake
+find_package(HyRemote CONFIG REQUIRED)
+install(TARGETS ExistingQtApp RUNTIME DESTINATION bin)
+hyremote_deploy(TARGET ExistingQtApp QPA)
+```
+
+```text
+ExistingQtApp -platform hyremote
+```
+
+The QPA frontend uses a Factory Trampoline and delegates to the qualified native Qt platform implementation rather than replacing it with an offscreen/qvnc-style backend. QPA uses Qt private ABI and is therefore qualified per exact Qt patch; the current reference is Qt 6.8.3.
+
+QPA qualification is per exact Qt patch: the Qt used for deployment must match the application's Qt exactly (reference: Qt 6.8.3).
+
+## Product architecture
+
+```text
+C++ API ---------\
+QML API ----------\
+Generic Plugin ----> Shared Runtime -> Core -> RFB transport -> Viewer
+QPA --------------/        |            ^
+                           |            |
+                    Widgets / Quick   normalized input
+                    target adapters
+```
+
+The canonical source ownership mirrors this product model:
+
+```text
+src/
+├── core/
+├── runtime/
+└── integrations/
+    ├── cpp/
+    ├── qml/
+    ├── generic/
+    └── qpa/
+```
+
+`HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` is the normal shared Runtime artifact. Core remains internal; the QML, Generic, and QPA pieces are integration payloads over that Runtime.
+
+## Build
+
+The repository's normal developer build is driven by `build.cmd` and `build.yml`. `build.cmd` is the single build authority: `build.cmd build` configures if needed and compiles, `build.cmd install` materializes the product/SDK tree into `build/install/`, `build.cmd test` builds and runs the tests, `build.cmd clean` removes the tree and `build.cmd rebuild` is clean plus build. Everything under `build/` is developer intermediate output; everything under `build/install/` is what users and SDK consumers take. The checked-in profile enables all four integrations for development; integrations are independent selections and none implies another.
+
+```text
+PowerShell:  .\build.cmd build
+POSIX:       sh ./build.cmd build
+PowerShell:  .\build.cmd build --show-config
+POSIX:       sh ./build.cmd build --show-config
+PowerShell:  .\build.cmd test
+POSIX:       sh ./build.cmd test
+```
+
+`--integrations`, `--qt-prefix` and `--toolchain` are temporary command-line overrides. Persistent platform configuration belongs in `build.yml`; for a second target, copy it to a profile and use one argument:
+
+```text
+PowerShell:  .\build.cmd build --config=build.aarch64.yml
+POSIX:       sh ./build.cmd build --config=build.aarch64.yml
+```
+
+Qt **6.8.3** is the reference version. A cross build must use a Qt **6.8.3 built for the target architecture**, not the host Qt. ARM64/embedded Linux remains a build-only cross target until target-board runtime evidence exists.
+
+For SDK consumption, use `find_package(HyRemote CONFIG REQUIRED)` and `hyremote_deploy()` instead of manually copying internal libraries or plugins.
+
+## Security model
+
+The released V0.2.0.0 is a **user-first LAN trial with a truthful security boundary**:
+
+- default bind: `0.0.0.0:5921` (reachable on the host's IPv4 interfaces), or one exact local IPv4, or a named interface;
+- remote input: off by default;
+- `Insecure` is unauthenticated and unencrypted: the listener is for a **trusted LAN only** and is **not Internet-safe**;
+- `Authenticated` is conditional: it requires a transport-security-enabled HyRemote build plus a valid security descriptor, and currently provides VNC authentication without stream encryption;
+- the default V0.1 build/profile does not imply authenticated transport is present;
+- `AuthenticatedEncrypted` is not implemented and always fails closed before any listener is opened, without fallback to a weaker profile.
+
+Do not expose the current product directly to the public Internet.
+
+Encrypted transport, certificate policy, authenticated sessions and production network policy belong to a later release.
+
+See [`docs/security.md`](docs/security.md).
+
+## Release and support scope
+
+The latest published release is [`V0.3.5.1`](docs/releases/v0.3.5.1.md), distributed as source. Its release notes do not promise binary attachments. Changes on `develop` are not released product until the protected release process produces an accepted tag.
+
+Use the [compatibility matrix](docs/compatibility.md) for exact support cells. In brief, Windows x86_64 / Qt 6.8.3 is the current primary qualification environment for the four integration routes; Qt 5.15.2 remains a Limited C++/Widgets path. Linux, ARM64, embedded Linux, Wayland and EGLFS remain user-validation pending and are not Supported merely because Qt is portable.
+
+## Documentation
+
+Repository paths are architecture boundaries rather than arbitrary folders: the canonical source layout and module
+ownership are defined by [`docs/internal/repository-layout.md`](docs/internal/repository-layout.md).
+
+User guides:
+
+- [`docs/guide/install.md`](docs/guide/install.md) - install and reference setup;
+- [`docs/guide/deployment.md`](docs/guide/deployment.md) - deployment forms, including `hyremote_deploy(TARGET MyApp GENERIC)`;
+- [`docs/guide/viewer-connection.md`](docs/guide/viewer-connection.md) - connecting a viewer to a running application;
+- [`docs/guide/troubleshooting.md`](docs/guide/troubleshooting.md) - diagnosing a deployment or connection problem;
+- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) - Embedded C++ (peer route);
+- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) - Generic Plugin (peer route);
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) - Declarative QML (peer route);
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) - Transparent QPA (peer route).
+
+Start with [`docs/README.md`](docs/README.md).
+
+Peer product guides:
+
+- [`docs/getting-started/cpp.md`](docs/getting-started/cpp.md) — C++ API
+- [`docs/getting-started/generic.md`](docs/getting-started/generic.md) — Generic Plugin
+- [`docs/getting-started/qml.md`](docs/getting-started/qml.md) — QML API
+- [`docs/getting-started/qpa-proxy.md`](docs/getting-started/qpa-proxy.md) — QPA
+- [`docs/guide/deployment.md`](docs/guide/deployment.md) — packaging and deployment
+- [`docs/security.md`](docs/security.md) — security behavior and limitations
+- [`docs/compatibility.md`](docs/compatibility.md) — compatibility matrix
+- [`docs/known-limitations.md`](docs/known-limitations.md) — known product limitations
+
+## License
+
+HyRemote is licensed under the **Apache License 2.0**. See [`LICENSE`](LICENSE) and [`NOTICE.md`](NOTICE.md).

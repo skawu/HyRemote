@@ -1,6 +1,19 @@
-# Contributing to HyRemote
+# HyRemote 贡献指南
 
-HyRemote is in an early product-development phase. Contributions are welcome, but changes must preserve the project's portability, product integration modes, and separation of concerns.
+> **中文优先。** 面向用户和贡献者的说明默认使用简体中文；API、代码标识符、命令、协议字段和门禁 token 保留正式英文拼写。英文镜像只在确有协作需要时同步维护。
+
+HyRemote 欢迎符合项目边界的贡献。所有变更必须保持跨平台设计、四种并列接入方式和模块职责分离。
+
+## 协作速查
+
+- 先使用 Issue 描述用户问题、范围边界和可观察验收标准；一个 PR 只关联一个同仓库主责 Issue。
+- 普通开发分支使用 `feature/<lowercase-kebab-case>`，缺陷修复使用 `hotfix/<lowercase-kebab-case>`；发行和回合分支使用 `release/vX.Y.Z.W`、`backmerge/vX.Y.Z.W`。分支名保持 ASCII，遵守 Git Flow；不要使用中文分支名或自行发明分支族。
+- PR 正文必须包含且只包含一行 `Issue: #N` 作为主责关联；Issue/PR 标题、说明、验收与回报优先中文。
+- 提交主题使用 `<type>: <中文摘要>`，正文优先中文；保留 `feat`、`fix`、`perf`、`refactor`、`test`、`docs`、`build`、`ci`、`chore` 等机器可识别类型前缀。
+- `README.md` 是中文主入口；英文说明放在 `README.en.md`。代码、API、命令和门禁 token 不翻译、不重命名。
+- 不批量改写历史 Issue/PR、已发布发行说明或源码注释；只在新建或实质修改时执行中文优先规则。
+
+---
 
 ## Before coding
 
@@ -38,11 +51,11 @@ Branches are temporary work cursors. Follow [`docs/internal/branch-lifecycle.md`
 
 ## Product milestones and technical WBS
 
-HyRemote product milestones are defined by user-facing capability and platform support, not by internal implementation stages. See [`docs/versioning.md`](docs/versioning.md).
+HyRemote 产品版本由用户可见结果和明确支持范围决定，不由内部实现阶段决定。版本语义见 [`docs/versioning.md`](docs/versioning.md)，当前计划与激活状态以唯一[产品路线图](docs/internal/product-version-delivery-roadmap-2026-10-23.md)和 `.github/release/release-trains.json` 为准。
 
-The current product phase is **V0.3-family product-breadth convergence**. `V0.3.0.0 Product Preview` was released on 2026-10-19; #264 (four-route SDK/deploy), #240 (task-oriented self-service learning/docs) and #335 (minimum self-service diagnostics) are released history, not the active task list. **V0.3.3.0** is the activated next Feature for practical RFB delivery (#144) and maintained GUI-viewer interoperability (#175); see `.github/release/release-trains.json` and `docs/internal/owner-execution-brief-2026-10-21.md`. The remaining #343 Qt/platform/RFB/performance baseline converges across coherent V0.3.x outcomes before V0.4 qualification-only RC entry.
+当前最新正式发行是 **V0.3.5.1**（源码发行）。V0.3.5.2 是尚未激活的客户维护计划；V0.3.6.0 是已登记的开发诊断工作台 Feature，仍须完成 #586 新范围验收和发行门禁。`develop` 上存在实现不代表已经发布；不得把 PLANNED 版次写成当前正式版本。
 
-Core, capture, transport, RemoteFrame, DMA-BUF, hardware encoding, CI, security, and similar engineering work are WBS/tasks under the product milestone they enable. No exact V0.3.x number being preassigned makes a #343 hard requirement optional.
+Core、采集、传输、RemoteFrame、DMA-BUF、硬件编码、CI 和安全工作都应归属其实际支持的产品版本/WBS，不得脱离用户结果单独创建平行产品路线。
 
 ## Core boundaries
 
@@ -132,58 +145,37 @@ A feature or matrix cell is considered **supported** only when the current produ
 
 Do not infer a Qt/OS/CPU/QPA/graphics cell from another platform's result. QPA private-ABI compatibility is exact-cell truth, separate from public-Qt family claims.
 
-## Documentation and comment language
+## 文档、注释与提交语言
 
-Documentation is organised by **reader intent**, not by development stage, and it is bilingual. The
-user-facing zone is Chinese-primary; the release/internal zone stays English because the release-readiness
-documentation gate pins exact tokens in those files (translate them only together with the gate).
+**中文优先，机器接口保持稳定。**
 
-| Zone | Paths | Language | Content rule |
-| --- | --- | --- | --- |
-| User guide | `docs/guide/**` | Chinese primary + `docs/en/guide/**` mirror | Final shape only: install, integrate, deploy, troubleshoot |
-| Reference | the product final-state contracts at the top level of `docs/` | Chinese primary, English mirror beside them under `docs/en/` | Product final-state contracts (architecture, capture/input, API stability, compatibility, security, versioning) |
-| Internal / release | `docs/internal/**`, `docs/adr/`, `docs/releases/`, `docs/proposals/`, `docs/acceptance/**` | English | Acceptance runbooks, repository administration, layout authority, milestone records, research/evaluation records, recorded acceptance evidence |
+- 根目录 `README.md`、Issue/PR 模板、贡献说明和用户指南以中文为主；英文镜像使用 `README.en.md` 或 `docs/en/` 对应路径，并与中文主文档在同一变更中同步。
+- 新建或实质修改的产品参考文档、内部说明、ADR 和研发记录优先使用中文解释。历史英文文档不要求批量翻译；需要修改时只翻译本次涉及的说明，不改变既有结论。
+- 发行门禁、脚本或自动化读取的固定字段、状态值、路径、文件名和 token 保留英文原文。若确需调整，必须在同一受审变更中同步修改门禁并验证，不得只翻译文档造成门禁失效。
+- 新增或实质修改的源码注释默认使用中文；已有注释不做批量迁移。公开 API 文档或跨语言约定确有必要时可保留英文，避免无意义的中英重复。
+- C++ 类型、函数、命名空间、QML 属性、CMake target、日志 token、协议字段和命令行参数沿用正式标识符；语言偏好不构成重命名理由。
 
-Rules for the user-facing zones:
+## Git 提交主题
 
-- **Bilingual pairs**: the Chinese primary document lives at `docs/<path>`; the English mirror lives at
-  `docs/en/<path>`. A document that enters `guide/` must have its mirror at the same relative
-  path, carries a one-line language switch at the top, and changes in both languages in the same change.
-  Legacy documents that have not moved into those zones yet are not required to be mirrored while the
-  migration is in progress.
-- **One document per intent**: merge by what the reader wants to do. A single detailed document beats several
-  that each cover a fragment; repository documents are not a place to record the path that produced them.
-- **No process content**: issue numbers and tracking, acceptance scheduling/status, milestone chronicles,
-  investigation logs and one-off checklists do not belong to the user-facing zones. Keep them in the internal
-  zone, or as an evaluation record under `docs/internal/**` where it actually belongs.
-- **Moves update references**: when a document moves, update every reference in the repository in the same
-  change. Do not leave forwarding copies - with one deliberate exception: a path that a release-readiness gate
-  still lists may keep a short pointer file until the gate's path list is updated. Such pointers carry no
-  documentation content, and removing them is a maintainer change rather than an authoring one.
+提交主题采用 `<type>: <中文摘要>`，必要时正文补充中文背景、影响和验证结果。类型前缀保持稳定，便于工具检索：
 
-Source comments are **not** under a mandatory bilingual policy:
+- `feat: 增加 QWidget 目标适配`
+- `fix: 修复断连后的旧帧残留`
+- `perf: 降低空闲采集开销`
+- `refactor: 收敛会话生命周期`
+- `test: 补充 QPA 负例`
+- `docs: 更新中文接入说明`
+- `build: 修正 Qt6 QML 部署`
+- `ci: 调整 Git Flow 门禁`
 
-- keep existing source comments as they are - there is no bulk comment-only migration across public headers,
-  internal code or tests;
-- new or substantially edited comments prioritize clarity and consistency with the surrounding file;
-- bilingual comments are allowed where they materially help maintainers, for example:
+禁止用纯英文长句替代中文摘要；不得为了中文化修改机器识别的类型前缀、源码标识符或门禁 token。
 
-```cpp
-// 采集回调运行在 GUI 线程上，不得在此阻塞 —— The capture callback runs on the GUI thread; never block here.
-void onCapturedFrame(const RemoteFrame &frame);
-```
+## Issue、PR 与分支约定
 
-- keep identifiers, log tokens, CMake target names and gate-checked strings in their existing form; a language
-  preference never renames a symbol.
-
-## Commit style
-
-Use concise conventional-style subjects where practical, for example:
-
-- `feat: add QWidget target adapter`
-- `fix: avoid blocking GL readback on render thread`
-- `docs: record capture backend decision`
-- `test: add Quick3D compatibility case`
+- 新 Issue/PR 标题和正文优先中文，结构化模板负责收集版本、SHA、范围、验收与验证信息。
+- 分支名遵守 Git Flow，使用 ASCII 小写 kebab-case：`feature/<topic>`、`hotfix/<topic>`、`release/vX.Y.Z.W`、`backmerge/vX.Y.Z.W`。分支名属于机器标识，不使用中文、空格或随意增加前缀。
+- 普通 feature/hotfix PR 正文必须有且仅有一行 `Issue: #N`，链接一个同仓库主责 Issue；历史编号分支和受保护发行准备例外按现有门禁兼容，不批量重命名。
+- 历史 Issue/PR 不批量翻译或改名；从新建内容开始执行中文优先规则。
 
 ## License and contributions
 

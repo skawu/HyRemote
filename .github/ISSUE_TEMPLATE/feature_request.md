@@ -1,29 +1,30 @@
 ---
-name: Feature or task request
-about: A bounded product or engineering change with observable acceptance criteria
+name: 功能或研发任务
+about: 提出具有明确用户结果、范围边界和可观察验收标准的工作
 labels: enhancement
 ---
 
-## Goal
+## 用户目标
 
-## Product context
+## 产品背景
 
-| Item | Value |
-|---|---|
-| Milestone | `V0.0.1.0` / `V0.0.2.0` / `V0.0.3.0` / `V1.0.0.0` |
-| Integration mode(s) | Embedded C++ / Declarative QML / Transparent QPA |
-| Layer(s) | `src/core` / `src/cpp` / `src/qml` / `src/qpa` / packaging / docs / CI |
+| 项目 | 内容 |
+| --- | --- |
+| 目标版本 | 引用当前路线图和已登记版本；规划版次不代表已激活或可发布 |
+| 接入方式 | C++ / QML / Generic / QPA |
+| 影响层 | `src/core` / `src/runtime` / `src/integrations` / packaging / docs / CI |
+| 当前基线 SHA | |
 
-## Scope boundary
+## 范围边界与非目标
 
-<!-- Explicit non-goals keep the change reviewable and prevent parallel product authorities. -->
+<!-- 写明本次要做什么、不做什么，以及不应重复实现的现有能力。 -->
 
-## Acceptance criteria
+## 验收标准
 
-<!-- Observable, testable bullets. -->
+<!-- 使用用户可观察、可复现的结果；不要只写“测试通过”。 -->
 
-## Validation plan
+## 验证计划
 
-<!-- Tests, OS/Qt matrix, product-fit evidence and where it will be recorded. -->
+<!-- 优先复用已有测试身份，写明环境、命令、判据、证据位置和 NOT_RUN 单元。 -->
 
-## Dependencies and blockers
+## 依赖与阻塞

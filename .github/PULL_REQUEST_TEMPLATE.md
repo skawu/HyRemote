@@ -1,23 +1,23 @@
-## Product result
-<!-- Link the owning Issue. One paragraph: observed problem, intended user behavior, and the minimum changed layers. -->
+## 用户结果
+<!-- 关联唯一主责 Issue。用一段话说明用户遇到的问题、期望行为和最小改动层。 -->
 Issue: #
-<!-- Exactly one owning same-repository Issue: #N line for a semantic branch. Additional WBS references may follow separately. -->
+<!-- 语义分支必须恰有一行 Issue: #N；其它 WBS/参考 Issue 另列，不替代主责 Issue。 -->
 
-## Change scope (review the diff, not the checklist count)
-- Production implementation: 
-- Unnecessary abstraction / duplicate path removed or avoided:
-- Public ABI, security, Qt Kit, platform or lifecycle impact: none / describe
+## 变更范围
+- 生产实现：
+- 避免或删除的重复路径/不必要抽象：
+- 公共 ABI、安全、Qt Kit、平台或生命周期影响：无 / 说明
+- 明确不做的事项：
 
-## Test budget
-<!-- Reuse coverage first. A new test identity/file requires an uncovered risk, not a quota. -->
-- Existing relevant tests reused:
-- New test cases / files / executables: none / list each **uncovered** failure with its oracle and why the existing suite could not cover it
-- Tests deliberately not run during iteration (and why):
-- Required PR/CI/release gates: actual check links/results, or NOT_RUN. Never waive a mandatory gate here.
+## 验证预算
+- 复用的现有测试：
+- 新增测试用例/文件/可执行程序：无 / 逐项说明未覆盖风险、判据及为何现有测试无法覆盖
+- 本轮刻意未执行的测试及原因：
+- 必需 PR/CI/发行门禁：填写实际检查链接和结果；未执行写 `NOT_RUN`，不得自行豁免。
 
-## Evidence and qualification
-- Tested source SHA:
-- Commands / results (canonical `build.cmd` for HyRemote, existing bounded selectors for iteration):
-- Actual environment and remaining NOT_RUN cells:
-- Reviewer: reject duplicate infrastructure, speculative error handling, or tests that only restate another test; preserve real safety/compatibility obligations.
-- Existing owning Issue result: completed/remaining WBS, actual build/test/CI counts and repeated-test reasons; implementation/test/rework/blocked time and Human interventions if measured, otherwise NOT_MEASURED; one improvement or none. Link the result, do not duplicate a report.
+## 证据与资格
+- 被验证源码 SHA：
+- 实际命令与结果（HyRemote 使用规范 `build.cmd`；迭代使用已有受控选择器）：
+- 实际环境及仍未验证的单元：
+- 审查重点：拒绝重复基础设施、猜测式异常处理，以及只重复其它测试结论的用例；保留真实安全与兼容义务。
+- 主责 Issue 结果：已完成/未完成 WBS、实际构建/测试/CI 数量及重复运行原因；实现/测试/返工/阻塞时间和 Human 介入次数，无法测量写 `NOT_MEASURED`；一条效率改进或写无。链接结果，不复制整份报告。
