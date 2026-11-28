@@ -111,7 +111,7 @@ The V0.3 family carries two separate classes of work:
 
 ### Mandatory pre-GA V0.3 baseline
 
-**Current product roadmap (November 28, 2026):** [sole SDK/Runtime version roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The latest published release is V0.3.5.1; V0.3.5.2 is an unactivated maintenance plan; V0.3.6.0 is registered as the SDK development and diagnostics workbench. #581 implementation is complete, and #586 new-scope acceptance remains open; old candidate #1076 remains HOLD. First GA is limited to qualified Qt 5.15/6.8 cells; Qt 6.5/6.12 follow GA. V0.4 is qualification only.
+**Current product roadmap (November 28, 2026):** [sole SDK/Runtime version roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md). The latest published release is V0.3.5.1; V0.3.5.2 is an unactivated maintenance plan; V0.3.6.0 is registered as the SDK development and diagnostics workbench. #581 implementation is complete, and #586 new-scope acceptance remains open; the old candidate remains HOLD. First GA is limited to qualified Qt 5.15/6.8 cells; Qt 6.5/6.12 follow GA. V0.4 is qualification only.
 
 Only **Windows x86_64 Qt 5.15 and Qt 6.8 applicable supported cells** require physical/real-runtime pre-GA qualification, alongside RFB Raw/TRLE incremental damage, maintained Viewer interoperability, #370 performance, SDK installation and packaging. Linux/ARM64/qxcb/Wayland/EGLFS remain user-validation pending and non-blocking (#563). Qt6.5/6.12 are not pre-RC or first-GA conditions.
 
@@ -134,7 +134,7 @@ First-GA Qt5.15/Qt6.8 compatibility was the **V0.3.4.0** outcome, released on 20
 
 ## Current development Feature: V0.3.6.0 (November 28, 2026)
 
-The latest published release is V0.3.5.1. V0.3.5.2 is an unactivated maintenance plan; V0.3.6.0 is registered under H-T01=B as the SDK development and diagnostics workbench. #581 implementation is complete, and #586 new-scope installation/acceptance remains open. Old candidate #1076 remains Draft/HOLD; no release authorization is implied.
+The latest published release is V0.3.5.1. V0.3.5.2 is an unactivated maintenance plan; V0.3.6.0 is registered under H-T01=B as the SDK development and diagnostics workbench. #581 implementation is complete, and #586 new-scope installation/acceptance remains open. The old candidate remains Draft/HOLD; no release authorization is implied.
 
 - **V0.3.4.0: released** (2026-10-29). Post-release correction: the D05 record cited by its notes was added to the released tree and the tag was re-pointed to the corrected `main` HEAD before any announcement.
 - **V0.3.5.0: released** (November 24, 2026), host configuration/state and static text watermark #591/#589.
