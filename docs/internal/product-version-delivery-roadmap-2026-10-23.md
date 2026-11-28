@@ -109,6 +109,7 @@ HyRemote 是独立开源 SDK/Runtime。本路线图仅覆盖本仓公开 API、�
 | **V1.2.0.0** | **真实工业 Qt Quick/ARM64 低侵入交付**：将现有 HMI 应用低成本启用远控，Quick-only 不额外加载 Qt Widgets，保留本地触控/显示 | **#149/#203/#7/#236/#18/#154**；准确 RK3588/Buildroot/EGLFS 参考 Kit 与性能/依赖正反例；QtPrivate/QPA-EGLFS #148 单元只能依 GO/NO-GO 判定真实支持范围 | **CONDITIONAL / POST_GA**；有硬件和可复现实机证据后才准入，不重启 Windows GA 物理门禁 |
 | **V1.2.1.0** | **Linux Wayland 原生平台可用性**：原生 Qt 程序在明确的 Wayland Kit 上看/控/部署，保持桌面输入与正确平台身份 | **#346/#148/#563**；先 Linux x86_64 Qt6.8 真实 Wayland 用户场景，按 C++/QML/Generic/QPA 逐单元验收，XWayland 不能冒充 native | **CONDITIONAL / POST_GA**；真实环境和平台兼容证据门槛 |
 | **V1.2.2.0** | **工业 HMI 真实单点/多点触控**：区别于鼠标模拟，触点 ID、按下/移动/释放/取消语义对 Qt Quick 正确 | **#172**；基于 V1.2.0 适用 HMI 参考板，协议/Viewer 触控能力先选型；远端切断释放全部触点，本机触控持续可用 | **CONDITIONAL / POST_GA**；未有真实触控通道只能提供 Mouse Emulation，不能宣称多点触控 |
+| **V1.2.4.0** | **安全文件交付 SDK/Runtime GO/NO-GO 评估**：判断跨前端有界文件提供能力是否属于通用 SDK/Runtime 责任，或应采用外部安全维护通道 | **#173**；先确认互操作机制、认证/加密前置、应用授权与文件系统范围、配额/取消/路径安全/回滚；只有 GO 才建立实现范围，NO-GO 则明确外部安全通道替代方案 | **DISCOVERY_DEPENDENT / NOT_ACTIVE**；未作 GO 决定前不实现，不构成当前 V0.3.6.0 或 V1 GA 阻塞 |
 | **V1.2.6.0** | **工业设备低负载待机和按需远程捕获**：无人观看时不过度占用 CPU/GPU，有人接入时画面/输入仍有响应 | **#151**，需在实际设备上给出 no-viewer/one-viewer/idle/reconnect 的资源与可用性测量；复用 #370/#372 既有机制，不重新发明 Core Scheduler | **CONDITIONAL / POST_GA**；只有真实设备资源预算不能满足时才独立激活 |
 | **V1.2.7.0** | **面向现场运维的高级性能诊断**：解释为什么远端变慢/帧丢弃/输入失败，明确数据来源与不可用项 | **#180**，依赖 S2 基础诊断 #587 / 已有 Core SessionStats 正确性，按受支持 SDK C++/QML 公开有界只读指标 | **CONDITIONAL / POST_GA**；需证明基础诊断不足以定位真实客户故障，否则合并需求/不制造独立发行 |
 
