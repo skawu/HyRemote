@@ -1,35 +1,35 @@
 ---
-name: Bug report
-about: A defect in a build, capture path, transport, input model, package or lifecycle
+name: 缺陷报告
+about: 报告构建、采集、传输、输入、安装、部署或生命周期缺陷
 labels: bug
 ---
 
-## Summary
+## 问题概述
 
-## Affected layer and configuration
+## 影响范围与环境
 
-| Item | Value |
-|---|---|
-| Layer | `src/core` / `src/cpp` / `src/qml` / `src/qpa` / `cmake` / docs |
-| Integration mode | Embedded C++ / Declarative QML / Transparent QPA |
-| OS and graphics stack | |
-| Qt version | |
-| Commit | `git rev-parse HEAD` |
+| 项目 | 实际值 |
+| --- | --- |
+| 模块 | `src/core` / `src/cpp` / `src/qml` / `src/qpa` / `cmake` / 文档 |
+| 接入方式 | C++ / QML / Generic / QPA |
+| 操作系统与图形栈 | |
+| Qt 精确版本与 Kit | |
+| 源码提交 | `git rev-parse HEAD` |
 
-## Reproduction
+## 最小复现步骤
 
 ```text
-# exact commands, smallest possible
+# 写出可直接复现的最少命令和步骤
 ```
 
-## Expected and actual
+## 预期结果与实际结果
 
-## Evidence
+## 证据
 
-<!-- Logs, test output, evidence JSON. Do not paste secrets or credentials. -->
+<!-- 可附日志、测试输出和脱敏 JSON；不得粘贴密码、token、私钥或其它凭据。 -->
 
-## Checks
+## 提交前核对
 
-- [ ] Reproducible on the commit above
-- [ ] Searched existing issues
-- [ ] This is not a security vulnerability; security reports follow `SECURITY.md`
+- [ ] 已确认问题可在上述提交复现，或明确标记无法复现
+- [ ] 已检索现有 Issue，避免重复报告
+- [ ] 这不是安全漏洞；安全问题请使用 `SECURITY.md` 中的私密报告渠道

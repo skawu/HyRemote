@@ -20,6 +20,10 @@
 
 新增的全局 C 风格符号或宏使用 `HYREMOTE_` 前缀。`HyRemote::` 内的公开 C++ 类型保持正常 PascalCase，不再额外加前缀，避免出现 `HYRemoteAccess` 这类重复。内部类型留在自己的命名空间或类作用域内。
 
+## 新建自研文件（现行要求）
+
+新增自研源码（含头文件和测试源码）及项目技术文档的文件名以小写 `hy` 开头，例如 `hyframebuffer.hpp`、`hyframebuffer.cpp`、`hycapture-design.md`。延续模块现有扩展名和命名空间。既有固定入口（如 `AGENTS.md`、`CMakeLists.txt`）、标准构建/配置/发行路径、第三方文件及已发布 API/ABI、安装路径的兼容性要求例外。不批量重命名现有文件，不借文件命名改变类型名、公开符号或协议。#969 的 P0 盘点仅为研究记录，未批准的类名迁移不生效。
+
 ## C++
 
 - 命名空间：实现使用 `hyremote`，公开别名命名空间使用 `HyRemote::`。
@@ -28,7 +32,7 @@
 - 函数和方法：`camelCase`。
 - 私有数据成员：`m_` 加 camelCase；使用 pimpl 的实现通常把数据放在 `struct Impl` 中，因此公开头文件很少出现成员命名。
 - 公开头文件：文件名可以跟随它声明的公开类型，例如 `src/cpp/include/HyRemote/RemoteAccess.h`。这是唯一使用 `.h`/PascalCase 文件名的地方。
-- 新增内部源文件和测试文件：`snake_case`。
+- 新增内部源文件和测试文件：遵守上述 `hy` 前缀，可沿用模块的小写命名风格。
 
 ### 两种公开头文件形式是刻意保留的
 

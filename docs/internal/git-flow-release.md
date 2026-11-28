@@ -61,7 +61,9 @@ Remove that marker only after the complete milestone gate passes and before the 
 
 ## 3. Short-lived branches
 
-### `feature/<issue>-<topic>`
+### `feature/<topic>`
+
+New ordinary feature and hotfix branches use a semantic lowercase kebab-case topic (for example `feature/qt-quick-capture`). Put exactly one owning `Issue: #N` line in the PR body. The gate validates a real Issue in this repository, not a PR. Previously created numbered branches remain compatible during transition; do not create new ones. The exact numbered protected release-preparation exception and release/backmerge names are unchanged. If an older release/main base still runs the old policy, retain its required format until the reviewed policy reaches that base.
 
 - create from `develop`;
 - link an Issue/WBS item;
@@ -93,7 +95,7 @@ Create only for a feature-complete milestone candidate.
 - must contain the tagged release commit;
 - restore the development version sentinel `0.0.0` before merging.
 
-### `hotfix/<issue>-<topic>`
+### `hotfix/<topic>`
 
 Use only for corrections to an already released `main` version. A hotfix may not smuggle in a new integration mode or platform capability.
 
