@@ -75,7 +75,7 @@ hyremote_deploy(TARGET MyApp)
 
 ### Generic Plugin
 
-Generic Plugin 保留应用原有 Qt 平台插件（例如 `qwindows`、`qxcb`），应用本身不链接 HyRemote target：
+Generic Plugin 保留应用原有 Qt 平台插件（例如 `qwindows`、`qxcb`），应用本身不链接 HyRemote 构建目标：
 
 ```cmake
 target_link_libraries(MyExistingApp PRIVATE Qt6::Widgets)
@@ -104,7 +104,7 @@ RemoteAccess {
 }
 ```
 
-通过部署辅助函数安装 QML payload：
+通过部署辅助函数安装 QML 组件：
 
 ```cmake
 hyremote_deploy(TARGET MyQmlApp QML)
@@ -149,7 +149,7 @@ src/
     └── qpa/
 ```
 
-`HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` 是共享 Runtime 的常规交付构件。Core 保持内部实现；QML、Generic 和 QPA 是建立在该 Runtime 之上的接入 payload。
+`HyRemote::RemoteAccess` / `HyRemoteRemoteAccess` 是共享 Runtime 的常规交付构件。Core 保持内部实现；QML、Generic 和 QPA 是建立在该 Runtime 之上的接入组件。
 
 ## 构建与安装
 
@@ -174,7 +174,7 @@ POSIX:      sh ./build.cmd install
 
 `--integrations`、`--qt-prefix` 和 `--toolchain` 是本次命令的临时覆盖项。持久平台配置写入 `build.yml`；构建另一目标时可复制配置文件并通过 `--config` 显式选择。
 
-Qt 6.8.3 是当前参考版本。交叉构建必须使用为目标架构构建的 Qt 6.8.3，不能误用主机 Qt。ARM64/嵌入式 Linux 在取得目标板运行证据前仅属于 build-only 路径。
+Qt 6.8.3 是当前参考版本。交叉构建必须使用为目标架构构建的 Qt 6.8.3，不能误用主机 Qt。ARM64/嵌入式 Linux 在取得目标板运行证据前仅属于构建验证路径。
 
 SDK 消费者应使用 `find_package(HyRemote CONFIG REQUIRED)` 和 `hyremote_deploy()`，不要手工复制内部库或插件。
 
@@ -184,7 +184,7 @@ SDK 消费者应使用 `find_package(HyRemote CONFIG REQUIRED)` 和 `hyremote_de
 
 - 默认监听 `0.0.0.0:5921`，覆盖主机所有 IPv4 接口；
 - 远程输入默认关闭；
-- 默认 `Insecure` 未认证、未加密，只适用于可信 LAN，不适合直接暴露到 Internet；
+- 默认 `Insecure` 未认证、未加密，只适用于可信局域网，不适合直接暴露到公网；
 - `Authenticated` 只有在构建包含对应传输安全能力且配置有效安全描述文件时才可用；当前提供 VNC 认证，但仍不加密传输；
 - `AuthenticatedEncrypted` 尚未实现，选择后会失败关闭，不会降级到较弱配置。
 
@@ -211,6 +211,7 @@ SDK 消费者应使用 `find_package(HyRemote CONFIG REQUIRED)` 和 `hyremote_de
 - [已知限制](docs/known-limitations.md)
 - [安全边界](docs/security.md)
 - [文档目录](docs/README.md)
+- [仓库目录与模块职责（维护者参考）](docs/internal/repository-layout.md)
 
 ## 许可证
 
