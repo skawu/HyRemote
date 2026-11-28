@@ -334,6 +334,11 @@ QJsonObject HySdkInspector::Check::toObject(bool chinese) const
     return object;
 }
 
+QString HySdkInspector::localizedText(const QString &text, bool chinese)
+{
+    return localizedCheckText(text, chinese);
+}
+
 QString HySdkInspector::resultToken(Result result)
 {
     switch (result) {

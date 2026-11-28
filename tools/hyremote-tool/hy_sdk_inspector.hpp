@@ -46,4 +46,5 @@ public:
     static Report inspect(const QString &sdkRoot, const QString &kitRoot);
     static QString resultToken(Result result);
     static QString localizedResult(Result result, bool chinese);
+    static QString localizedText(const QString &text, bool chinese);
 };

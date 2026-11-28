@@ -24,7 +24,10 @@ public:
 
     Q_PROPERTY(QString language READ language NOTIFY languageChanged)
     Q_PROPERTY(QString languagePreference READ languagePreference NOTIFY languageChanged)
+    Q_PROPERTY(QString languageSource READ languageSource NOTIFY languageChanged)
+    Q_PROPERTY(QString languageNotice READ languageNotice NOTIFY languageChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
+    Q_PROPERTY(QVariantMap inspectionSummary READ inspectionSummary NOTIFY inspectionChanged)
     Q_PROPERTY(QString sdkRoot READ sdkRoot WRITE setSdkRoot NOTIFY inspectionChanged)
     Q_PROPERTY(QString kitRoot READ kitRoot WRITE setKitRoot NOTIFY inspectionChanged)
     Q_PROPERTY(QVariantList checks READ checks NOTIFY inspectionChanged)
@@ -47,7 +50,10 @@ public:
 
     QString language() const { return m_language == ToolLanguage::Chinese ? QStringLiteral("zh") : QStringLiteral("en"); }
     QString languagePreference() const { return toolLanguagePreferenceToken(m_preference); }
+    QString languageSource() const;
+    QString languageNotice() const { return m_languageNotice; }
     QString version() const;
+    QVariantMap inspectionSummary() const;
     QString sdkRoot() const { return m_sdkRoot; }
     QString kitRoot() const { return m_kitRoot; }
     QVariantList checks() const { return m_report.checkList(m_language == ToolLanguage::Chinese); }
@@ -75,6 +81,7 @@ public:
     Q_INVOKABLE QString guidance(const QString &route) const;
     Q_INVOKABLE QString routeStatus(const QString &route) const;
     Q_INVOKABLE void copyGuidance(const QString &route);
+    Q_INVOKABLE void copyRouteCode(const QString &route);
     Q_INVOKABLE void connectHost(const QString &host, int port);
     Q_INVOKABLE void cancelConnection();
     Q_INVOKABLE void endSession();
@@ -119,6 +126,7 @@ private:
     bool m_cliOverride = false;
     ToolLanguagePreference m_preference = ToolLanguagePreference::Auto;
     ToolLanguage m_language = ToolLanguage::English;
+    QString m_languageNotice;
 
     RfbClient m_client;
     ToolDiagnosticSession m_diagnostics;

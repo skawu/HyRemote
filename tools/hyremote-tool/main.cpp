@@ -10,6 +10,9 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlError>
+#ifdef HYREMOTE_TOOL_WORKBENCH
+#include <QQuickStyle>
+#endif
 #endif
 
 #include <QApplication>
@@ -1454,6 +1457,7 @@ bool runDeveloperWorkbench(QApplication &app, QSettings &settings,
                            const std::optional<ToolLanguage> &cliLanguage,
                            bool cliOverride, bool verification, bool &switchToLegacy)
 {
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
     QQmlApplicationEngine engine;
     QObject::connect(&engine, &QQmlEngine::warnings, &app,
                      [](const QList<QQmlError> &errors) {
