@@ -35,7 +35,7 @@
 ## G6/G7 归档与冻结状态（2026-11-04）
 
 - **G6=PASS**：设计记录已通过 [PR #815](https://github.com/skawu/HyRemote/pull/815) 合并至 `develop@c1684cf4cd2394c9b06f40edafc63b474658ecd8`，且两仓 supersession 评论及正式 ADR 均完成回验。
-- **G7=HUMAN_APPROVED（2026-11-04）**：Human 在审阅《阶段02 G7 总体架构冻结审批卡》后明确回复“批准”，批准**产品架构设计**总体冻结。审批归档任务为 [#817](https://github.com/skawu/HyRemote/issues/817)。精确设计输入与冻结排除范围见 [阶段02 G7 冻结清单](../internal/architecture-stage02-g7-freeze-record-2026-11-04.md)。
+- **G7=HUMAN_APPROVED（2026-11-04）**：Human 在审阅《阶段02 G7 总体架构冻结审批卡》后明确回复“批准”，批准**产品架构设计**总体冻结。审批归档任务为 [#817](https://github.com/skawu/HyRemote/issues/817)。精确设计输入与冻结排除范围见 [阶段02 G7 冻结清单（HyRemoteView）](https://github.com/skawu/HyRemoteView/blob/main/docs/internal/architecture-stage02-g7-freeze-record-2026-11-04.md)。
 - 冻结范围：`HYR-PD-001/V14` 的产品责任与 52 小节追踪、R15 唯一架构/Native 契约、R16 宿主授权与安全预算补充、R18 设计级技术签收，以及本 ADR 的五项已批准局部决策；技术候选在这些后续决策约束下解释。
 - **实质设计变更控制**：任何改动默认控制独占、网络安全准入、协议依赖与 wire 格式、授权/隐私边界、四种接入或 Core/Runtime 所有权的提案，必须先列出产品条款、旧/新契约、影响与回滚方案，再取得 Human 变更批准，不能以实施便利自行改写冻结架构。
 - **未授权**：本冻结不等于 Native/TLS/新准入代码已实现或测试合格，不批准研发开工、发布、Qt 单元支持资格外推，也不批准跳过目录/内容/图表/版式规划直接编制 Word。下一阶段是正式架构文档的结构及内容规划。
