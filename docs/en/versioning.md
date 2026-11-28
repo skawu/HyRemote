@@ -130,7 +130,7 @@ This repository's version plan tracks only the independent open-source SDK/Runti
 
 `V0.3.1.0` (Qt5 slot) and `V0.3.2.0` (Bandwidth/ZRLE slot) are retired historical records and cannot be selected. V0.3.3.0 is a new coherent outcome. See [`../internal/v0.3.3.0-plan.md`](../internal/v0.3.3.0-plan.md).
 
-First-GA Qt5.15/Qt6.8 compatibility was the **V0.3.4.0** outcome, released on 2026-10-29 (tag `v0.3.4.0` → `main` `27bf97d`). Tool improves incrementally; Host config/text-watermark and Docker are later independent planned outcomes. Qt6.5/Qt6.12 are post-V1 GA; Management/TLS remains separately authorized. The canonical [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) assigns planned versions to known user outcomes; this summary does not independently assign versions.
+First-GA Qt5.15/Qt6.8 compatibility was the **V0.3.4.0** outcome, released on 2026-10-29 (tag `v0.3.4.0` → `main` `27bf97d`). Tool improves incrementally; Host config/text-watermark and Docker are later independent planned outcomes. Qt6.5/Qt6.12 remain post-V1 GA; no additional Qt compatibility line is implied by this release plan. The canonical [product roadmap](../internal/product-version-delivery-roadmap-2026-10-23.md) assigns planned versions to known user outcomes; this summary does not independently assign versions.
 
 ## Current development Feature: V0.3.6.0 (November 28, 2026)
 
