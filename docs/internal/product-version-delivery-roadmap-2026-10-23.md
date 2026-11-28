@@ -3,7 +3,7 @@
 > **仓库范围与当前状态（2026-11-28）：** 本路线图只管理 HyRemote 独立开源 SDK/Runtime 的公开 API、四种接入方式、Qt 目标适配、RFB 传输、构建/安装/部署、安全、性能、资源生命周期、开发诊断和兼容性。它不列示其它产品范围。最新正式发行是 V0.3.5.1；V0.3.5.2 为尚未激活的客户维护计划；V0.3.6.0 已登记为 SDK 开发与诊断工作台，#581 实施完成，#586 新范围验收仍开放。旧候选保持 Draft/HOLD，不构成发行授权。
 
 
-> **2026-11-27 当前执行状态（优先于所有历史排期）：** Human [H-T01=B 正式裁决](https://github.com/skawu/HyRemote/issues/594#issuecomment-7214790385) 将 Tool 转为 SDK 研发与诊断工具。V0.3.5.1 已正式发布，客户现场静态单 Viewer CPU 改善，#567/#790 未解决；独立维护 V0.3.5.2 为计划目标、未激活。V0.3.6.0 保持版号，重新定义为开发诊断工作台首期；旧冻结发行候选 HOLD，受审候选更新前不得发行。原已发布 RFB 访问仅作兼容维护，待独立客户端真实可用且过渡验收后另行退役；不扩建设备/远程会话工作台，不重写 Viewer。其余 Qt/SDK、Docker、RC、GA、既定维护与发布保护不变。
+> **2026-11-27 当前执行状态（优先于所有历史排期）：** Human [H-T01=B 正式裁决](https://github.com/skawu/HyRemote/issues/594#issuecomment-7214790385) 将 Tool 转为 SDK 研发与诊断工具。V0.3.5.1 已正式发布，客户现场静态单 Viewer CPU 改善，#567/#790 未解决；独立维护 V0.3.5.2 为计划目标、未激活。V0.3.6.0 保持版号，重新定义为开发诊断工作台首期；旧冻结发行候选 HOLD，受审候选更新前不得发行。原已发布 RFB 访问仅作兼容维护，不新增 Viewer 功能，暂不设退役日期；不扩建设备/远程会话工作台，不重写 Viewer。其余 Qt/SDK、Docker、RC、GA、既定维护与发布保护不变。
 
 > **仓库职责：** HyRemote 是独立开源 SDK/Runtime；本文件只决定本仓 API、版本、兼容性和发行计划。外部使用者可固定消费已发布 SHA，但不改变本仓产品所有权、研发或发布权。
 
@@ -154,7 +154,7 @@ HyRemote 是独立开源 SDK/Runtime。本路线图仅覆盖本仓公开 API、�
 | **V0.3.4.0 — 已发布 Feature（#603，PR #655 已合并登记）** | **主流 Qt 5.15 LTS + Qt 6.8 LTS** 的 Windows SDK/Runtime 实用兼容 | **#603、#57、#265、#566、#604**：Qt5.15.2 Windows C++/Widgets + Tool 已有**有限资格**，剩余 Qt5 Qt Quick/QML/Generic/QPA 按实际可适配+可验收单元决定；Qt6.8.3 作为 Windows 参考及回归。跨 C++/QML/Generic/QPA 的一个 Shared Runtime、SDK 安装、CMake/qmake 消费者、Qt Kit/version+compiler+arch 显式选择、QPA exact Qt Private ABI 及真实 Viewer 验收；未测 Unsupported/NOT_RUN 不冒称 PASS | **Qt 6.5、Qt 6.12 明确不属于本 Feature 或首轮 GA**，跟踪 #605；Tool 整套 S1 完成不阻塞 Qt 5.15/6.8 |
 | **V0.3.5.0（RELEASED）** | **宿主配置/持久化路径 + 服务端文字水印** | **#591 + #589**：四条入口共用 config_file、可写 state_dir、未来可选 DB 路径及受保护 secret 引用；可配 UTF-8 中文/英文静态文字、透明度/字号/颜色/位置/平铺；原应用本地像素不变，标准 Viewer 看得见；Raw/TRLE/Damage/Resize/多 Viewer 性能真实验证 | 不提前实现 SQLite 引擎或 TLS/账号平台；Logo #593 在 GA 后 |
 | **V0.3.7.0（CONDITIONAL）** | **用户自己的 Qt App 与 HyRemote Docker 联合部署** | **#592**：依赖可运行 #591 配置/数据 API，真实 Dockerfile/Compose + Qt 插件/显示后端、RFB 连通、非 root、只读配置/密钥、可写 volume、restart/recreate 后持久化 | 没跑真实 Qt 应用容器不能宣称 Docker Supported；不因无法取得 Linux 设备阻断已合格的 Windows Features |
-| **V0.3.6.0 Tool S1 / V1.0.3.0 S2 / V1.0.4.0 S3** | 开发诊断工作台首期 → 深入宿主诊断 → 深入 SDK 消费验证 | #581/#585/#590 研发任务，#582/#583/#584 兼容维护，#586 实装总体验收；#587/#588 后续深化 | 存量 RFB 安全与可用性不回归；不扩建 Viewer；退役另按已合格替代能力与迁移验收 |
+| **V0.3.6.0 Tool S1 / V1.0.3.0 S2 / V1.0.4.0 S3** | 开发诊断工作台首期 → 深入宿主诊断 → 深入 SDK 消费验证 | #581/#585/#590 研发任务，#582/#583/#584 兼容维护，#586 实装总体验收；#587/#588 后续深化 | 存量 RFB 安全与可用性不回归；不扩建 Viewer；现有入口仅作兼容维护，退役日期未设定 |
 | **V0.4.0.0 RC（未激活）** | 冻结**Qt 5.15 与 6.8** 的真实 Windows 支持矩阵，全面验证已交付产品 | #235/#343/#602：Qt5.15 与 Qt6.8 的适用 Windows exact Kit/Widgets/Quick/四路线/Private ABI、外部 GUI Viewer、性能/安全/SDK 安装/升级回滚、Tool 已发货能力与文字水印/路径等声明，同 SHA 发布闭环 | **不要求 Qt 6.5/6.12 的任何适配、兼容性或真实 Qt Kit PASS**；RC 不开发新 Feature。Docker 如未实测只能标 Unqualified |
 | **V1.0.0.0 GA（机器规则已列出；NOT_READY／未发布）** | 仅提升合格 V0.4 RC 的 Windows 产品资格为首个稳定支持承诺 | #33/#95：**正式 Qt 家族只覆盖已实际资格化的 Qt 5.15/Qt 6.8 单元**，C++/QML/Generic/QPA 支持单元清单、API/包、二语说明、tag/checksums/维护声明；Tool 功能按实际验收声明 | 不暗含 Qt 6.5/6.12 支持；不发布未经实际验证的 Docker/Linux cell |
 | **V1.0.1.0 Qt6.5 / V1.0.2.0 Qt6.12（PLANNED，POST_GA）** | **Qt 6.5 LTS 及 Qt 6.12 LTS 扩展支持** | **#605**：各自选择确切 patch+compiler Kit，Windows SDK/Widgets/Quick/四路线中可支持组合与 QPA exact ABI，实际安装、连接/输入与性能回归，按真实证据声明 Supported/Limited/Unsupported | V1.0.1.0 与 V1.0.2.0 是已规划的 GA 后独立成果；如需调整必须按版本变更治理记录旧→新、原因与影响。在 V1 GA 前不要求真实运行/消费者/外部 Viewer 支持认证 |
