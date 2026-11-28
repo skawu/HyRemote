@@ -42,7 +42,7 @@ The V0.3.0.0 publication historically named **Qt 6.8.3 on Windows and Linux x86_
 
 The table describes the current product line only. It does not imply that every graphics configuration inside a Widgets or Quick application is qualified. Its 5.15.2 row is the original V0.3.0.0-era legacy record; the current state of every Qt 5 route was decided by Owner D2 (2026-10-27) and is stated in the current development-line table below.
 
-## V0.3.4.0 qualified support cells (no new cells declared by V0.3.5.1)
+## Current development line: V0.3.4.0 exact cells (historical qualification baseline; V0.3.5.1 declares no new cells)
 
 The table below records the exact Qt/platform/integration qualification evidence obtained on the V0.3.4.0 candidate `c57dae0`; it remains the historical baseline for the currently declared support cells. V0.3.5.1 carries these existing cells forward but its maintenance notes do not declare additional Qt/platform qualification. The V0.3.4.0 D05 physical evidence must not be described as rerun on V0.3.5.1. Current maintenance evidence is in the [V0.3.5.1 release notes](../releases/v0.3.5.1.md). A cell is the full combination of exact Qt patch, compiler/ABI, OS/architecture, integration route and UI target; one passing cell never implies another combination.
 
